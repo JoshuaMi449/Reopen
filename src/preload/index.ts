@@ -1,8 +1,33 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type {
+  NewProjectInput,
+  ProjectLogEvent,
+  ProjectStatusEvent,
+  ReopenApi
+} from '../shared/types'
 
-// Custom APIs for renderer
-const api = {}
+// 渲染层可用的全部 API（contextBridge 安全暴露，类型见 shared/types.ts）
+const api: ReopenApi = {
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+  listProjects: () => ipcRenderer.invoke('project:list'),
+  detectPath: (path) => ipcRenderer.invoke('project:detect', path),
+  parseApp: (path) => ipcRenderer.invoke('project:parse-app', path),
+  addProject: (input: NewProjectInput) => ipcRenderer.invoke('project:add', input),
+  deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
+  startProject: (id) => ipcRenderer.invoke('project:start', id),
+  stopProject: (id) => ipcRenderer.invoke('project:stop', id),
+  onStatus: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, event: ProjectStatusEvent): void => cb(event)
+    ipcRenderer.on('project:status', listener)
+    return () => ipcRenderer.removeListener('project:status', listener)
+  },
+  onLog: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, event: ProjectLogEvent): void => cb(event)
+    ipcRenderer.on('project:log', listener)
+    return () => ipcRenderer.removeListener('project:log', listener)
+  }
+}
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
