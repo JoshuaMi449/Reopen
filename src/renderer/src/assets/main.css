@@ -472,3 +472,110 @@ select {
   font-size: 16px;
   color: var(--primary-strong);
 }
+
+/* ---------- 右键菜单 ---------- */
+
+.context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 301;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 150px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  display: flex;
+  flex-direction: column;
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 7px 12px;
+  border-radius: 5px;
+  text-align: left;
+  color: var(--text);
+}
+
+.context-item:hover {
+  background: var(--bg);
+}
+
+.context-item-danger {
+  color: var(--danger);
+}
+
+.context-item-danger:hover {
+  background: #fdf3f2;
+}
+
+/* ---------- 标签选择 ---------- */
+
+.form-tags {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form-tags-label {
+  width: 110px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
+.tag-picker {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tag-picker input {
+  flex: 1;
+  min-width: 120px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #fdfbf8;
+  color: var(--text);
+}
+
+.tag-picker input:focus {
+  outline: none;
+  border-color: var(--primary-strong);
+}
+
+.tag-chip {
+  border: 1px solid var(--border);
+  background: #fdfbf8;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tag-chip:hover {
+  border-color: var(--primary-strong);
+  color: var(--text);
+}
+
+.tag-chip-on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.tag-chip-on:hover {
+  color: #fff;
+}

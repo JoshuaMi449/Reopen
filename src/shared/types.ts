@@ -55,7 +55,15 @@ export interface DetectFailed {
   reason: string
 }
 
-export type DetectOutcome = DetectSuccess | DetectNeedParseApp | DetectFailed
+/** 拖拽识别：这个路径已经登记过了 */
+export interface DetectDuplicate {
+  ok: false
+  kind: 'duplicate'
+  /** 已登记项目的名称 */
+  name: string
+}
+
+export type DetectOutcome = DetectSuccess | DetectNeedParseApp | DetectFailed | DetectDuplicate
 
 /** 项目状态变化事件（主进程推送 → 渲染层更新圆点/标红） */
 export interface ProjectStatusEvent {
@@ -91,6 +99,10 @@ export interface ReopenApi {
   deleteProject(id: string): Promise<void>
   startProject(id: string): Promise<StartResult>
   stopProject(id: string): Promise<void>
+  /** 打开应用时：检测哪些项目其实已经在跑（端口有响应），直接显示运行中 */
+  adoptAllRunning(): Promise<void>
+  /** 在默认浏览器打开该项目（右键菜单），需项目已运行 */
+  openProjectBrowser(id: string): Promise<StartResult>
   /** 订阅状态变化，返回取消订阅函数 */
   onStatus(cb: (e: ProjectStatusEvent) => void): () => void
   /** 订阅日志，返回取消订阅函数 */

@@ -17,6 +17,8 @@ const api: ReopenApi = {
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
   startProject: (id) => ipcRenderer.invoke('project:start', id),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
+  adoptAllRunning: () => ipcRenderer.invoke('project:adopt-all'),
+  openProjectBrowser: (id) => ipcRenderer.invoke('project:open-browser', id),
   onStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, event: ProjectStatusEvent): void => cb(event)
     ipcRenderer.on('project:status', listener)

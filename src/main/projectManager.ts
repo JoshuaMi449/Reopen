@@ -1,5 +1,5 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
-import { spawn, ChildProcess } from 'child_process'
+import { execSync, spawn, ChildProcess } from 'child_process'
 import { BrowserWindow, shell } from 'electron'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
@@ -20,6 +20,8 @@ interface Runtime {
   server?: import('http').Server
   status: ProjectStatus
   port?: number
+  /** 网页文件入口路径（单个文件登记时带文件名），右键"在浏览器打开"用 */
+  entryPath?: string
   healthTimer?: NodeJS.Timeout
   healthStart: number
 }
@@ -65,11 +67,37 @@ function fail(rt: Runtime, project: Project, reason: string): void {
   rt.status = 'failed'
 }
 
+// 每个项目最近 200 行日志（失败时翻译成大白话用）
+const recentLogs = new Map<string, string[]>()
+
+/** 失败兜底：日志里有常见错误特征时，翻译成人话原因（PRD 3.4：通知带失败原因） */
+function failWithLogHint(rt: Runtime, project: Project, fallback: string): void {
+  const text = (recentLogs.get(project.id) ?? []).join('\n')
+  const portBusy = text.match(/EADDRINUSE[\s\S]*?port:\s*(\d+)/)
+  if (portBusy) {
+    fail(
+      rt,
+      project,
+      `端口 ${portBusy[1]} 已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动`
+    )
+    return
+  }
+  if (/EADDRINUSE/.test(text)) {
+    fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
+    return
+  }
+  fail(rt, project, fallback)
+}
+
 /** 日志按行拆完再推给界面 */
 function pipeLog(id: string, chunk: string): void {
   const buf = (lineBuffers.get(id) ?? '') + chunk
   const lines = buf.split('\n')
   lineBuffers.set(id, lines.pop() ?? '')
+  const recent = recentLogs.get(id) ?? []
+  recent.push(...lines)
+  if (recent.length > 200) recent.splice(0, recent.length - 200)
+  recentLogs.set(id, recent)
   for (const line of lines) emitLog(id, line)
 }
 
@@ -112,9 +140,12 @@ export async function startProject(id: string): Promise<StartResult> {
 async function startService(project: Project, rt: Runtime): Promise<StartResult> {
   if (!project.command) return { ok: false, reason: '该项目没有启动命令' }
 
-  // 端口占用预检（PRD 3.4：如"端口3459已被占用"）
+  // 端口已有服务在响应：大概率项目已经手动启动了——直接接管显示，不用先杀再开（用户 2026-08-20 拍板）
   if (project.port && (await checkPortOpen(project.port))) {
-    return { ok: false, reason: `端口 ${project.port} 已被占用` }
+    rt.port = project.port
+    setStatus(rt, project, 'running', project.port)
+    touchStartedAt(project.id)
+    return { ok: true, reason: `检测到端口 ${project.port} 已有服务在响应，已直接显示为运行中` }
   }
 
   setStatus(rt, project, 'starting')
@@ -138,7 +169,7 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
     rt.child = undefined
     if (rt.status === 'starting') {
       // 健康检查没过就退了 = 启动失败（不重试，PRD 3.4）
-      fail(rt, project, `进程提前退出（退出码 ${code ?? signal}）`)
+      failWithLogHint(rt, project, `进程提前退出（退出码 ${code ?? signal}）`)
     } else if (rt.status === 'running') {
       setStatus(rt, project, 'stopped')
     }
@@ -159,7 +190,7 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
           }
         } else if (Date.now() - rt.healthStart > HEALTH_TIMEOUT_MS) {
           clearInterval(rt.healthTimer)
-          fail(rt, project, `30 秒内端口 ${project.port} 没有就绪（日志面板有完整输出）`)
+          failWithLogHint(rt, project, `30 秒内端口 ${project.port} 没有就绪（日志面板有完整输出）`)
         }
       })
     }, HEALTH_INTERVAL_MS)
@@ -173,10 +204,15 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
 }
 
 async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
+  // 端口占用预检（用户可在表单指定端口，留空则自动分配）
+  if (project.port && (await checkPortOpen(project.port))) {
+    return { ok: false, reason: `端口 ${project.port} 已被占用` }
+  }
   setStatus(rt, project, 'starting')
   try {
-    const { server, port, entryPath } = await startWebServer(project.path)
+    const { server, port, entryPath } = await startWebServer(project.path, project.port)
     rt.server = server
+    rt.entryPath = entryPath
     setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
     emitLog(project.id, `临时服务已就绪：http://localhost:${port}${entryPath}`)
@@ -190,6 +226,42 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
   }
 }
 
+/** 接管显示：端口有服务在响应 → 直接标记运行中（不启动任何东西） */
+export async function adoptRunning(project: Project): Promise<void> {
+  const rt = getRuntime(project.id)
+  if (rt.status !== 'stopped') return
+  if (project.type !== 'service' || !project.port) return
+  if (await checkPortOpen(project.port)) {
+    rt.port = project.port
+    setStatus(rt, project, 'running', project.port)
+  }
+}
+
+/** 打开应用时对全部项目做一次接管检测（重启 Reopen 后状态不丢） */
+export async function adoptAllRunning(): Promise<void> {
+  for (const project of listProjects()) {
+    await adoptRunning(project)
+  }
+}
+
+/** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单） */
+export async function openProjectBrowser(id: string): Promise<StartResult> {
+  const project = listProjects().find((p) => p.id === id)
+  if (!project) return { ok: false, reason: '项目不存在' }
+  const rt = runtimes.get(id)
+  if (!rt || rt.status !== 'running') {
+    return { ok: false, reason: '项目还没启动，先点启动' }
+  }
+  if (project.type === 'web') {
+    shell.openExternal(`http://localhost:${rt.port}${rt.entryPath ?? '/'}`)
+  } else {
+    const port = rt.port ?? project.port
+    if (!port) return { ok: false, reason: '该项目没有端口，不知道打开哪个地址' }
+    shell.openExternal(`http://localhost:${port}`)
+  }
+  return { ok: true }
+}
+
 export async function stopProject(id: string): Promise<void> {
   const project = listProjects().find((p) => p.id === id)
   const rt = runtimes.get(id)
@@ -199,6 +271,27 @@ export async function stopProject(id: string): Promise<void> {
     // 网页文件：关掉临时服务
     rt.server.close()
     rt.server = undefined
+    setStatus(rt, project, 'stopped')
+    return
+  }
+
+  // 接管显示的项目（不是 Reopen 启动的）：杀掉监听端口的进程
+  if (!rt.child && rt.port) {
+    try {
+      const out = execSync(`lsof -ti tcp:${rt.port} -sTCP:LISTEN`, { encoding: 'utf-8' })
+      const pid = Number(out.trim().split('\n')[0])
+      if (pid > 0) {
+        process.kill(pid, 'SIGTERM')
+        // 等端口真正释放（最多 6 秒）
+        const start = Date.now()
+        while (Date.now() - start < 6_000) {
+          if (!(await checkPortOpen(rt.port))) break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+      }
+    } catch {
+      // 查不到占用者就算了
+    }
     setStatus(rt, project, 'stopped')
     return
   }

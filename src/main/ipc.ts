@@ -2,15 +2,28 @@
 import { ipcMain } from 'electron'
 import type { NewProjectInput } from '../shared/types'
 import { detectPath, parseApp } from './detect'
-import { startProject, stopProject } from './projectManager'
+import {
+  adoptAllRunning,
+  adoptRunning,
+  openProjectBrowser,
+  startProject,
+  stopProject
+} from './projectManager'
 import { addProject, deleteProject, listProjects } from './store'
 
 export function registerIpc(): void {
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:detect', (_e, path: string) => detectPath(path))
   ipcMain.handle('project:parse-app', (_e, path: string) => parseApp(path))
-  ipcMain.handle('project:add', (_e, input: NewProjectInput) => addProject(input))
+  ipcMain.handle('project:add', async (_e, input: NewProjectInput) => {
+    const project = addProject(input)
+    // 登记时检测：项目其实已经在跑（端口有响应）就直接显示运行中
+    adoptRunning(project)
+    return project
+  })
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:start', (_e, id: string) => startProject(id))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
+  ipcMain.handle('project:adopt-all', () => adoptAllRunning())
+  ipcMain.handle('project:open-browser', (_e, id: string) => openProjectBrowser(id))
 }

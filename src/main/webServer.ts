@@ -29,7 +29,7 @@ export interface WebServeResult {
 }
 
 /** 起临时 http 服务：path 是文件则 serve 所在目录并默认打开该文件；是文件夹则 serve 该目录 */
-export function startWebServer(projectPath: string): Promise<WebServeResult> {
+export function startWebServer(projectPath: string, port?: number): Promise<WebServeResult> {
   const isFile = existsSync(projectPath) && statSync(projectPath).isFile()
   const rootDir = isFile ? dirname(projectPath) : projectPath
   const entryName = isFile ? basename(projectPath) : ''
@@ -58,8 +58,8 @@ export function startWebServer(projectPath: string): Promise<WebServeResult> {
 
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject)
-    // 端口 0 = 让系统分配一个空闲端口
-    server.listen(0, '127.0.0.1', () => {
+    // 端口 0 = 让系统分配一个空闲端口；指定了端口则用指定的
+    server.listen(port ?? 0, '127.0.0.1', () => {
       const addr = server.address()
       if (!addr || typeof addr === 'string') {
         reject(new Error('端口分配失败'))

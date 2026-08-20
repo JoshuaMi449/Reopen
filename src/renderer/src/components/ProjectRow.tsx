@@ -20,6 +20,8 @@ interface Props {
   onStart(): void
   onStop(): void
   onDelete(): void
+  /** 右键菜单（PRD 3.3） */
+  onContextMenu(e: React.MouseEvent): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -45,7 +47,8 @@ export function ProjectRow({
   onToggle,
   onStart,
   onStop,
-  onDelete
+  onDelete,
+  onContextMenu
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -55,7 +58,14 @@ export function ProjectRow({
 
   return (
     <div className={`project-row ${failed ? 'row-failed' : ''}`}>
-      <div className="row-main" onClick={onToggle}>
+      <div
+        className="row-main"
+        onClick={onToggle}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onContextMenu(e)
+        }}
+      >
         <span className={`status-dot dot-${st}`} title={STATUS_TEXT[st]} />
         <span className="row-icon">
           {project.type === 'service' ? <Folder size={16} /> : <FileCode2 size={16} />}

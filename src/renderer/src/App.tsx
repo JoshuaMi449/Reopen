@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ExternalLink, Play, Square, Trash2 } from 'lucide-react'
 import type {
   DetectNeedParseApp,
   DetectSuccess,
@@ -8,12 +9,19 @@ import type {
   ProjectStatusEvent
 } from '../../shared/types'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Toast, ToastData } from './components/Toast'
 
 interface FormState {
   detect: DetectSuccess
+}
+
+interface MenuState {
+  x: number
+  y: number
+  project: Project
 }
 
 export default function App(): React.JSX.Element {
@@ -26,6 +34,13 @@ export default function App(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const [toasts, setToasts] = useState<ToastData[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+
+  // 已有标签聚合（表单里可点选）
+  const existingTags = useMemo(
+    () => [...new Set(projects.flatMap((p) => p.tags))].sort(),
+    [projects]
+  )
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])
@@ -39,9 +54,12 @@ export default function App(): React.JSX.Element {
     setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 4000)
   }, [])
 
-  // 初始加载项目清单
+  // 初始加载项目清单 + 检测已在运行的项目直接显示运行中
   useEffect(() => {
-    window.api.listProjects().then(setProjects)
+    window.api.listProjects().then((ps) => {
+      setProjects(ps)
+      window.api.adoptAllRunning()
+    })
   }, [])
 
   // 订阅主进程推送：状态变化 + 日志（PRD 3.4）
@@ -78,12 +96,51 @@ export default function App(): React.JSX.Element {
       setAppPrompt(outcome)
     } else if (outcome.kind === 'no-match') {
       toast(outcome.reason, 'error')
+    } else if (outcome.kind === 'duplicate') {
+      toast(`「${outcome.name}」已经登记过了，不用重复添加`)
     }
   }
 
   const handleStart = async (p: Project): Promise<void> => {
     const res = await window.api.startProject(p.id)
     if (!res.ok) toast(res.reason ?? '启动失败', 'error')
+    else if (res.reason) toast(res.reason, 'success')
+  }
+
+  const handleOpenBrowser = async (p: Project): Promise<void> => {
+    const res = await window.api.openProjectBrowser(p.id)
+    if (!res.ok) toast(res.reason ?? '打开失败', 'error')
+  }
+
+  // 右键菜单项（随运行状态变化）
+  const menuItems = (p: Project): MenuItem[] => {
+    const st = statuses[p.id]?.status ?? 'stopped'
+    const items: MenuItem[] = []
+    if (st === 'running' || st === 'starting') {
+      items.push({
+        label: '停止',
+        icon: <Square size={14} />,
+        onClick: () => window.api.stopProject(p.id)
+      })
+    } else {
+      items.push({
+        label: '启动',
+        icon: <Play size={14} />,
+        onClick: () => handleStart(p)
+      })
+    }
+    items.push({
+      label: '在浏览器打开',
+      icon: <ExternalLink size={14} />,
+      onClick: () => handleOpenBrowser(p)
+    })
+    items.push({
+      label: '删除',
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: () => setDeleteTarget(p)
+    })
+    return items
   }
 
   const handleFormSubmit = async (input: NewProjectInput): Promise<void> => {
@@ -101,6 +158,8 @@ export default function App(): React.JSX.Element {
       setForm({ detect: outcome })
     } else if (outcome.kind === 'no-match') {
       toast(outcome.reason, 'error')
+    } else if (outcome.kind === 'duplicate') {
+      toast(`「${outcome.name}」已经登记过了，不用重复添加`)
     }
   }
 
@@ -153,6 +212,7 @@ export default function App(): React.JSX.Element {
               onStart={() => handleStart(p)}
               onStop={() => window.api.stopProject(p.id)}
               onDelete={() => setDeleteTarget(p)}
+              onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
             />
           ))
         )}
@@ -161,8 +221,18 @@ export default function App(): React.JSX.Element {
       {form && (
         <ProjectFormModal
           detect={form.detect}
+          existingTags={existingTags}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
+        />
+      )}
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.project)}
+          onClose={() => setMenu(null)}
         />
       )}
 

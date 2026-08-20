@@ -4,25 +4,36 @@ import type { DetectSuccess, NewProjectInput, ProjectType } from '../../../share
 
 interface Props {
   detect: DetectSuccess
+  /** 已有标签：可直接点选（用户要求：选之前已有的标签） */
+  existingTags: string[]
   onSubmit(input: NewProjectInput): void
   onCancel(): void
 }
 
 /** 确认表单：全自动猜预填，只需确认或修改（PRD 3.2） */
-export function ProjectFormModal({ detect, onSubmit, onCancel }: Props): React.JSX.Element {
+export function ProjectFormModal({
+  detect,
+  existingTags,
+  onSubmit,
+  onCancel
+}: Props): React.JSX.Element {
   const [name, setName] = useState(detect.suggested.name)
   const [type, setType] = useState<ProjectType>(detect.type)
   const [path, setPath] = useState(detect.path)
   const [command, setCommand] = useState(detect.suggested.command ?? '')
   const [port, setPort] = useState(detect.suggested.port?.toString() ?? '')
-  // web 类型本身就是"起临时服务+浏览器打开"（PRD 3.1），预填开；service 默认关（PRD 3.2）
-  const [openBrowser, setOpenBrowser] = useState(detect.type === 'web')
+  // PRD 3.2：启动后开浏览器默认关（两种类型都是）
+  const [openBrowser, setOpenBrowser] = useState(false)
   const [note, setNote] = useState('')
-  const [tags, setTags] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
 
   const switchType = (t: ProjectType): void => {
     setType(t)
-    setOpenBrowser(t === 'web')
+  }
+
+  const toggleTag = (tag: string): void => {
+    setSelectedTags((ts) => (ts.includes(tag) ? ts.filter((t) => t !== tag) : [...ts, tag]))
   }
 
   const commandMissing = type === 'service' && !command.trim()
@@ -37,10 +48,13 @@ export function ProjectFormModal({ detect, onSubmit, onCancel }: Props): React.J
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       openBrowser,
       note: note.trim(),
-      tags: tags
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter(Boolean)
+      tags: [
+        ...selectedTags,
+        ...tagInput
+          .split(/[,，]/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+      ]
     })
   }
 
@@ -59,7 +73,7 @@ export function ProjectFormModal({ detect, onSubmit, onCancel }: Props): React.J
             <span>类型</span>
             <select value={type} onChange={(e) => switchType(e.target.value as ProjectType)}>
               <option value="service">本地服务（起命令）</option>
-              <option value="web">网页文件（起临时服务+浏览器打开）</option>
+              <option value="web">网页文件（起临时服务）</option>
             </select>
           </label>
 
@@ -74,27 +88,24 @@ export function ProjectFormModal({ detect, onSubmit, onCancel }: Props): React.J
           </label>
 
           {type === 'service' && (
-            <>
-              <label>
-                <span>启动命令</span>
-                <input
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder="如 npm run dev"
-                />
-              </label>
-              <label>
-                <span>端口</span>
-                <input
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  placeholder="如 5173"
-                />
-              </label>
-            </>
+            <label>
+              <span>启动命令</span>
+              <input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="如 npm run dev"
+              />
+            </label>
           )}
 
-          {type === 'web' && <div className="form-note">端口：自动分配一个空闲端口</div>}
+          <label>
+            <span>端口</span>
+            <input
+              value={port}
+              onChange={(e) => setPort(e.target.value)}
+              placeholder={type === 'service' ? '如 5173（读不到就填项目的端口）' : '留空自动分配'}
+            />
+          </label>
 
           <label className="form-switch">
             <span>启动后打开浏览器</span>
@@ -110,14 +121,26 @@ export function ProjectFormModal({ detect, onSubmit, onCancel }: Props): React.J
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="选填" />
           </label>
 
-          <label>
-            <span>标签</span>
-            <input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="用逗号分隔，如：演示,临时"
-            />
-          </label>
+          <div className="form-tags">
+            <span className="form-tags-label">标签</span>
+            <div className="tag-picker">
+              {existingTags.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`tag-chip ${selectedTags.includes(t) ? 'tag-chip-on' : ''}`}
+                  onClick={() => toggleTag(t)}
+                >
+                  {t}
+                </button>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                placeholder={existingTags.length ? '或输入新标签，逗号分隔' : '输入标签，逗号分隔'}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="modal-actions">

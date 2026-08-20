@@ -1,7 +1,8 @@
 // 拖拽识别模块：判断拖进来的是什么、猜表单预填（PRD 3.2 全自动猜）
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
-import { basename, extname, join } from 'path'
-import type { DetectOutcome } from '../shared/types'
+import { basename, extname, join, resolve } from 'path'
+import type { DetectOutcome, DetectSuccess } from '../shared/types'
+import { listProjects } from './store'
 
 // 服务启动命令猜的优先级：常见开发脚本名
 const SCRIPT_CANDIDATES = ['dev', 'start', 'serve', 'dev:app', 'dev:server', 'web']
@@ -12,6 +13,13 @@ function isDir(p: string): boolean {
   } catch {
     return false
   }
+}
+
+/** 查重：该路径已经登记过？是则返回 duplicate 结果，否则原样返回成功结果 */
+function successOrDuplicate(p: string, result: DetectSuccess): DetectOutcome {
+  const normalized = resolve(p)
+  const dup = listProjects().find((proj) => resolve(proj.path) === normalized)
+  return dup ? { ok: false, kind: 'duplicate', name: dup.name } : result
 }
 
 /** 浅层找 html 文件（最多下钻 2 层，跳过 node_modules 和隐藏目录） */
@@ -49,15 +57,81 @@ function guessCommand(dir: string): string | undefined {
   return undefined
 }
 
-/** 根据启动命令猜端口（猜错用户可在表单改，健康检查基于此端口） */
-function guessPort(command: string | undefined): number | undefined {
+/** 第 1 层：入口源码写死的端口（listen(3459) / PORT || 3459），最确定 */
+function readSourcePort(dir: string): number | undefined {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+    const scripts: Record<string, string> = pkg.scripts ?? {}
+    for (const name of SCRIPT_CANDIDATES) {
+      const script = scripts[name]
+      if (!script) continue
+      const m = script.match(
+        /(?:node|tsx|ts-node|bun)\s+(?:--[A-Za-z0-9-]+\s+)*([\w./-]+\.(?:js|ts|mjs|cjs))/
+      )
+      const entry = m?.[1]
+      if (!entry) continue
+      const src = readFileSync(join(dir, entry), 'utf-8')
+      const lm = src.match(/listen\(\s*(\d{2,5})/) ?? src.match(/listen\(\s*\n\s*(\d{2,5})/)
+      if (lm) return Number(lm[1])
+      const em = src.match(/process\.env\.PORT\s*\|\|\s*(\d{2,5})/)
+      if (em) return Number(em[1])
+    }
+  } catch {
+    // 读不到就算了
+  }
+  return undefined
+}
+
+/** 第 2 层：环境变量文件里的 PORT=3459 */
+function readEnvPort(dir: string): number | undefined {
+  for (const f of ['.env', '.env.local', '.env.development', '.env.dev', '.env.production']) {
+    try {
+      const content = readFileSync(join(dir, f), 'utf-8')
+      const m = content.match(/^PORT\s*=\s*(\d{2,5})/m)
+      if (m) return Number(m[1])
+    } catch {
+      // 没有这个文件就算了
+    }
+  }
+  return undefined
+}
+
+/** 第 3 层：框架配置文件（vite.config / webpack.config 里的 server.port、devServer.port） */
+function readConfigPort(dir: string): number | undefined {
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!/^(vite|webpack)\.config\.(js|ts|mjs|cjs)$/.test(name)) continue
+      const content = readFileSync(join(dir, name), 'utf-8')
+      const m =
+        content.match(/(?:server|devServer)\s*:\s*\{[^}]*?port\s*:\s*(\d{2,5})/) ??
+        content.match(/port\s*:\s*(\d{2,5})/)
+      if (m) return Number(m[1])
+    }
+  } catch {
+    // 读不到就算了
+  }
+  return undefined
+}
+
+/** 从项目读端口：按确定性从高到低；四层都读不到返回 undefined（表单留空请用户填，不瞎猜） */
+function readPort(dir: string, command: string | undefined): number | undefined {
   if (!command) return undefined
+  // 1. 源码写死
+  const srcPort = readSourcePort(dir)
+  if (srcPort) return srcPort
+  // 2. 环境变量文件
+  const envPort = readEnvPort(dir)
+  if (envPort) return envPort
+  // 3. 框架配置文件
+  const cfgPort = readConfigPort(dir)
+  if (cfgPort) return cfgPort
+  // 4. 框架默认端口
   const c = command.toLowerCase()
   if (c.includes('vite')) return 5173
   if (c.includes('next')) return 3000
   if (c.includes('astro')) return 4321
   if (c.includes('umi')) return 8000
-  return 3000
+  return undefined
 }
 
 /** 拖拽识别入口（PRD 3.2 的识别规则） */
@@ -74,15 +148,20 @@ export function detectPath(rawPath: string): DetectOutcome {
     // 文件夹：含 package.json → 本地服务；含 html 文件 → 网页文件
     if (existsSync(join(p, 'package.json'))) {
       const command = guessCommand(p)
-      return {
+      return successOrDuplicate(p, {
         ok: true,
         type: 'service',
         path: p,
-        suggested: { name: basename(p), command, port: guessPort(command) }
-      }
+        suggested: { name: basename(p), command, port: readPort(p, command) }
+      })
     }
     if (findHtml(p)) {
-      return { ok: true, type: 'web', path: p, suggested: { name: basename(p) } }
+      return successOrDuplicate(p, {
+        ok: true,
+        type: 'web',
+        path: p,
+        suggested: { name: basename(p) }
+      })
     }
     return {
       ok: false,
@@ -93,7 +172,12 @@ export function detectPath(rawPath: string): DetectOutcome {
   // 单个文件：html → 网页文件
   const ext = extname(p).toLowerCase()
   if (ext === '.html' || ext === '.htm') {
-    return { ok: true, type: 'web', path: p, suggested: { name: basename(p, ext) } }
+    return successOrDuplicate(p, {
+      ok: true,
+      type: 'web',
+      path: p,
+      suggested: { name: basename(p, ext) }
+    })
   }
   return { ok: false, kind: 'no-match', reason: '不认识的文件类型（只支持文件夹和 html 文件）' }
 }
@@ -106,15 +190,15 @@ export function parseApp(appPath: string): DetectOutcome {
     if (!existsSync(root)) continue
     if (existsSync(join(root, 'package.json'))) {
       const command = guessCommand(root)
-      return {
+      return successOrDuplicate(root, {
         ok: true,
         type: 'service',
         path: root,
-        suggested: { name, command, port: guessPort(command) }
-      }
+        suggested: { name, command, port: readPort(root, command) }
+      })
     }
     if (findHtml(root)) {
-      return { ok: true, type: 'web', path: root, suggested: { name } }
+      return successOrDuplicate(root, { ok: true, type: 'web', path: root, suggested: { name } })
     }
   }
   return {
