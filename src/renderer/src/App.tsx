@@ -384,72 +384,88 @@ export default function App(): React.JSX.Element {
         </div>
       )}
 
-      <Sidebar
-        category={category}
-        tags={allTags.map((t, i) => ({
-          name: t,
-          color: settings.tagColors[t] ?? TAG_COLORS[i % TAG_COLORS.length]
-        }))}
-        counts={counts}
-        onSelect={setCategory}
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        view={settings.view}
+        onView={(v) => updateSettings({ view: v })}
+        sortMode={settings.sortMode}
+        onSort={(m) => updateSettings({ sortMode: m })}
+        onAdd={() => setForm({ mode: 'manual' })}
+        onOpenSettings={() => window.api.openSettingsWindow()}
+        onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
+        autoStartCount={settings.autoStartIds.length}
+        autoStartEnabled={settings.autoStartEnabled}
+        searchInputRef={searchRef}
       />
 
-      <div className="app-main">
-        <Toolbar
-          search={search}
-          onSearch={setSearch}
-          view={settings.view}
-          onView={(v) => updateSettings({ view: v })}
-          sortMode={settings.sortMode}
-          onSort={(m) => updateSettings({ sortMode: m })}
-          onAdd={() => setForm({ mode: 'manual' })}
-          onOpenSettings={() => window.api.openSettingsWindow()}
-          onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
-          autoStartCount={settings.autoStartIds.length}
-          autoStartEnabled={settings.autoStartEnabled}
-          searchInputRef={searchRef}
+      <div className="app-body">
+        <Sidebar
+          category={category}
+          tags={allTags.map((t, i) => ({
+            name: t,
+            color: settings.tagColors[t] ?? TAG_COLORS[i % TAG_COLORS.length]
+          }))}
+          counts={counts}
+          onSelect={setCategory}
         />
 
-        <main className="project-list" data-tour="list">
-          {projects.length === 0 ? (
-            <div className="empty">
-              还没有项目。
-              <br />
-              把一个项目文件夹或 html 文件拖进这个窗口试试。
-            </div>
-          ) : visibleProjects.length === 0 ? (
-            <div className="empty">没有符合条件的项目。</div>
-          ) : settings.view === 'list' ? (
-            visibleProjects.map((p) => (
-              <ProjectRow
-                key={p.id}
-                project={p}
-                status={statuses[p.id]}
-                onOpen={() => setSelectedId(p.id)}
-                onStart={() => handleStart(p)}
-                onStop={() => window.api.stopProject(p.id)}
-                onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-                sortDraggable={settings.sortMode === 'manual' || settings.autoStartEnabled}
-                onDragStart={(e) => handleRowDragStart(e, p)}
-                onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
-                }}
-                onDrop={(e) => handleRowDrop(e, p)}
-                autoStartChecked={settings.autoStartIds.includes(p.id)}
+        <div className="app-main">
+          <main className="project-list" data-tour="list">
+            {projects.length === 0 ? (
+              <div className="empty">
+                还没有项目。
+                <br />
+                把一个项目文件夹或 html 文件拖进这个窗口试试。
+              </div>
+            ) : visibleProjects.length === 0 ? (
+              <div className="empty">没有符合条件的项目。</div>
+            ) : settings.view === 'list' ? (
+              visibleProjects.map((p) => (
+                <ProjectRow
+                  key={p.id}
+                  project={p}
+                  status={statuses[p.id]}
+                  onOpen={() => setSelectedId(p.id)}
+                  onStart={() => handleStart(p)}
+                  onStop={() => window.api.stopProject(p.id)}
+                  onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                  sortDraggable={settings.sortMode === 'manual' || settings.autoStartEnabled}
+                  onDragStart={(e) => handleRowDragStart(e, p)}
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
+                  }}
+                  onDrop={(e) => handleRowDrop(e, p)}
+                  autoStartChecked={settings.autoStartIds.includes(p.id)}
+                />
+              ))
+            ) : (
+              <CardView
+                projects={visibleProjects}
+                statuses={statuses}
+                autoStartIds={settings.autoStartIds}
+                onOpen={(p) => setSelectedId(p.id)}
+                onStart={handleStart}
+                onStop={(p) => window.api.stopProject(p.id)}
+                onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
               />
-            ))
-          ) : (
-            <CardView
-              projects={visibleProjects}
-              statuses={statuses}
-              autoStartIds={settings.autoStartIds}
-              onOpen={(p) => setSelectedId(p.id)}
-              onStart={handleStart}
-              onStop={(p) => window.api.stopProject(p.id)}
-              onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-            />
-          )}
-        </main>
+            )}
+          </main>
+        </div>
+
+        {selectedProject && (
+          <DetailDrawer
+            project={selectedProject}
+            status={statuses[selectedProject.id]}
+            logs={logs[selectedProject.id] ?? []}
+            onStart={() => handleStart(selectedProject)}
+            onStop={() => window.api.stopProject(selectedProject.id)}
+            onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
+            onDelete={() => setDeleteTarget(selectedProject)}
+            onOpenBrowser={() => handleOpenBrowser(selectedProject)}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
       </div>
 
       {form && (
@@ -480,20 +496,6 @@ export default function App(): React.JSX.Element {
           y={menu.y}
           items={menuItems(menu.project)}
           onClose={() => setMenu(null)}
-        />
-      )}
-
-      {selectedProject && (
-        <DetailDrawer
-          project={selectedProject}
-          status={statuses[selectedProject.id]}
-          logs={logs[selectedProject.id] ?? []}
-          onStart={() => handleStart(selectedProject)}
-          onStop={() => window.api.stopProject(selectedProject.id)}
-          onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
-          onDelete={() => setDeleteTarget(selectedProject)}
-          onOpenBrowser={() => handleOpenBrowser(selectedProject)}
-          onClose={() => setSelectedId(null)}
         />
       )}
 
