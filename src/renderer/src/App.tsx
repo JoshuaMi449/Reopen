@@ -117,6 +117,7 @@ export default function App(): React.JSX.Element {
       window.api.adoptAllRunning()
     })
     window.api.getSettings().then((s) => {
+      console.log('[debug] getSettings returned onboarded=', s.onboarded)
       setSettings(s)
       if (!s.onboarded) setShowOnboarding(true)
     })

@@ -61,7 +61,8 @@ export function Onboarding({ onDone }: Props): React.JSX.Element {
     const el = document.querySelector(`[data-tour="${STEPS[step].target}"]`)
     const id = requestAnimationFrame(() => {
       if (!el) {
-        setPos(null)
+        // 兜底：目标找不到时卡片放窗口中央，保证引导永不卡死
+        setPos({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 60, below: true })
         return
       }
       const r = el.getBoundingClientRect()

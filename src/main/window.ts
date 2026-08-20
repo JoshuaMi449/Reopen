@@ -44,6 +44,11 @@ export function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // TEMP 调试：渲染层 console 转发到主进程终端（定位 Onboarding 问题后删除）
+  mainWindow.webContents.on('console-message', (_e, _level, message) => {
+    console.log('[renderer]', message)
+  })
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
