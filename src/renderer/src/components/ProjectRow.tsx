@@ -17,6 +17,8 @@ interface Props {
   onDrop?(e: React.DragEvent): void
   /** 在自启项里（PRD 3.5：打勾同步显示） */
   autoStartChecked?: boolean
+  /** 标签 → 颜色（行内标签色点用） */
+  tagColor?(tag: string): string
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -45,7 +47,8 @@ export function ProjectRow({
   onDragStart,
   onDragOver,
   onDrop,
-  autoStartChecked
+  autoStartChecked,
+  tagColor
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -80,6 +83,13 @@ export function ProjectRow({
         <span className="row-port">{port ? `:${port}` : ''}</span>
         <span className="row-last">{formatTime(project.lastStartedAt)}</span>
         {project.note && <span className="row-note">{project.note}</span>}
+        {tagColor &&
+          project.tags.map((t) => (
+            <span key={t} className="row-tag">
+              <span className="tag-dot" style={{ background: tagColor(t) }} />
+              {t}
+            </span>
+          ))}
         {failed && status?.reason && (
           <span className="row-fail-reason" title={status.reason}>
             {status.reason}

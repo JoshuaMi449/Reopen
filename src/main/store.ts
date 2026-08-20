@@ -65,6 +65,15 @@ export function touchStartedAt(id: string): void {
   }
 }
 
+/** 回写实际运行端口（重启 Reopen 后用它做接管检测，2026-08-20 修复"运行中显示已停止"） */
+export function touchLastPort(id: string, port: number): void {
+  const p = projects.find((p) => p.id === id)
+  if (p && p.lastPort !== port) {
+    p.lastPort = port
+    persist()
+  }
+}
+
 // ---------- 设置（settings.json） ----------
 
 let settings: Settings | null = null

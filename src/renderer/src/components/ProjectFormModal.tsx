@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { Check, ChevronDown, Plus, X } from 'lucide-react'
 import type { DetectSuccess, NewProjectInput, Project, ProjectType } from '../../../shared/types'
 
 interface Props {
@@ -7,8 +7,14 @@ interface Props {
   mode: 'create' | 'edit' | 'manual'
   detect?: DetectSuccess
   project?: Project
-  /** 已有标签：可直接点选 */
+  /** 已有标签：下拉里点选 */
   existingTags: string[]
+  /** 标签 → 颜色 */
+  tagColor(tag: string): string
+  /** 新标签颜色由用户自选（2026-08-20 拍板），选好后上报保存到 settings.tagColors */
+  onPickTagColor(tag: string, color: string): void
+  /** 可选颜色板 */
+  palette: string[]
   onSubmit(input: NewProjectInput): void
   onCancel(): void
 }
@@ -79,6 +85,9 @@ export function ProjectFormModal({
   detect,
   project,
   existingTags,
+  tagColor,
+  onPickTagColor,
+  palette,
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
@@ -93,9 +102,28 @@ export function ProjectFormModal({
   const [note, setNote] = useState(init.note)
   const [selectedTags, setSelectedTags] = useState<string[]>(init.tags)
   const [tagInput, setTagInput] = useState('')
+  /** 标签下拉是否展开（2026-08-20 拍板：标签选择改下拉，不直接平铺） */
+  const [tagPickerOpen, setTagPickerOpen] = useState(false)
+  /** 新标签的选中颜色（默认色板第一个，用户可在色板里改选） */
+  const [newTagColor, setNewTagColor] = useState(() => palette[0])
 
   const toggleTag = (tag: string): void => {
     setSelectedTags((ts) => (ts.includes(tag) ? ts.filter((t) => t !== tag) : [...ts, tag]))
+  }
+
+  /** 输入的新标签（逗号分隔）逐个加入并带上用户自选的颜色 */
+  const addNewTags = (): void => {
+    const news = tagInput
+      .split(/[,，]/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => t.slice(0, 6))
+    if (news.length === 0) return
+    news.forEach((t) => {
+      onPickTagColor(t, newTagColor)
+      setSelectedTags((ts) => (ts.includes(t) ? ts : [...ts, t]))
+    })
+    setTagInput('')
   }
 
   const commandMissing = type === 'service' && !command.trim()
@@ -103,6 +131,13 @@ export function ProjectFormModal({
 
   const submit = (): void => {
     const portNum = Number(port.trim())
+    // 输入框里还没点「添加」的标签也一并带上（颜色用当前自选的）
+    const typed = tagInput
+      .split(/[,，]/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => t.slice(0, 6)) // 标签最多 6 个字（2026-08-20 拍板：卡片折角放不下更长）
+    typed.forEach((t) => onPickTagColor(t, newTagColor))
     onSubmit({
       name: name.trim() || init.name,
       type,
@@ -111,15 +146,7 @@ export function ProjectFormModal({
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       openBrowser,
       note: note.trim(),
-      tags: [
-        ...selectedTags,
-        ...tagInput
-          .split(/[,，]/)
-          .map((t) => t.trim())
-          .filter(Boolean)
-      ]
-        .map((t) => t.slice(0, 6)) // 标签最多 6 个字（2026-08-20 拍板：卡片折角放不下更长）
-        .filter((t, i, arr) => arr.indexOf(t) === i)
+      tags: [...selectedTags, ...typed.filter((t) => !selectedTags.includes(t))]
     })
   }
 
@@ -193,25 +220,74 @@ export function ProjectFormModal({
           <div className="form-tags">
             <span className="form-tags-label">标签</span>
             <div className="tag-picker">
-              {existingTags.map((t) => (
+              {selectedTags.map((t) => (
                 <button
                   key={t}
                   type="button"
-                  className={`tag-chip ${selectedTags.includes(t) ? 'tag-chip-on' : ''}`}
+                  className="tag-chip tag-chip-on"
                   onClick={() => toggleTag(t)}
                 >
+                  <span className="tag-dot" style={{ background: tagColor(t) }} />
                   {t}
+                  <X size={11} />
                 </button>
               ))}
-              <input
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                placeholder={
-                  existingTags.length
-                    ? '或输入新标签（最多6字），逗号分隔'
-                    : '输入标签（最多6字），逗号分隔'
-                }
-              />
+              <button
+                type="button"
+                className="tag-picker-toggle"
+                onClick={() => setTagPickerOpen((v) => !v)}
+              >
+                <Plus size={12} />
+                选择标签
+                <ChevronDown size={12} />
+              </button>
+              {tagPickerOpen && (
+                <div className="tag-dropdown">
+                  {existingTags.length > 0 && (
+                    <div className="tag-dropdown-list">
+                      {existingTags.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          className="tag-dropdown-item"
+                          onClick={() => toggleTag(t)}
+                        >
+                          <span className="tag-dot" style={{ background: tagColor(t) }} />
+                          <span>{t}</span>
+                          {selectedTags.includes(t) && <Check size={12} className="tag-check" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="tag-dropdown-new">
+                    <input
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addNewTags()
+                        }
+                      }}
+                      placeholder="新标签（最多6字，逗号分隔）"
+                    />
+                    <div className="tag-color-row">
+                      {palette.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`tag-color-dot ${newTagColor === c ? 'tag-color-on' : ''}`}
+                          style={{ background: c }}
+                          onClick={() => setNewTagColor(c)}
+                        />
+                      ))}
+                    </div>
+                    <button type="button" className="btn-secondary" onClick={addNewTags}>
+                      添加
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

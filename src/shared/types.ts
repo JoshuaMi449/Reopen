@@ -23,6 +23,8 @@ export interface Project {
   createdAt: number
   /** 上次启动时间（毫秒时间戳） */
   lastStartedAt?: number
+  /** 上次实际运行端口（web 自动分配/实际端口回写；重启 Reopen 后用它接管检测，2026-08-20） */
+  lastPort?: number
 }
 
 /** 新建项目的输入（确认表单提交，id/时间戳由主进程生成） */

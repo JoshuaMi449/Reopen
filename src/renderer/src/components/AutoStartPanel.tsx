@@ -7,23 +7,20 @@ interface Props {
   items: Project[]
   onRemove(id: string): void
   onDropId(id: string): void
-  /** 面板定位（App 按闪电 icon 位置计算） */
-  style?: React.CSSProperties
 }
 
 /**
- * 自启项气泡面板（2026-08-20 拍板简化版）：
- * - 闪电 icon 下方弹出（定位由 App 传入 style）
- * - 面板内只有项目列表+移出（总开关只在设置里，无 ✕）
+ * 自启项面板（2026-08-20 拍板：中间栏内嵌展开条）：
+ * - toolbar 下方展开、列表被下推（不再浮层遮挡卡片）
+ * - 面板内只有项目 chips+移出（总开关只在设置里，无 ✕）
  * - 关闭：再点 icon / Esc / 点面板外（拖拽期间天然不触发关闭）
  */
-export function AutoStartPanel({ items, onRemove, onDropId, style }: Props): React.JSX.Element {
+export function AutoStartPanel({ items, onRemove, onDropId }: Props): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
 
   return (
     <div
       className={`autostart-panel ${dragOver ? 'autostart-panel-over' : ''}`}
-      style={style}
       onDragOver={(e) => {
         // 只接收行拖拽（带 reopen-id），不接收文件
         if (!e.dataTransfer.types.includes('Files')) {

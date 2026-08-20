@@ -313,30 +313,7 @@ export default function App(): React.JSX.Element {
     updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
 
-  // 自启面板定位（2026-08-20 拍板）：闪电 icon 正下方，面板右缘固定对齐中间栏右缘——
-  // icon 到栏右缘的间距是固定的，与右栏日志开不开无关，不需要判断左右
-  const [autoStartPanelPos, setAutoStartPanelPos] = useState<{
-    top: number
-    right: number
-  } | null>(null)
-
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      if (!autoStartOpen) {
-        setAutoStartPanelPos(null)
-        return
-      }
-      const btnRect = autoStartBtnRef.current?.getBoundingClientRect()
-      const mainRect = document.querySelector('.app-main')?.getBoundingClientRect()
-      if (btnRect && mainRect) {
-        setAutoStartPanelPos({
-          top: btnRect.bottom + 8,
-          right: window.innerWidth - mainRect.right
-        })
-      }
-    })
-    return () => cancelAnimationFrame(id)
-  }, [autoStartOpen])
+  // 自启面板已改为中间栏内嵌展开条（2026-08-20 拍板）：不再浮层定位，列表被下推、不遮挡卡片
 
   // 自启面板关闭：Esc / 点面板外（点 icon 由 toggle 处理；拖拽期间 mousedown 不触发，天然不关）
   useEffect(() => {
@@ -348,6 +325,8 @@ export default function App(): React.JSX.Element {
       const panel = document.querySelector('.autostart-panel')
       if (!panel || panel.contains(e.target as Node)) return
       if (autoStartBtnRef.current?.contains(e.target as Node)) return
+      // 按在项目行上=准备拖拽进面板，不能关（2026-08-20 实测反馈：一按下面板就关了，拖不进去）
+      if ((e.target as Element).closest('.project-row')) return
       setAutoStartOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -363,7 +342,7 @@ export default function App(): React.JSX.Element {
     if (e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
     e.stopPropagation()
-    const id = dragId ?? e.dataTransfer.getData('application/x-reopen-id')
+    const id = e.dataTransfer.getData('application/x-reopen-id') || dragId
     setDragId(null)
     if (!id || id === target.id) return
     const order =
@@ -371,7 +350,9 @@ export default function App(): React.JSX.Element {
     const from = order.indexOf(id)
     if (from !== -1) order.splice(from, 1)
     const to = order.indexOf(target.id)
-    order.splice(to === -1 ? order.length : to, 0, id)
+    // 插到目标行后面（to+1）：拖 A 到 B 上 = A 移到 B 后面。
+    // 之前插目标前面，拖到相邻行等于原位，看起来"拖了根本不会排序"（2026-08-20 实测反馈）
+    order.splice(to === -1 ? order.length : to + 1, 0, id)
     updateSettings({ manualOrder: order })
   }
 
@@ -533,6 +514,14 @@ export default function App(): React.JSX.Element {
               autoStartBtnRef={autoStartBtnRef}
             />
 
+            {autoStartOpen && settings.autoStartEnabled && (
+              <AutoStartPanel
+                items={autoStartItems}
+                onRemove={removeFromAutoStart}
+                onDropId={addToAutoStart}
+              />
+            )}
+
             <main className="project-list" data-tour="list">
               {projects.length === 0 ? (
                 <div className="empty">
@@ -568,6 +557,10 @@ export default function App(): React.JSX.Element {
                       }}
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
+                      tagColor={(t) =>
+                        settings.tagColors[t] ??
+                        TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
+                      }
                     />
                   </Fragment>
                 ))
@@ -611,17 +604,15 @@ export default function App(): React.JSX.Element {
           detect={form.detect}
           project={form.project}
           existingTags={allTags}
+          tagColor={(t) =>
+            settings.tagColors[t] ?? TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
+          }
+          onPickTagColor={(t, c) =>
+            updateSettings({ tagColors: { ...settings.tagColors, [t]: c } })
+          }
+          palette={TAG_COLORS}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
-        />
-      )}
-
-      {autoStartOpen && settings.autoStartEnabled && (
-        <AutoStartPanel
-          items={autoStartItems}
-          onRemove={removeFromAutoStart}
-          onDropId={addToAutoStart}
-          style={autoStartPanelPos ?? undefined}
         />
       )}
 

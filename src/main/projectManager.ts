@@ -6,7 +6,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { connect } from 'net'
 import type { Project, ProjectStatus, ProjectStatusEvent, StartResult } from '../shared/types'
-import { getSettings, listProjects, touchStartedAt } from './store'
+import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
 import { startWebServer } from './webServer'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
@@ -152,6 +152,7 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
     rt.port = project.port
     setStatus(rt, project, 'running', project.port)
     touchStartedAt(project.id)
+    touchLastPort(project.id, project.port)
     return { ok: true, reason: `检测到端口 ${project.port} 已有服务在响应，已直接显示为运行中` }
   }
 
@@ -192,6 +193,7 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
           clearInterval(rt.healthTimer)
           setStatus(rt, project, 'running', project.port)
           touchStartedAt(project.id)
+          if (project.port) touchLastPort(project.id, project.port)
           if (project.openBrowser) {
             shell.openExternal(`http://localhost:${project.port}`)
           }
@@ -222,6 +224,7 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
     rt.entryPath = entryPath
     setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
+    touchLastPort(project.id, port)
     emitLog(project.id, `临时服务已就绪：http://localhost:${port}${entryPath}`)
     if (project.openBrowser) {
       shell.openExternal(`http://localhost:${port}${entryPath}`)
@@ -237,10 +240,12 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
 export async function adoptRunning(project: Project): Promise<void> {
   const rt = getRuntime(project.id)
   if (rt.status !== 'stopped') return
-  if (project.type !== 'service' || !project.port) return
-  if (await checkPortOpen(project.port)) {
-    rt.port = project.port
-    setStatus(rt, project, 'running', project.port)
+  // 端口优先用登记值，其次上次实际运行端口（web 自动分配/端口写错时也能找回，2026-08-20）
+  const port = project.port ?? project.lastPort
+  if (!port) return
+  if (await checkPortOpen(port)) {
+    rt.port = port
+    setStatus(rt, project, 'running', port)
   }
 }
 
