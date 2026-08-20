@@ -65,8 +65,18 @@ export function Onboarding({ onDone }: Props): React.JSX.Element {
         return
       }
       const r = el.getBoundingClientRect()
-      const below = r.top < 280
-      setPos({ x: r.left + r.width / 2, y: below ? r.bottom + 14 : r.top - 14, below })
+      // 大区域目标（侧边栏/列表）：卡片放在区域上部；小元素：放下方或上方
+      let y: number
+      let below: boolean
+      if (r.height > 200) {
+        below = true
+        y = Math.min(r.top + 48, window.innerHeight - 220)
+      } else {
+        below = r.top < 280
+        y = below ? r.bottom + 14 : r.top - 14
+      }
+      const x = Math.min(Math.max(r.left + r.width / 2, 180), window.innerWidth - 180)
+      setPos({ x, y, below })
     })
     return () => cancelAnimationFrame(id)
   }, [step, welcomeDone])

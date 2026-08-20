@@ -84,8 +84,14 @@ export default function App(): React.JSX.Element {
 
   // 应用主题（PRD 3.8：风格+亮暗即时生效）
   useEffect(() => {
-    applyTheme(settings.theme, settings.darkMode, systemDark, settings.rowDensity)
-  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity])
+    applyTheme(
+      settings.theme,
+      settings.darkMode,
+      systemDark,
+      settings.rowDensity,
+      settings.specialStyle
+    )
+  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity, settings.specialStyle])
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])

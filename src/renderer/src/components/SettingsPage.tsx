@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Database, Info, Keyboard, Monitor, Moon, Palette, Sun, Zap } from 'lucide-react'
+import { Check, Database, Info, Keyboard, Monitor, Palette, Zap } from 'lucide-react'
 import type { Project, Settings } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
+
+// 特殊风格七套（Proma 式，名字与配色参考 Proma；预览卡用色块拼贴）
+const SPECIAL_STYLES = [
+  { id: 'special-sl', name: '云朵舞者', sp1: '#8b93c9', sp2: '#aab0d8', sp3: '#ffffff' },
+  { id: 'special-ol', name: '晴空碧海', sp1: '#3fa0d8', sp2: '#7cc4ea', sp3: '#ffffff' },
+  { id: 'special-fl', name: '森息晨光', sp1: '#6f9d7b', sp2: '#9dbfa4', sp3: '#ffffff' },
+  { id: 'special-od', name: '远山暮霭', sp1: '#7f95b3', sp2: '#3a4658', sp3: '#212835' },
+  { id: 'special-fd', name: '森息夜语', sp1: '#7ba382', sp2: '#24302a', sp3: '#1e2620' },
+  { id: 'special-md', name: '莫兰迪夜', sp1: '#c9a89e', sp2: '#29242b', sp3: '#29242b' },
+  {
+    id: 'special-td',
+    name: '旧屏微光',
+    sp1: '#7da560',
+    sp2: '#161b14',
+    sp3: '#161b14',
+    tooltip: '该主题包含轻微闪烁动画'
+  }
+]
 
 const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
   { key: 'general', label: '通用', icon: <Zap size={15} /> },
@@ -32,8 +50,14 @@ export function SettingsPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    applyTheme(settings.theme, settings.darkMode, systemDark, settings.rowDensity)
-  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity])
+    applyTheme(
+      settings.theme,
+      settings.darkMode,
+      systemDark,
+      settings.rowDensity,
+      settings.specialStyle
+    )
+  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity, settings.specialStyle])
 
   useEffect(() => {
     window.api.getSettings().then(setSettings)
@@ -83,7 +107,7 @@ export function SettingsPage(): React.JSX.Element {
     </div>
   )
 
-  // 外观组
+  // 外观组（Proma 式排版：主题风格 + 主题模式四段 + 特殊风格卡片，2026-08-20 用户拍板）
   const appearance = (
     <div className="settings-group">
       <div className="settings-subtitle">主题风格</div>
@@ -94,36 +118,67 @@ export function SettingsPage(): React.JSX.Element {
             { key: 'ocean', name: '海洋', swatch: '#408abf' },
             { key: 'slate', name: '石墨', swatch: '#4a4a45' }
           ] as const
-        ).map((s) => (
+        ).map((t) => (
           <button
-            key={s.key}
-            className={`settings-theme-card ${settings.theme === s.key ? 'settings-theme-on' : ''}`}
-            onClick={() => update({ theme: s.key })}
+            key={t.key}
+            className={`settings-theme-card ${settings.theme === t.key ? 'settings-theme-on' : ''}`}
+            onClick={() => update({ theme: t.key })}
           >
-            <span className="settings-swatch" style={{ background: s.swatch }} />
-            {s.name}
+            <span className="settings-swatch" style={{ background: t.swatch }} />
+            {t.name}
           </button>
         ))}
       </div>
 
-      <div className="settings-subtitle">亮暗</div>
-      <div className="settings-darkmodes">
+      <div className="settings-subtitle">主题模式</div>
+      <div className="segmented">
         {(
           [
-            { key: 'system', label: '跟随系统', icon: <Monitor size={14} /> },
-            { key: 'light', label: '浅色', icon: <Sun size={14} /> },
-            { key: 'dark', label: '深色', icon: <Moon size={14} /> }
+            { key: 'light', label: '浅色' },
+            { key: 'dark', label: '深色' },
+            { key: 'system', label: '跟随系统' },
+            { key: 'special', label: '特殊风格' }
           ] as const
         ).map((m) => (
           <button
             key={m.key}
-            className={`settings-dark-card ${settings.darkMode === m.key ? 'settings-dark-on' : ''}`}
-            onClick={() => update({ darkMode: m.key })}
+            className={settings.darkMode === m.key ? 'seg-on' : ''}
+            onClick={() =>
+              update({
+                darkMode: m.key,
+                specialStyle: m.key === 'special' ? settings.specialStyle : ''
+              })
+            }
           >
-            {m.icon}
             {m.label}
           </button>
         ))}
+      </div>
+
+      <div className="settings-subtitle">特殊风格</div>
+      <div className="special-grid">
+        {SPECIAL_STYLES.map((st) => {
+          const isSelected = settings.darkMode === 'special' && settings.specialStyle === st.id
+          return (
+            <button
+              key={st.id}
+              className={`special-card ${isSelected ? 'special-on' : ''}`}
+              title={st.tooltip}
+              onClick={() => update({ darkMode: 'special', specialStyle: st.id })}
+            >
+              <div
+                className="special-preview"
+                style={{ '--sp1': st.sp1, '--sp2': st.sp2, '--sp3': st.sp3 } as React.CSSProperties}
+              />
+              {isSelected && (
+                <span className="special-check">
+                  <Check size={10} />
+                </span>
+              )}
+              <span>{st.name}</span>
+            </button>
+          )
+        })}
       </div>
 
       <div className="settings-subtitle">列表密度</div>

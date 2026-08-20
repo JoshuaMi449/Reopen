@@ -104,8 +104,10 @@ export interface Settings {
   autoStartIds: string[]
   /** 主题风格（PRD 3.8） */
   theme: 'morandi' | 'ocean' | 'slate'
-  /** 亮暗：跟随系统 / 浅 / 深 */
-  darkMode: 'system' | 'light' | 'dark'
+  /** 亮暗：跟随系统 / 浅 / 深 / 特殊风格（Proma 式，2026-08-20 用户拍板） */
+  darkMode: 'system' | 'light' | 'dark' | 'special'
+  /** 特殊风格 id（darkMode=special 时生效；切回其他模式自动清空） */
+  specialStyle: string
   /** 关闭窗口 = 最小化到托盘（默认开，2026-08-20 拍板） */
   closeToTray: boolean
   /** 托盘图标：黑白模板 / 彩色 */
@@ -135,6 +137,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoStartIds: [],
   theme: 'morandi',
   darkMode: 'system',
+  specialStyle: '',
   closeToTray: true,
   trayIcon: 'mono',
   trayEnabled: true,

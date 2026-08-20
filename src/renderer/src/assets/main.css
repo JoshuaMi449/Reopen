@@ -1764,3 +1764,266 @@ body.tray-window #root {
   gap: 8px;
   margin-top: 14px;
 }
+
+/* ---- 特殊风格七套（Proma 式，2026-08-20 用户拍板；自带完整配色） ---- */
+
+:root[data-theme='special-sl'] {
+  /* 云朵舞者 */
+  --bg: #f0f1f5;
+  --card: #ffffff;
+  --primary: #8b93c9;
+  --primary-strong: #737cc0;
+  --text: #34374a;
+  --text-dim: #8b8ea5;
+  --border: #dddfe8;
+  --hover: #f6f7fb;
+  --input-bg: #fcfcfe;
+  --danger-bg: #fdf3f2;
+  --ok: #7ca982;
+  --warn: #d9b45b;
+  --danger: #c65f5f;
+}
+
+:root[data-theme='special-ol'] {
+  /* 晴空碧海 */
+  --bg: #e9f4fb;
+  --card: #ffffff;
+  --primary: #3fa0d8;
+  --primary-strong: #2e8bc2;
+  --text: #243a49;
+  --text-dim: #7b93a3;
+  --border: #d3e6f2;
+  --hover: #f4fafd;
+  --input-bg: #fcfefe;
+  --danger-bg: #fdf4f3;
+  --ok: #5f9d7c;
+  --warn: #d9a24b;
+  --danger: #c65f5f;
+}
+
+:root[data-theme='special-fl'] {
+  /* 森息晨光 */
+  --bg: #eef3ec;
+  --card: #ffffff;
+  --primary: #6f9d7b;
+  --primary-strong: #5b8a68;
+  --text: #33403a;
+  --text-dim: #84948b;
+  --border: #dbe5da;
+  --hover: #f6f9f5;
+  --input-bg: #fcfdfb;
+  --danger-bg: #fdf3f2;
+  --ok: #6f9d7b;
+  --warn: #c9a24b;
+  --danger: #c65f5f;
+}
+
+:root[data-theme='special-od'] {
+  /* 远山暮霭 */
+  --bg: #171c24;
+  --card: #212835;
+  --primary: #7f95b3;
+  --primary-strong: #95a9c4;
+  --text: #dde4ec;
+  --text-dim: #8b97a8;
+  --border: #303a49;
+  --hover: #26303d;
+  --input-bg: #1b222c;
+  --danger-bg: #33242a;
+  --ok: #6ba181;
+  --warn: #d9a24b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='special-fd'] {
+  /* 森息夜语 */
+  --bg: #141a15;
+  --card: #1e2620;
+  --primary: #7ba382;
+  --primary-strong: #93b598;
+  --text: #dde7de;
+  --text-dim: #8fa094;
+  --border: #2c3830;
+  --hover: #24302a;
+  --input-bg: #182019;
+  --danger-bg: #2e2422;
+  --ok: #7ba382;
+  --warn: #c9a24b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='special-md'] {
+  /* 莫兰迪夜 */
+  --bg: #1e1b20;
+  --card: #29242b;
+  --primary: #c9a89e;
+  --primary-strong: #b08f85;
+  --text: #e8e2da;
+  --text-dim: #9a918a;
+  --border: #3a343c;
+  --hover: #2e2830;
+  --input-bg: #221e24;
+  --danger-bg: #33242a;
+  --ok: #7fa883;
+  --warn: #d9b45b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='special-td'] {
+  /* 旧屏微光（终端风，带轻微闪烁） */
+  --bg: #0f130f;
+  --card: #161b14;
+  --primary: #7da560;
+  --primary-strong: #96c17a;
+  --text: #d4e8c8;
+  --text-dim: #7f9a72;
+  --border: #2a3326;
+  --hover: #1c241a;
+  --input-bg: #131810;
+  --danger-bg: #2e2422;
+  --ok: #7da560;
+  --warn: #c9a24b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='special-td'] .app {
+  animation: terminal-flicker 4s infinite;
+}
+
+@keyframes terminal-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  96% {
+    opacity: 1;
+  }
+  97% {
+    opacity: 0.97;
+  }
+  98% {
+    opacity: 1;
+  }
+}
+
+/* ---- 特殊风格预览卡（色块拼贴模拟壁纸图） ---- */
+
+.special-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.special-preview::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38%;
+  background: linear-gradient(165deg, var(--sp1), var(--sp2));
+}
+
+.special-preview::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 14%;
+  width: 38%;
+  height: 10%;
+  border-radius: 5px;
+  background: var(--sp3);
+  box-shadow:
+    0 15px 0 var(--sp3),
+    0 30px 0 var(--sp3),
+    62% 0 0 var(--sp3);
+}
+
+/* ---- 主题模式分段控件（Proma 式） ---- */
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 3px;
+}
+
+.segmented button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 7px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented .seg-on {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+/* ---- 特殊风格卡片网格 ---- */
+
+.special-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+}
+
+.special-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.special-preview {
+  width: 100%;
+  aspect-ratio: 99 / 183;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.special-card:hover .special-preview {
+  border-color: var(--primary-strong);
+}
+
+.special-on .special-preview {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.special-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.special-card > span:last-child {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.special-on > span:last-child {
+  color: var(--text);
+}
