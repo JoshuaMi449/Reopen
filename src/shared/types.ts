@@ -98,7 +98,7 @@ export interface Settings {
   sortMode: 'manual' | 'recent' | 'name'
   /** 标签 → 颜色（访达式彩色标签，色板循环分配） */
   tagColors: Record<string, string>
-  /** 自启项总开关（默认关，PRD 3.5） */
+  /** 自启项总开关（默认开，PRD 3.5；关=顶部图标不显示，2026-08-20 验收整改） */
   autoStartEnabled: boolean
   /** 自启项内的项目 id */
   autoStartIds: string[]
@@ -122,8 +122,6 @@ export interface Settings {
   launchAtLogin: boolean
   /** 失败时发系统通知 */
   notifyOnFail: boolean
-  /** 列表间距（外观设置） */
-  rowDensity: 'comfortable' | 'compact'
   /** Onboarding 是否已完成（仅首次显示） */
   onboarded: boolean
 }
@@ -133,7 +131,7 @@ export const DEFAULT_SETTINGS: Settings = {
   view: 'list',
   sortMode: 'manual',
   tagColors: {},
-  autoStartEnabled: false,
+  autoStartEnabled: true,
   autoStartIds: [],
   theme: 'morandi',
   darkMode: 'system',
@@ -145,7 +143,6 @@ export const DEFAULT_SETTINGS: Settings = {
   quickLaunch: {},
   launchAtLogin: false,
   notifyOnFail: false,
-  rowDensity: 'comfortable',
   onboarded: false
 }
 

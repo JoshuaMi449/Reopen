@@ -6,20 +6,63 @@ import { applyTheme } from '../theme'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
 
-// 特殊风格七套（Proma 式，名字与配色参考 Proma；预览卡用色块拼贴）
+// 特殊风格七套（Proma 式竖卡；2026-08-20 验收整改：多色搭配——中性背景 + 主题色 + 辅助色，预览卡用聊天气泡拼贴展示）
 const SPECIAL_STYLES = [
-  { id: 'special-sl', name: '云朵舞者', sp1: '#8b93c9', sp2: '#aab0d8', sp3: '#ffffff' },
-  { id: 'special-ol', name: '晴空碧海', sp1: '#3fa0d8', sp2: '#7cc4ea', sp3: '#ffffff' },
-  { id: 'special-fl', name: '森息晨光', sp1: '#6f9d7b', sp2: '#9dbfa4', sp3: '#ffffff' },
-  { id: 'special-od', name: '远山暮霭', sp1: '#7f95b3', sp2: '#3a4658', sp3: '#212835' },
-  { id: 'special-fd', name: '森息夜语', sp1: '#7ba382', sp2: '#24302a', sp3: '#1e2620' },
-  { id: 'special-md', name: '莫兰迪夜', sp1: '#c9a89e', sp2: '#29242b', sp3: '#29242b' },
+  {
+    id: 'special-sl',
+    name: '雾白',
+    bg: '#f0f1f5',
+    accent: '#8b93c9',
+    sub: '#aab0d8',
+    bubble: '#ffffff'
+  },
+  {
+    id: 'special-ol',
+    name: '天青',
+    bg: '#e9f4fb',
+    accent: '#3fa0d8',
+    sub: '#7cc4ea',
+    bubble: '#ffffff'
+  },
+  {
+    id: 'special-fl',
+    name: '苔绿',
+    bg: '#eef3ec',
+    accent: '#6f9d7b',
+    sub: '#9dbfa4',
+    bubble: '#ffffff'
+  },
+  {
+    id: 'special-od',
+    name: '山霭',
+    bg: '#171c24',
+    accent: '#7f95b3',
+    sub: '#95a9c4',
+    bubble: '#2b3545'
+  },
+  {
+    id: 'special-fd',
+    name: '林夜',
+    bg: '#141a15',
+    accent: '#7ba382',
+    sub: '#93b598',
+    bubble: '#24302a'
+  },
+  {
+    id: 'special-md',
+    name: '赭夜',
+    bg: '#1e1b20',
+    accent: '#c9a89e',
+    sub: '#b08f85',
+    bubble: '#33303a'
+  },
   {
     id: 'special-td',
-    name: '旧屏微光',
-    sp1: '#7da560',
-    sp2: '#161b14',
-    sp3: '#161b14',
+    name: '磷光',
+    bg: '#0f130f',
+    accent: '#7da560',
+    sub: '#96c17a',
+    bubble: '#1c241a',
     tooltip: '该主题包含轻微闪烁动画'
   }
 ]
@@ -50,14 +93,8 @@ export function SettingsPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    applyTheme(
-      settings.theme,
-      settings.darkMode,
-      systemDark,
-      settings.rowDensity,
-      settings.specialStyle
-    )
-  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity, settings.specialStyle])
+    applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
+  }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
   useEffect(() => {
     window.api.getSettings().then(setSettings)
@@ -107,29 +144,9 @@ export function SettingsPage(): React.JSX.Element {
     </div>
   )
 
-  // 外观组（Proma 式排版：主题风格 + 主题模式四段 + 特殊风格卡片，2026-08-20 用户拍板）
+  // 外观组（2026-08-20 验收整改：删主题风格三卡与紧凑间距；主题模式四段 + 特殊风格多色卡片）
   const appearance = (
     <div className="settings-group">
-      <div className="settings-subtitle">主题风格</div>
-      <div className="settings-themes">
-        {(
-          [
-            { key: 'morandi', name: '莫兰迪', swatch: '#c0a29a' },
-            { key: 'ocean', name: '海洋', swatch: '#408abf' },
-            { key: 'slate', name: '石墨', swatch: '#4a4a45' }
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.key}
-            className={`settings-theme-card ${settings.theme === t.key ? 'settings-theme-on' : ''}`}
-            onClick={() => update({ theme: t.key })}
-          >
-            <span className="settings-swatch" style={{ background: t.swatch }} />
-            {t.name}
-          </button>
-        ))}
-      </div>
-
       <div className="settings-subtitle">主题模式</div>
       <div className="segmented">
         {(
@@ -168,7 +185,14 @@ export function SettingsPage(): React.JSX.Element {
             >
               <div
                 className="special-preview"
-                style={{ '--sp1': st.sp1, '--sp2': st.sp2, '--sp3': st.sp3 } as React.CSSProperties}
+                style={
+                  {
+                    '--pbg': st.bg,
+                    '--pacc': st.accent,
+                    '--psub': st.sub,
+                    '--pbub': st.bubble
+                  } as React.CSSProperties
+                }
               />
               {isSelected && (
                 <span className="special-check">
@@ -180,14 +204,6 @@ export function SettingsPage(): React.JSX.Element {
           )
         })}
       </div>
-
-      <div className="settings-subtitle">列表密度</div>
-      <SettingRow label="紧凑间距" hint="列表行和卡片更紧凑，一屏显示更多">
-        <Switch
-          checked={settings.rowDensity === 'compact'}
-          onChange={(v) => update({ rowDensity: v ? 'compact' : 'comfortable' })}
-        />
-      </SettingRow>
     </div>
   )
 

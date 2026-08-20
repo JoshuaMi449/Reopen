@@ -40,11 +40,18 @@ interface Props {
   onDone(): void
 }
 
+/** 引导卡位置：x/y 是卡片定位点（按箭头方向分别取中心/顶边/底边），arrow 是箭头指向目标的方向 */
+interface CardPos {
+  x: number
+  y: number
+  arrow?: 'left' | 'right' | 'top' | 'bottom'
+}
+
 /** 新手引导（PRD 3.9）：欢迎界面 → 主界面蒙层 → 分步引导，可跳过，仅首次显示 */
 export function Onboarding({ onDone }: Props): React.JSX.Element {
   const [welcomeDone, setWelcomeDone] = useState(false)
   const [step, setStep] = useState(0)
-  const [pos, setPos] = useState<{ x: number; y: number; below: boolean } | null>(null)
+  const [pos, setPos] = useState<CardPos | null>(null)
 
   // 高亮当前步骤指向的界面元素（蒙层变暗 + 目标元素浮起）
   useEffect(() => {
@@ -56,28 +63,40 @@ export function Onboarding({ onDone }: Props): React.JSX.Element {
   }, [step, welcomeDone])
 
   // 引导卡定位在目标元素旁（rAF 里更新，避免 effect 内同步 setState）
+  // 2026-08-20 验收整改：卡片不遮挡正在介绍的区域，放在区域外 + 箭头指向
   useEffect(() => {
     if (!welcomeDone) return
     const el = document.querySelector(`[data-tour="${STEPS[step].target}"]`)
     const id = requestAnimationFrame(() => {
       if (!el) {
-        // 兜底：目标找不到时卡片放窗口中央，保证引导永不卡死
-        setPos({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 60, below: true })
+        // 兜底：目标找不到时卡片放窗口中央（收尾步无目标也走这里），保证引导永不卡死
+        setPos({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 60 })
         return
       }
       const r = el.getBoundingClientRect()
-      // 大区域目标（侧边栏/列表）：卡片放在区域上部；小元素：放下方或上方
-      let y: number
-      let below: boolean
+      const GAP = 14
+      const CARD_W = 320
+      const CARD_H = 190
+      const clampX = (x: number): number =>
+        Math.min(Math.max(x, CARD_W / 2 + 8), window.innerWidth - CARD_W / 2 - 8)
+      const clampY = (y: number): number =>
+        Math.min(Math.max(y, CARD_H / 2 + 8), window.innerHeight - CARD_H / 2 - 8)
+
       if (r.height > 200) {
-        below = true
-        y = Math.min(r.top + 48, window.innerHeight - 220)
-      } else {
-        below = r.top < 280
-        y = below ? r.bottom + 14 : r.top - 14
+        // 大区域目标：卡片放在区域外面——左半屏目标放右侧，右半屏目标放左侧，垂直取区域上部
+        if (r.left + r.width / 2 < window.innerWidth / 2) {
+          setPos({ x: clampX(r.right + GAP + CARD_W / 2), y: clampY(r.top + 130), arrow: 'left' })
+        } else {
+          setPos({ x: clampX(r.left - GAP - CARD_W / 2), y: clampY(r.top + 130), arrow: 'right' })
+        }
+        return
       }
-      const x = Math.min(Math.max(r.left + r.width / 2, 180), window.innerWidth - 180)
-      setPos({ x, y, below })
+      // 小元素：优先放下方（箭头朝上），放不下放上方（箭头朝下）
+      if (r.bottom + GAP + CARD_H < window.innerHeight) {
+        setPos({ x: clampX(r.left + r.width / 2), y: r.bottom + GAP, arrow: 'top' })
+      } else {
+        setPos({ x: clampX(r.left + r.width / 2), y: r.top - GAP, arrow: 'bottom' })
+      }
     })
     return () => cancelAnimationFrame(id)
   }, [step, welcomeDone])
@@ -110,11 +129,8 @@ export function Onboarding({ onDone }: Props): React.JSX.Element {
       {pos && (
         <div
           className="tour-card"
-          style={{
-            left: pos.x,
-            top: pos.y,
-            transform: `translateX(-50%) translateY(${pos.below ? 0 : '-100%'})`
-          }}
+          data-arrow={pos.arrow ?? 'none'}
+          style={{ left: pos.x, top: pos.y }}
         >
           <div className="tour-step">
             第 {step + 1} / {STEPS.length} 步

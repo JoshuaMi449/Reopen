@@ -10,6 +10,7 @@
   --card: #ffffff;
   --primary: #c0a29a;
   --primary-strong: #a8877d;
+  --accent: #b58a3e; /* 辅助强调色（角标等小元素），与主题色搭配（2026-08-20 验收整改） */
   --text: #3a3433;
   --text-dim: #8a817c;
   --border: #ddd6cd;
@@ -988,7 +989,7 @@ select {
   position: absolute;
   top: -4px;
   right: -4px;
-  background: var(--primary-strong);
+  background: var(--accent);
   color: #fff;
   font-size: 9px;
   border-radius: 999px;
@@ -1321,26 +1322,27 @@ body.tray-window #root {
 }
 
 .settings-sidebar {
-  width: 170px;
+  width: 148px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
-  padding: 44px 10px 14px; /* hiddenInset 标题栏让位 */
+  padding: 44px 8px 14px; /* hiddenInset 标题栏让位 */
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   -webkit-app-region: drag;
 }
 
 .settings-side-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: none;
   background: transparent;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-radius: 7px;
   color: var(--text);
   text-align: left;
+  font-size: 13px;
   -webkit-app-region: no-drag;
 }
 
@@ -1377,6 +1379,12 @@ body.tray-window #root {
   gap: 14px;
   max-width: 460px;
   -webkit-app-region: no-drag;
+}
+
+/* Telegram 式行式列表：直接子行的开关行之间细分隔线（2026-08-20 验收整改） */
+.settings-group > .settings-row + .settings-row {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
 }
 
 .settings-subtitle {
@@ -1459,41 +1467,7 @@ body.tray-window #root {
   left: 19px;
 }
 
-/* 外观组 */
-
-.settings-themes {
-  display: flex;
-  gap: 10px;
-}
-
-.settings-theme-card {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  background: var(--input-bg);
-  border-radius: 10px;
-  padding: 14px 4px;
-  color: var(--text);
-  font-size: 12px;
-}
-
-.settings-theme-card:hover {
-  border-color: var(--primary-strong);
-}
-
-.settings-theme-on {
-  border-color: var(--primary);
-  background: var(--hover);
-}
-
-.settings-swatch {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-}
+/* 外观组（2026-08-20 验收整改：主题风格三卡已删，剩主题模式四段 + 特殊风格卡） */
 
 .settings-darkmodes {
   display: flex;
@@ -1619,19 +1593,6 @@ body.tray-window #root {
   text-decoration: underline;
 }
 
-/* 列表密度（外观设置：紧凑间距） */
-:root[data-density='compact'] .row-main {
-  padding: 8px 12px;
-}
-
-:root[data-density='compact'] .card {
-  padding: 8px 10px;
-}
-
-:root[data-density='compact'] .project-row {
-  margin-bottom: 4px;
-}
-
 /* 按键录制 */
 .settings-kbd-btn {
   cursor: pointer;
@@ -1739,6 +1700,68 @@ body.tray-window #root {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
 }
 
+/* 引导卡四向定位 + 三角箭头指向高亮区域（2026-08-20 验收整改：卡片不遮挡介绍区域） */
+.tour-card[data-arrow='none'] {
+  transform: translate(-50%, -50%);
+}
+
+.tour-card[data-arrow='left'],
+.tour-card[data-arrow='right'] {
+  transform: translate(-50%, -50%);
+}
+
+.tour-card[data-arrow='top'] {
+  transform: translate(-50%, 0);
+}
+
+.tour-card[data-arrow='bottom'] {
+  transform: translate(-50%, -100%);
+}
+
+.tour-card[data-arrow]:not([data-arrow='none'])::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+}
+
+/* 箭头在卡片左边缘，朝左指 */
+.tour-card[data-arrow='left']::after {
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-width: 0;
+  border-right-color: var(--card);
+}
+
+/* 箭头在卡片右边缘，朝右指 */
+.tour-card[data-arrow='right']::after {
+  right: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-width: 0;
+  border-left-color: var(--card);
+}
+
+/* 箭头在卡片顶边，朝上指 */
+.tour-card[data-arrow='top']::after {
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-top-width: 0;
+  border-bottom-color: var(--card);
+}
+
+/* 箭头在卡片底边，朝下指 */
+.tour-card[data-arrow='bottom']::after {
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-bottom-width: 0;
+  border-top-color: var(--card);
+}
+
 .tour-step {
   font-size: 11px;
   color: var(--text-dim);
@@ -1768,11 +1791,12 @@ body.tray-window #root {
 /* ---- 特殊风格七套（Proma 式，2026-08-20 用户拍板；自带完整配色） ---- */
 
 :root[data-theme='special-sl'] {
-  /* 云朵舞者 */
+  /* 雾白 */
   --bg: #f0f1f5;
   --card: #ffffff;
   --primary: #8b93c9;
   --primary-strong: #737cc0;
+  --accent: #4a7bb5;
   --text: #34374a;
   --text-dim: #8b8ea5;
   --border: #dddfe8;
@@ -1785,11 +1809,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-ol'] {
-  /* 晴空碧海 */
+  /* 天青 */
   --bg: #e9f4fb;
   --card: #ffffff;
   --primary: #3fa0d8;
   --primary-strong: #2e8bc2;
+  --accent: #2f8f9d;
   --text: #243a49;
   --text-dim: #7b93a3;
   --border: #d3e6f2;
@@ -1802,11 +1827,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-fl'] {
-  /* 森息晨光 */
+  /* 苔绿 */
   --bg: #eef3ec;
   --card: #ffffff;
   --primary: #6f9d7b;
   --primary-strong: #5b8a68;
+  --accent: #b58a3e;
   --text: #33403a;
   --text-dim: #84948b;
   --border: #dbe5da;
@@ -1819,11 +1845,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-od'] {
-  /* 远山暮霭 */
+  /* 山霭 */
   --bg: #171c24;
   --card: #212835;
   --primary: #7f95b3;
   --primary-strong: #95a9c4;
+  --accent: #c9a06b;
   --text: #dde4ec;
   --text-dim: #8b97a8;
   --border: #303a49;
@@ -1836,11 +1863,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-fd'] {
-  /* 森息夜语 */
+  /* 林夜 */
   --bg: #141a15;
   --card: #1e2620;
   --primary: #7ba382;
   --primary-strong: #93b598;
+  --accent: #c9a06b;
   --text: #dde7de;
   --text-dim: #8fa094;
   --border: #2c3830;
@@ -1853,11 +1881,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-md'] {
-  /* 莫兰迪夜 */
+  /* 赭夜 */
   --bg: #1e1b20;
   --card: #29242b;
   --primary: #c9a89e;
   --primary-strong: #b08f85;
+  --accent: #8f9ec9;
   --text: #e8e2da;
   --text-dim: #9a918a;
   --border: #3a343c;
@@ -1870,11 +1899,12 @@ body.tray-window #root {
 }
 
 :root[data-theme='special-td'] {
-  /* 旧屏微光（终端风，带轻微闪烁） */
+  /* 磷光（终端风，带轻微闪烁） */
   --bg: #0f130f;
   --card: #161b14;
   --primary: #7da560;
   --primary-strong: #96c17a;
+  --accent: #c9b04b;
   --text: #d4e8c8;
   --text-dim: #7f9a72;
   --border: #2a3326;
@@ -1906,36 +1936,41 @@ body.tray-window #root {
   }
 }
 
-/* ---- 特殊风格预览卡（色块拼贴模拟壁纸图） ---- */
+/* ---- 特殊风格预览卡（2026-08-20 验收整改：聊天气泡拼贴，展示背景/主题色/辅助色多色搭配） ---- */
 
 .special-preview {
   position: relative;
   overflow: hidden;
+  /* 背景色 + 辅助色头像圆点（带气泡底色描边） */
+  background:
+    radial-gradient(circle at 15% 27%, var(--psub) 0 6px, var(--pbub) 6px 8px, transparent 8px),
+    var(--pbg);
 }
 
+/* 对方消息：中性气泡两条（左对齐圆角） */
 .special-preview::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 38%;
-  background: linear-gradient(165deg, var(--sp1), var(--sp2));
+  top: 15%;
+  left: 9%;
+  width: 52%;
+  height: 10%;
+  border-radius: 3px 7px 7px 7px;
+  background: var(--pbub);
+  box-shadow: 0 17px 0 var(--pbub);
 }
 
+/* 自己的消息：主题色气泡两条（右对齐圆角） */
 .special-preview::after {
   content: '';
   position: absolute;
-  top: 50%;
-  left: 14%;
-  width: 38%;
+  right: 8%;
+  bottom: 15%;
+  width: 46%;
   height: 10%;
-  border-radius: 5px;
-  background: var(--sp3);
-  box-shadow:
-    0 15px 0 var(--sp3),
-    0 30px 0 var(--sp3),
-    62% 0 0 var(--sp3);
+  border-radius: 7px 3px 7px 7px;
+  background: var(--pacc);
+  box-shadow: 0 -17px 0 var(--pacc);
 }
 
 /* ---- 主题模式分段控件（Proma 式） ---- */

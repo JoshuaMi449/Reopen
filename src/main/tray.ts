@@ -1,8 +1,10 @@
 // 托盘模块：右上角菜单栏图标 + 点击弹出小面板（PRD 3.7）
-import { app, BrowserWindow, nativeImage, Tray, screen } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, Tray, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { getSettings } from './store'
+import { openSettingsWindow } from './settingsWindow'
+import { showMainWindow } from './window'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
 let tray: Tray | null = null
@@ -66,6 +68,17 @@ function togglePanel(): void {
   p.show()
 }
 
+/** 右键菜单：打开主窗口 / 偏好设置 / 退出（2026-08-20 验收整改） */
+function showContextMenu(): void {
+  const menu = Menu.buildFromTemplate([
+    { label: '打开主窗口', click: () => showMainWindow() },
+    { label: '偏好设置…', click: () => openSettingsWindow() },
+    { type: 'separator' },
+    { label: '退出 Reopen', click: () => appQuit() }
+  ])
+  tray?.popUpContextMenu(menu)
+}
+
 /** 按设置刷新托盘（启用开关/图标样式变化时调用） */
 export function refreshTray(): void {
   const { trayEnabled, trayIcon } = getSettings()
@@ -79,6 +92,7 @@ export function refreshTray(): void {
   if (!tray) {
     tray = new Tray(trayIconImage(trayIcon === 'mono'))
     tray.on('click', togglePanel)
+    tray.on('right-click', showContextMenu)
   } else {
     tray.setImage(trayIconImage(trayIcon === 'mono'))
   }

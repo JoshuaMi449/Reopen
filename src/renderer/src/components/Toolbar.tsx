@@ -22,6 +22,8 @@ interface Props {
   onOpenAutoStart(): void
   /** 自启项里有几个项目（角标） */
   autoStartCount: number
+  /** 自启项总开关：关=功能消失，顶部图标不显示（2026-08-20 验收整改） */
+  autoStartEnabled: boolean
   searchInputRef: RefObject<HTMLInputElement | null>
 }
 
@@ -37,6 +39,7 @@ export function Toolbar({
   onOpenSettings,
   onOpenAutoStart,
   autoStartCount,
+  autoStartEnabled,
   searchInputRef
 }: Props): React.JSX.Element {
   return (
@@ -52,10 +55,17 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        <button className="icon-btn" title="自启项" onClick={onOpenAutoStart} data-tour="autostart">
-          <Zap size={16} />
-          {autoStartCount > 0 && <span className="autostart-badge">{autoStartCount}</span>}
-        </button>
+        {autoStartEnabled && (
+          <button
+            className="icon-btn"
+            title="自启项"
+            onClick={onOpenAutoStart}
+            data-tour="autostart"
+          >
+            <Zap size={16} />
+            {autoStartCount > 0 && <span className="autostart-badge">{autoStartCount}</span>}
+          </button>
+        )}
 
         <select
           className="sort-select"

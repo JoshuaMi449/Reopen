@@ -13,8 +13,8 @@ export function openSettingsWindow(group?: string): void {
     return
   }
   settingsWin = new BrowserWindow({
-    width: 760,
-    height: 560,
+    width: 720,
+    height: 540,
     show: false,
     title: '偏好设置',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),

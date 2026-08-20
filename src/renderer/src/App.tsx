@@ -84,14 +84,8 @@ export default function App(): React.JSX.Element {
 
   // 应用主题（PRD 3.8：风格+亮暗即时生效）
   useEffect(() => {
-    applyTheme(
-      settings.theme,
-      settings.darkMode,
-      systemDark,
-      settings.rowDensity,
-      settings.specialStyle
-    )
-  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity, settings.specialStyle])
+    applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
+  }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])
@@ -117,7 +111,6 @@ export default function App(): React.JSX.Element {
       window.api.adoptAllRunning()
     })
     window.api.getSettings().then((s) => {
-      console.log('[debug] getSettings returned onboarded=', s.onboarded)
       setSettings(s)
       if (!s.onboarded) setShowOnboarding(true)
     })
@@ -413,6 +406,7 @@ export default function App(): React.JSX.Element {
           onOpenSettings={() => window.api.openSettingsWindow()}
           onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
           autoStartCount={settings.autoStartIds.length}
+          autoStartEnabled={settings.autoStartEnabled}
           searchInputRef={searchRef}
         />
 
@@ -469,7 +463,7 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      {autoStartOpen && (
+      {autoStartOpen && settings.autoStartEnabled && (
         <AutoStartPanel
           items={autoStartItems}
           enabled={settings.autoStartEnabled}
