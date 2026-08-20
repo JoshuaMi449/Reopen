@@ -1,5 +1,6 @@
 import { FileCode2, Folder, LayoutGrid, Settings as SettingsIcon, Tag } from 'lucide-react'
 import logo from '../../../../resources/tray-icon.png'
+import wordmark from '../assets/wordmark.png'
 
 /** 侧边栏分类：全部/服务/网页 + tag:xxx（2026-08-20 拍板：删"最近使用"） */
 export type Category = 'all' | 'service' | 'web' | `tag:${string}`
@@ -57,8 +58,9 @@ export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.
 
       <div className="sidebar-bottom">
         <div className="sidebar-logo">
-          <img src={logo} alt="Reopen" draggable={false} />
-          <span>Reopen</span>
+          <img className="sidebar-logo-mark" src={logo} alt="" draggable={false} />
+          {/* Reopen 文字：HFPoohBear 字体渲染成的透明 PNG（2026-08-20 用户要求，不打包字体文件） */}
+          <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
         </div>
         <button className="sidebar-item" onClick={() => window.api.openSettingsWindow()}>
           <span className="sidebar-icon">

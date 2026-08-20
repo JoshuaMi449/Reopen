@@ -313,10 +313,12 @@ export default function App(): React.JSX.Element {
     updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
 
-  // 自启面板定位：闪电 icon 正下方、右对齐 icon（2026-08-20 拍板；effect 里读 ref，避免渲染期访问）
-  const [autoStartPanelPos, setAutoStartPanelPos] = useState<{ top: number; right: number } | null>(
-    null
-  )
+  // 自启面板定位（2026-08-20 拍板）：闪电 icon 正下方；右侧空间够就往右开（不挡中间列表），不够往左开
+  const [autoStartPanelPos, setAutoStartPanelPos] = useState<{
+    top: number
+    left?: number
+    right?: number
+  } | null>(null)
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -326,7 +328,14 @@ export default function App(): React.JSX.Element {
       }
       const rect = autoStartBtnRef.current?.getBoundingClientRect()
       if (rect) {
-        setAutoStartPanelPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+        const top = rect.bottom + 8
+        const spaceRight = window.innerWidth - rect.right - 8
+        if (spaceRight >= 310) {
+          // 往右开：右栏（日志）开着时空间充足，盖右栏不盖项目列表
+          setAutoStartPanelPos({ top, left: rect.right + 8 })
+        } else {
+          setAutoStartPanelPos({ top, right: window.innerWidth - rect.right })
+        }
       }
     })
     return () => cancelAnimationFrame(id)

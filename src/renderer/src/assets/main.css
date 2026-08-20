@@ -2,14 +2,6 @@
    六套主题（PRD 3.8）：莫兰迪（默认）/海洋/石墨 × 亮暗，CSS 变量驱动；
    风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
-/* 侧栏 logo 字体：HFPoohBear（用户指定素材，2026-08-20） */
-@font-face {
-  font-family: 'HFPoohBear';
-  src: url('./fonts/HFPoohBear-2.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
 /* ---- 浅色三套 ---- */
 :root,
 :root[data-theme='morandi'] {
@@ -289,17 +281,23 @@ select {
   padding: 2px 10px 6px;
 }
 
-.sidebar-logo img {
+.sidebar-logo-mark {
   width: 16px;
   height: 16px;
 }
 
-.sidebar-logo span {
-  font-family: 'HFPoohBear', sans-serif; /* 用户指定字体（2026-08-20） */
-  font-size: 18px;
-  font-weight: normal;
-  color: var(--text);
-  letter-spacing: 0.5px;
+/* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白（2026-08-20） */
+.sidebar-logo-word {
+  height: 20px;
+  width: auto;
+}
+
+html.dark .sidebar-logo-word,
+:root[data-theme='special-od'] .sidebar-logo-word,
+:root[data-theme='special-fd'] .sidebar-logo-word,
+:root[data-theme='special-md'] .sidebar-logo-word,
+:root[data-theme='special-td'] .sidebar-logo-word {
+  filter: invert(1);
 }
 
 .tag-dot {
