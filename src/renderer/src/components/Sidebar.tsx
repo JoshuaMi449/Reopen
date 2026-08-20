@@ -1,5 +1,4 @@
 import { FileCode2, Folder, LayoutGrid, Settings as SettingsIcon, Tag } from 'lucide-react'
-import logo from '../../../../resources/tray-icon.png'
 import wordmark from '../assets/wordmark.png'
 
 /** 侧边栏分类：全部/服务/网页 + tag:xxx（2026-08-20 拍板：删"最近使用"） */
@@ -10,10 +9,18 @@ interface Props {
   tags: { name: string; color: string }[]
   counts: { all: number; service: number; web: number }
   onSelect(c: Category): void
+  /** 检查更新发现新版本时，设置 icon 右上角显示红点（M4 接入更新检查后由 App 传入） */
+  showUpdateDot?: boolean
 }
 
 /** 侧边栏（PRD 3.3：按类型和标签浏览你的项目；底部 logo + 设置入口，2026-08-20 拍板） */
-export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.Element {
+export function Sidebar({
+  category,
+  tags,
+  counts,
+  onSelect,
+  showUpdateDot
+}: Props): React.JSX.Element {
   const items: { key: Category; label: string; icon: React.ReactNode; count: number }[] = [
     { key: 'all', label: '全部', icon: <LayoutGrid size={15} />, count: counts.all },
     { key: 'service', label: '服务', icon: <Folder size={15} />, count: counts.service },
@@ -56,17 +63,16 @@ export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.
         </div>
       )}
 
+      {/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，一左一右；hover 有方块；有新版时 icon 右上角红点 */}
       <div className="sidebar-bottom">
-        <div className="sidebar-logo">
-          <img className="sidebar-logo-mark" src={logo} alt="" draggable={false} />
-          {/* Reopen 文字：HFPoohBear 字体渲染成的透明 PNG（2026-08-20 用户要求，不打包字体文件） */}
-          <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
-        </div>
-        <button className="sidebar-item" onClick={() => window.api.openSettingsWindow()}>
-          <span className="sidebar-icon">
-            <SettingsIcon size={15} />
-          </span>
-          <span className="sidebar-label">设置</span>
+        <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
+        <button
+          className="sidebar-settings-btn"
+          title="设置"
+          onClick={() => window.api.openSettingsWindow()}
+        >
+          <SettingsIcon size={15} />
+          {showUpdateDot && <span className="update-dot" />}
         </button>
       </div>
     </aside>

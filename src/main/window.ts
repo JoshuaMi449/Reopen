@@ -1,5 +1,5 @@
 // 主窗口管理：创建、显示、关闭时最小化到托盘（PRD 3.6 通用设置）
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, screen, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
@@ -13,10 +13,15 @@ export function markQuitting(): void {
 }
 
 export function createWindow(): void {
+  // 默认尺寸按主屏工作区 55% 宽、16:10 比例（2026-08-20 拍板：默认再宽一点，比例=电脑屏幕比例）
+  const { workArea } = screen.getPrimaryDisplay()
+  const winWidth = Math.min(Math.max(Math.round(workArea.width * 0.55), 1200), 2000)
+  const winHeight = Math.round(winWidth * 0.625)
+
   mainWindow = new BrowserWindow({
     // 三栏布局默认宽度（2026-08-20 拍板：左 190 + 右 380 固定，中间弹性；窗口可调）
-    width: 1120,
-    height: 700,
+    width: winWidth,
+    height: winHeight,
     // 最小尺寸锁死：保证三栏+工具栏内容都可见，不能无限缩小（2026-08-20 拍板）
     minWidth: 980,
     minHeight: 620,

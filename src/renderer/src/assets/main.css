@@ -264,32 +264,56 @@ select {
   gap: 2px;
 }
 
-/* 底部：logo（纯展示）+ 设置入口（2026-08-20 拍板） */
+/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，hover 均有方块 */
 .sidebar-bottom {
   margin-top: auto;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
   border-top: 1px solid var(--border);
-  padding-top: 10px;
+  padding: 8px 4px 4px;
 }
 
-.sidebar-logo {
+/* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白 */
+.sidebar-logo-word {
+  height: 16px;
+  width: auto;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+
+.sidebar-logo-word:hover {
+  background: var(--hover);
+}
+
+.sidebar-settings-btn {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 2px 10px 6px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text);
+  cursor: pointer;
 }
 
-.sidebar-logo-mark {
-  width: 16px;
-  height: 16px;
+.sidebar-settings-btn:hover {
+  background: var(--hover);
 }
 
-/* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白（2026-08-20） */
-.sidebar-logo-word {
-  height: 20px;
-  width: auto;
+/* 有新版更新时的红点（M4 接入检查更新后显示） */
+.update-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
 }
 
 html.dark .sidebar-logo-word,
@@ -1042,7 +1066,7 @@ html.dark .sidebar-logo-word,
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, 220px); /* 卡片固定宽度：窗口变宽只增列数不拉伸（2026-08-20 实测反馈） */
   gap: 12px;
 }
 
