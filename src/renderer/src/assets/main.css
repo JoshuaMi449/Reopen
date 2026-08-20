@@ -146,6 +146,7 @@ select {
 .app {
   height: 100vh;
   display: flex;
+  background: var(--bg);
 }
 
 .app-main {
@@ -153,6 +154,8 @@ select {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* 三栏前后层次（2026-08-20 拍板）：中间比左栏亮一档，右栏用卡片色最深/最亮 */
+  background: color-mix(in srgb, var(--bg) 62%, var(--card) 38%);
 }
 
 .project-list {
@@ -516,28 +519,28 @@ select {
 /* ---------- 右侧详情抽屉（2026-08-20 拍板：点击项目从右侧滑出预览） ---------- */
 
 .drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 400px;
+  /* 嵌入式第三栏（2026-08-20 拍板：Proma 式三栏，点击项目滑出、中间弹性收缩，不再浮层遮挡） */
+  position: relative;
+  flex-shrink: 0;
+  width: 380px;
   background: var(--card);
   border-left: 1px solid var(--border);
-  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.14);
-  z-index: 250;
   display: flex;
   flex-direction: column;
   padding: 16px 18px;
   gap: 14px;
+  overflow-y: auto;
   animation: drawer-in 0.22s ease-out;
 }
 
 @keyframes drawer-in {
   from {
-    transform: translateX(100%);
+    transform: translateX(60px);
+    opacity: 0;
   }
   to {
     transform: translateX(0);
+    opacity: 1;
   }
 }
 
@@ -610,7 +613,8 @@ select {
   line-height: 1.6;
   padding: 10px 12px;
   border-radius: 8px;
-  height: 200px;
+  flex: 1; /* 第三栏内撑满剩余高度（2026-08-20 三栏改造） */
+  min-height: 200px;
   overflow-y: auto;
   user-select: text;
   white-space: pre-wrap;

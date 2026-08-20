@@ -14,7 +14,8 @@ export function markQuitting(): void {
 
 export function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 980,
+    // 三栏布局默认宽度（2026-08-20 拍板：左 190 + 右 380 固定，中间弹性；窗口可调）
+    width: 1120,
     height: 700,
     show: false,
     autoHideMenuBar: true,
