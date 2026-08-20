@@ -163,18 +163,73 @@ export function SettingsPage(): React.JSX.Element {
   )
 
   // 快捷键组
+  const [capturing, setCapturing] = useState<'hotkey' | string | null>(null)
+
   const shortcuts = (
     <div className="settings-group">
       <SettingRow
         label="全局唤起窗口"
-        hint="在任何软件里按下，唤起/隐藏 Reopen 窗口（可改键随下一步实现）"
+        hint="在任何软件里按下，唤起/隐藏 Reopen 窗口（至少带一个修饰键）"
       >
-        <span className="settings-kbd">{settings.hotkey}</span>
+        {capturing === 'hotkey' ? (
+          <KeyCapture
+            defaultValue={settings.hotkey}
+            onDone={(acc) => {
+              update({ hotkey: acc })
+              setCapturing(null)
+            }}
+            onCancel={() => setCapturing(null)}
+          />
+        ) : (
+          <button className="settings-kbd settings-kbd-btn" onClick={() => setCapturing('hotkey')}>
+            {displayAcc(settings.hotkey)}
+          </button>
+        )}
       </SettingRow>
 
-      <SettingRow label="快捷启动项目" hint="给常用项目绑定组合键，一键启动（随下一步实现）">
-        <span className="settings-static">暂未绑定</span>
-      </SettingRow>
+      <div className="settings-subtitle">快捷启动项目（一键启动）</div>
+      {projects.length === 0 ? (
+        <div className="settings-static">还没有登记项目</div>
+      ) : (
+        projects.map((p) => (
+          <div key={p.id} className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">{p.name}</div>
+            </div>
+            <div className="settings-row-control">
+              {capturing === p.id ? (
+                <KeyCapture
+                  defaultValue={settings.quickLaunch[p.id]}
+                  onDone={(acc) => {
+                    update({ quickLaunch: { ...settings.quickLaunch, [p.id]: acc } })
+                    setCapturing(null)
+                  }}
+                  onCancel={() => setCapturing(null)}
+                />
+              ) : settings.quickLaunch[p.id] ? (
+                <span className="settings-bound">
+                  <span className="settings-kbd">{displayAcc(settings.quickLaunch[p.id])}</span>
+                  <button
+                    className="icon-btn"
+                    title="解绑"
+                    onClick={() => {
+                      const ql = { ...settings.quickLaunch }
+                      delete ql[p.id]
+                      update({ quickLaunch: ql })
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <button className="btn-secondary" onClick={() => setCapturing(p.id)}>
+                  绑定…
+                </button>
+              )}
+            </div>
+          </div>
+        ))
+      )}
 
       <div className="settings-subtitle">应用内快捷键</div>
       <div className="settings-shortcut-list">
@@ -337,5 +392,58 @@ function Switch({
     >
       <span className="settings-switch-knob" />
     </button>
+  )
+}
+
+/** Electron accelerator → 界面显示（⌥R / ⌘⇧1 这种） */
+function displayAcc(acc: string): string {
+  return acc
+    .replace(/CommandOrControl|Command/g, '⌘')
+    .replace(/Control/g, '⌃')
+    .replace(/Alt|Option/g, '⌥')
+    .replace(/Shift/g, '⇧')
+}
+
+/** 按键录制框：按下组合键（至少一个修饰键），回车确认 / Esc 取消 */
+function KeyCapture({
+  defaultValue,
+  onDone,
+  onCancel
+}: {
+  defaultValue?: string
+  onDone(acc: string): void
+  onCancel(): void
+}): React.JSX.Element {
+  const [acc, setAcc] = useState(defaultValue ?? '')
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') {
+        onCancel()
+        return
+      }
+      if (e.key === 'Enter' && acc) {
+        onDone(acc)
+        return
+      }
+      const mods: string[] = []
+      if (e.metaKey) mods.push('Command')
+      if (e.altKey) mods.push('Alt')
+      if (e.ctrlKey) mods.push('Control')
+      if (e.shiftKey) mods.push('Shift')
+      const key = e.key.toUpperCase()
+      if (mods.length === 0 || ['META', 'ALT', 'CONTROL', 'SHIFT'].includes(key)) return
+      setAcc([...mods, key].join('+'))
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [acc, onDone, onCancel])
+
+  return (
+    <span className={`settings-kbd settings-kbd-capture ${acc ? 'settings-kbd-ready' : ''}`}>
+      {acc ? displayAcc(acc) : '按下组合键…'}
+    </span>
   )
 }

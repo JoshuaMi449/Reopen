@@ -62,3 +62,12 @@ export function showMainWindow(action?: string): void {
     mainWindow?.webContents.send('app:menu-action', action)
   }
 }
+
+/** 全局快捷键：窗口可见且聚焦 → 隐藏；否则唤起（PRD 3.6 全局唤起窗口） */
+export function toggleMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused()) {
+    mainWindow.hide()
+    return
+  }
+  showMainWindow()
+}

@@ -1631,3 +1631,38 @@ body.tray-window #root {
 :root[data-density='compact'] .project-row {
   margin-bottom: 4px;
 }
+
+/* 按键录制 */
+.settings-kbd-btn {
+  cursor: pointer;
+}
+
+.settings-kbd-btn:hover {
+  border-color: var(--primary-strong);
+}
+
+.settings-kbd-capture {
+  animation: kbd-pulse 1s infinite;
+}
+
+.settings-kbd-ready {
+  animation: none;
+  border-color: var(--primary);
+  background: var(--hover);
+}
+
+@keyframes kbd-pulse {
+  0%,
+  100% {
+    border-color: var(--border);
+  }
+  50% {
+    border-color: var(--primary);
+  }
+}
+
+.settings-bound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

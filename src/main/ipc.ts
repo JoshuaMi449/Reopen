@@ -12,6 +12,7 @@ import {
   stopProject
 } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
+import { refreshShortcuts } from './shortcuts'
 import {
   addProject,
   deleteProject,
@@ -53,8 +54,9 @@ export function registerIpc(): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => {
     const saved = saveSettings(patch)
-    // 托盘启用/图标样式变化 → 立即刷新托盘
+    // 托盘启用/图标样式变化 → 立即刷新托盘；快捷键变化 → 重新注册
     if ('trayEnabled' in patch || 'trayIcon' in patch) refreshTray()
+    if ('hotkey' in patch || 'quickLaunch' in patch) refreshShortcuts()
     broadcastSettings(saved)
     return saved
   })

@@ -3,8 +3,18 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
 import { createAppMenu } from './menu'
 import { autoStartAll } from './projectManager'
+import { refreshShortcuts } from './shortcuts'
 import { initTray } from './tray'
-import { createWindow, markQuitting } from './window'
+import { createWindow, markQuitting, showMainWindow } from './window'
+
+// 单例锁：重复启动时唤起已有窗口而不是开两个（PRD 四·稳定性）
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    showMainWindow()
+  })
+}
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -25,9 +35,10 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  // 左上角应用菜单（全量标准六菜单）+ 右上角托盘
+  // 左上角应用菜单（全量标准六菜单）+ 右上角托盘 + 全局快捷键
   createAppMenu()
   initTray()
+  refreshShortcuts()
 
   // 自启项：打开 Reopen 自动拉起（PRD 3.5 两层自动机制中的软件层）
   autoStartAll()
