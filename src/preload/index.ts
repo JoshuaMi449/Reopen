@@ -13,8 +13,9 @@ const api: ReopenApi = {
   getPathForFile: (file) => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke('project:list'),
   detectPath: (path) => ipcRenderer.invoke('project:detect', path),
-  /** 「+」按钮：打开访达选项目文件夹（取消返回 null），2026-08-20 拍板 */
-  pickProjectFolder: () => ipcRenderer.invoke('dialog:pick-project-folder'),
+  /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null），2026-08-20 拍板 */
+  pickProjectFolder: (allowFile?: boolean) =>
+    ipcRenderer.invoke('dialog:pick-project-folder', allowFile),
   parseApp: (path) => ipcRenderer.invoke('project:parse-app', path),
   addProject: (input: NewProjectInput) => ipcRenderer.invoke('project:add', input),
   updateProject: (id, input) => ipcRenderer.invoke('project:update', id, input),

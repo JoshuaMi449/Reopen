@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Pencil, Play, Square, Trash2 } from 'lucide-react'
+import { ExternalLink, FolderSearch, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type {
   DetectNeedParseApp,
   DetectOutcome,
@@ -417,12 +417,35 @@ export default function App(): React.JSX.Element {
       onClick: () => setForm({ mode: 'edit', project: p })
     })
     items.push({
+      label: '重新定位…',
+      icon: <FolderSearch size={14} />,
+      onClick: () => handleRelocate(p)
+    })
+    items.push({
       label: '删除',
       icon: <Trash2 size={14} />,
       danger: true,
       onClick: () => setDeleteTarget(p)
     })
     return items
+  }
+
+  // 项目文件夹被移动后的找回：访达选新位置 → 更新路径（2026-08-20 用户提问，启动时标红提示引导到这里）
+  const handleRelocate = async (p: Project): Promise<void> => {
+    const newPath = await window.api.pickProjectFolder(p.type === 'web')
+    if (!newPath) return
+    const updated = await window.api.updateProject(p.id, {
+      name: p.name,
+      type: p.type,
+      path: newPath,
+      command: p.command,
+      port: p.port,
+      openBrowser: p.openBrowser,
+      note: p.note,
+      tags: p.tags
+    })
+    setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
+    toast(`已重新定位「${updated.name}」`, 'success')
   }
 
   const handleFormSubmit = async (input: NewProjectInput): Promise<void> => {
