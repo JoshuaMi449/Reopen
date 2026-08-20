@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
+import logo from '../../../resources/tray-icon.png'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
@@ -383,6 +384,12 @@ export default function App(): React.JSX.Element {
           <div className="drop-box">松手，登记这个项目</div>
         </div>
       )}
+
+      {/* 标题行：红黄绿按钮右侧放 logo（2026-08-20 用户要求，按钮区域不再被卡片侵占） */}
+      <div className="titlebar">
+        <img className="titlebar-logo" src={logo} alt="Reopen" draggable={false} />
+        <span className="titlebar-name">Reopen</span>
+      </div>
 
       <Toolbar
         search={search}

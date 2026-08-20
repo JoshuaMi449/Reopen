@@ -152,6 +152,29 @@ select {
   background: var(--bg);
 }
 
+/* 标题行：红黄绿按钮浮在本行左侧，logo 在按钮右侧（2026-08-20 用户要求） */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 6px 0 78px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.titlebar-logo {
+  width: 16px;
+  height: 16px;
+}
+
+.titlebar-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
 /* 三块圆角卡片区（2026-08-20 拍板：Proma classic 式，四边有间隙浮在背景上） */
 .app-body {
   flex: 1;
@@ -278,7 +301,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 12px 76px; /* 左留白给红黄绿窗口按钮（hiddenInset 浮在卡片上） */
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
@@ -1035,12 +1058,6 @@ select {
   color: var(--primary-strong);
   display: flex;
   flex-shrink: 0;
-}
-
-.autostart-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
 }
 
 .autostart-panel {
