@@ -1,4 +1,4 @@
-import { FileCode2, Folder, Play, Square } from 'lucide-react'
+import { Check, FileCode2, Folder, Play, Square } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 import { DetailPanel } from './ProjectRow'
 
@@ -7,6 +7,8 @@ interface Props {
   statuses: Record<string, ProjectStatusEvent>
   logs: Record<string, string[]>
   expandedId: string | null
+  /** 自启项内的项目 id（打勾同步显示） */
+  autoStartIds: string[]
   onToggle(id: string): void
   onStart(p: Project): void
   onStop(p: Project): void
@@ -27,6 +29,7 @@ export function CardView({
   statuses,
   logs,
   expandedId,
+  autoStartIds,
   onToggle,
   onStart,
   onStop,
@@ -57,6 +60,11 @@ export function CardView({
                   {p.type === 'service' ? <Folder size={15} /> : <FileCode2 size={15} />}
                 </span>
                 <span className="card-name">{p.name}</span>
+                {autoStartIds.includes(p.id) && (
+                  <span className="autostart-check" title="在自启项里">
+                    <Check size={13} />
+                  </span>
+                )}
                 <span className="row-actions">
                   {active ? (
                     <button

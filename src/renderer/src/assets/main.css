@@ -832,3 +832,118 @@ select {
   border-top: none;
   border-radius: 0 0 10px 10px;
 }
+
+/* ---------- 自启项 ---------- */
+
+.autostart-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--primary-strong);
+  color: #fff;
+  font-size: 9px;
+  border-radius: 999px;
+  padding: 1px 4px;
+  line-height: 1.2;
+}
+
+.toolbar-right .icon-btn {
+  position: relative;
+}
+
+.autostart-check {
+  color: var(--primary-strong);
+  display: flex;
+  flex-shrink: 0;
+}
+
+.autostart-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+
+.autostart-panel {
+  position: fixed;
+  top: 52px;
+  left: 320px;
+  z-index: 301;
+  width: 300px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+  padding: 12px;
+}
+
+.autostart-panel-over {
+  border-color: var(--primary-strong);
+  border-style: dashed;
+}
+
+.autostart-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.autostart-title {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+}
+
+.autostart-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-left: 2px;
+}
+
+.autostart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.autostart-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.autostart-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.autostart-item:hover {
+  background: var(--bg);
+}
+
+.autostart-item-icon {
+  color: var(--primary-strong);
+  flex-shrink: 0;
+}
+
+.autostart-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autostart-switch input {
+  width: 15px;
+  height: 15px;
+}

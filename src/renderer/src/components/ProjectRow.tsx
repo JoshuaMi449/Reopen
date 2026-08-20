@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   Folder,
@@ -27,6 +28,8 @@ interface Props {
   onDragStart?(e: React.DragEvent): void
   onDragOver?(e: React.DragEvent): void
   onDrop?(e: React.DragEvent): void
+  /** 在自启项里（PRD 3.5：打勾同步显示） */
+  autoStartChecked?: boolean
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -57,7 +60,8 @@ export function ProjectRow({
   sortDraggable,
   onDragStart,
   onDragOver,
-  onDrop
+  onDrop,
+  autoStartChecked
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -84,6 +88,11 @@ export function ProjectRow({
           {project.type === 'service' ? <Folder size={16} /> : <FileCode2 size={16} />}
         </span>
         <span className="row-name">{project.name}</span>
+        {autoStartChecked && (
+          <span className="autostart-check" title="在自启项里">
+            <Check size={13} />
+          </span>
+        )}
         <span className="row-port">{port ? `:${port}` : ''}</span>
         <span className="row-last">{formatTime(project.lastStartedAt)}</span>
         {project.note && <span className="row-note">{project.note}</span>}

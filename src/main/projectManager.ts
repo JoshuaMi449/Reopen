@@ -6,7 +6,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { connect } from 'net'
 import type { Project, ProjectStatus, ProjectStatusEvent, StartResult } from '../shared/types'
-import { listProjects, touchStartedAt } from './store'
+import { getSettings, listProjects, touchStartedAt } from './store'
 import { startWebServer } from './webServer'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
@@ -241,6 +241,19 @@ export async function adoptRunning(project: Project): Promise<void> {
 export async function adoptAllRunning(): Promise<void> {
   for (const project of listProjects()) {
     await adoptRunning(project)
+  }
+}
+
+/** 打开 Reopen 时自动拉起自启项（PRD 3.5：软件层自动启动；失败静默，界面上标红可见） */
+export async function autoStartAll(): Promise<void> {
+  const { autoStartEnabled, autoStartIds } = getSettings()
+  if (!autoStartEnabled || autoStartIds.length === 0) return
+  for (const id of autoStartIds) {
+    try {
+      await startProject(id)
+    } catch {
+      // 单个项目失败不影响其他
+    }
   }
 }
 

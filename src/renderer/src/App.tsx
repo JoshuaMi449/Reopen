@@ -10,6 +10,7 @@ import type {
   Settings
 } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
+import { AutoStartPanel } from './components/AutoStartPanel'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
@@ -59,6 +60,8 @@ export default function App(): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
   const [dragId, setDragId] = useState<string | null>(null)
+  /** 自启项气泡面板是否打开 */
+  const [autoStartOpen, setAutoStartOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
@@ -192,11 +195,30 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  // 手动排序：行拖拽
+  // 行拖拽：手动排序 + 拖入自启项气泡面板共用
   const handleRowDragStart = (e: React.DragEvent, p: Project): void => {
     e.dataTransfer.setData('application/x-reopen-id', p.id)
     e.dataTransfer.effectAllowed = 'move'
     setDragId(p.id)
+  }
+
+  // 自启项（PRD 3.5）
+  const autoStartItems = useMemo(
+    () =>
+      settings.autoStartIds
+        .map((id) => projects.find((p) => p.id === id))
+        .filter(Boolean) as Project[],
+    [settings.autoStartIds, projects]
+  )
+
+  const addToAutoStart = (id: string): void => {
+    if (settings.autoStartIds.includes(id)) return
+    updateSettings({ autoStartIds: [...settings.autoStartIds, id] })
+    toast('已加入自启项：打开 Reopen 会自动启动它')
+  }
+
+  const removeFromAutoStart = (id: string): void => {
+    updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
 
   const handleRowDrop = (e: React.DragEvent, target: Project): void => {
@@ -337,6 +359,8 @@ export default function App(): React.JSX.Element {
           onSort={(m) => updateSettings({ sortMode: m })}
           onAdd={() => setForm({ mode: 'manual' })}
           onOpenSettings={() => toast('偏好设置在 M3-5 实现，先记着')}
+          onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
+          autoStartCount={settings.autoStartIds.length}
           searchInputRef={searchRef}
         />
 
@@ -362,12 +386,13 @@ export default function App(): React.JSX.Element {
                 onStop={() => window.api.stopProject(p.id)}
                 onDelete={() => setDeleteTarget(p)}
                 onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-                sortDraggable={settings.sortMode === 'manual'}
+                sortDraggable={settings.sortMode === 'manual' || settings.autoStartEnabled}
                 onDragStart={(e) => handleRowDragStart(e, p)}
                 onDragOver={(e) => {
                   if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
                 }}
                 onDrop={(e) => handleRowDrop(e, p)}
+                autoStartChecked={settings.autoStartIds.includes(p.id)}
               />
             ))
           ) : (
@@ -376,6 +401,7 @@ export default function App(): React.JSX.Element {
               statuses={statuses}
               logs={logs}
               expandedId={expandedId}
+              autoStartIds={settings.autoStartIds}
               onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
               onStart={handleStart}
               onStop={(p) => window.api.stopProject(p.id)}
@@ -394,6 +420,17 @@ export default function App(): React.JSX.Element {
           existingTags={allTags}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
+        />
+      )}
+
+      {autoStartOpen && (
+        <AutoStartPanel
+          items={autoStartItems}
+          enabled={settings.autoStartEnabled}
+          onToggleEnabled={() => updateSettings({ autoStartEnabled: !settings.autoStartEnabled })}
+          onRemove={removeFromAutoStart}
+          onDropId={addToAutoStart}
+          onClose={() => setAutoStartOpen(false)}
         />
       )}
 

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
+import { autoStartAll } from './projectManager'
 
 function createWindow(): void {
   // Create the browser window.
@@ -54,6 +55,9 @@ app.whenReady().then(() => {
   registerIpc()
 
   createWindow()
+
+  // 自启项：打开 Reopen 自动拉起（PRD 3.5 两层自动机制中的软件层）
+  autoStartAll()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

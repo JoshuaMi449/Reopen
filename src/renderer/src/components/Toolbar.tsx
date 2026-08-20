@@ -5,7 +5,8 @@ import {
   List,
   Plus,
   Search,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Zap
 } from 'lucide-react'
 import type { Settings } from '../../../shared/types'
 
@@ -18,6 +19,9 @@ interface Props {
   onSort(m: Settings['sortMode']): void
   onAdd(): void
   onOpenSettings(): void
+  onOpenAutoStart(): void
+  /** 自启项里有几个项目（角标） */
+  autoStartCount: number
   searchInputRef: RefObject<HTMLInputElement | null>
 }
 
@@ -31,6 +35,8 @@ export function Toolbar({
   onSort,
   onAdd,
   onOpenSettings,
+  onOpenAutoStart,
+  autoStartCount,
   searchInputRef
 }: Props): React.JSX.Element {
   return (
@@ -46,6 +52,11 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-right">
+        <button className="icon-btn" title="自启项" onClick={onOpenAutoStart}>
+          <Zap size={16} />
+          {autoStartCount > 0 && <span className="autostart-badge">{autoStartCount}</span>}
+        </button>
+
         <select
           className="sort-select"
           value={sortMode}
