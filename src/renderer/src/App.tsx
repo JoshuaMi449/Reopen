@@ -18,7 +18,6 @@ import { DetailDrawer } from './components/DetailDrawer'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
-import { ThemeQuickPanel } from './components/ThemeQuickPanel'
 import { Toast, ToastData } from './components/Toast'
 import { Toolbar } from './components/Toolbar'
 import { applyTheme } from './theme'
@@ -66,8 +65,6 @@ export default function App(): React.JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null)
   /** 自启项气泡面板是否打开 */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
-  /** 外观快速面板是否打开 */
-  const [themeOpen, setThemeOpen] = useState(false)
   /** 系统当前亮暗（主题"跟随系统"用） */
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -84,8 +81,8 @@ export default function App(): React.JSX.Element {
 
   // 应用主题（PRD 3.8：风格+亮暗即时生效）
   useEffect(() => {
-    applyTheme(settings.theme, settings.darkMode, systemDark)
-  }, [settings.theme, settings.darkMode, systemDark])
+    applyTheme(settings.theme, settings.darkMode, systemDark, settings.rowDensity)
+  }, [settings.theme, settings.darkMode, systemDark, settings.rowDensity])
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])
@@ -111,6 +108,8 @@ export default function App(): React.JSX.Element {
       window.api.adoptAllRunning()
     })
     window.api.getSettings().then(setSettings)
+    // 设置窗口改了什么，主窗口即时同步
+    return window.api.onSettingsChanged(setSettings)
   }, [])
 
   // 订阅主进程推送：状态变化 + 日志（PRD 3.4）
@@ -151,8 +150,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'focus-search') searchRef.current?.focus()
       else if (action === 'set-view-list') updateSettings({ view: 'list' })
       else if (action === 'set-view-card') updateSettings({ view: 'card' })
-      else if (action === 'settings')
-        setThemeOpen(true) // M3-5 换成完整设置页
+      else if (action === 'settings') window.api.openSettingsWindow()
       else if (action === 'about') toast('Reopen 0.1.0（VC复活点）')
       else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
     })
@@ -399,7 +397,7 @@ export default function App(): React.JSX.Element {
           sortMode={settings.sortMode}
           onSort={(m) => updateSettings({ sortMode: m })}
           onAdd={() => setForm({ mode: 'manual' })}
-          onOpenSettings={() => setThemeOpen(!themeOpen)}
+          onOpenSettings={() => window.api.openSettingsWindow()}
           onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
           autoStartCount={settings.autoStartIds.length}
           searchInputRef={searchRef}
@@ -466,15 +464,6 @@ export default function App(): React.JSX.Element {
           onRemove={removeFromAutoStart}
           onDropId={addToAutoStart}
           onClose={() => setAutoStartOpen(false)}
-        />
-      )}
-
-      {themeOpen && (
-        <ThemeQuickPanel
-          theme={settings.theme}
-          darkMode={settings.darkMode}
-          onChange={updateSettings}
-          onClose={() => setThemeOpen(false)}
         />
       )}
 

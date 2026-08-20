@@ -167,8 +167,19 @@ export interface ReopenApi {
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */
   showMainWindow(action?: string): Promise<void>
   quitApp(): Promise<void>
+  /** 打开偏好设置窗口（独立窗口，Proma 式） */
+  openSettingsWindow(group?: string): Promise<void>
+  /** 开机自启（Mac 登录项）开关 */
+  setLaunchAtLogin(v: boolean): Promise<void>
+  /** 资料库导出/导入（JSON 文件对话框） */
+  exportData(): Promise<void>
+  importData(): Promise<void>
+  /** 在默认浏览器打开链接（关于组） */
+  openExternal(url: string): Promise<void>
   /** 订阅左上角应用菜单的动作，返回取消订阅函数 */
   onMenuAction(cb: (action: string) => void): () => void
+  /** 订阅设置变化（设置窗口改了之后主窗口同步），返回取消订阅函数 */
+  onSettingsChanged(cb: (s: Settings) => void): () => void
   /** 订阅状态变化，返回取消订阅函数 */
   onStatus(cb: (e: ProjectStatusEvent) => void): () => void
   /** 订阅日志，返回取消订阅函数 */

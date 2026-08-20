@@ -1,6 +1,6 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
 import { execSync, spawn, ChildProcess } from 'child_process'
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, Notification, shell } from 'electron'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -65,6 +65,13 @@ function setStatus(rt: Runtime, project: Project, status: ProjectStatus, port?: 
 function fail(rt: Runtime, project: Project, reason: string): void {
   emit({ id: project.id, status: 'failed', port: rt.port, reason })
   rt.status = 'failed'
+  // 设置开着"启动失败通知"时发系统通知（PRD 3.6 通知方式）
+  if (getSettings().notifyOnFail) {
+    new Notification({
+      title: 'Reopen',
+      body: `「${project.name}」启动失败：${reason}`
+    }).show()
+  }
 }
 
 // 每个项目最近 200 行日志（失败时翻译成大白话用）

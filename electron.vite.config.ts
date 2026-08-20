@@ -15,9 +15,10 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          // 主窗口 + 托盘面板两个入口
+          // 主窗口 + 托盘面板 + 偏好设置三个入口
           index: resolve('src/renderer/index.html'),
-          tray: resolve('src/renderer/tray.html')
+          tray: resolve('src/renderer/tray.html'),
+          settings: resolve('src/renderer/settings.html')
         }
       }
     }
