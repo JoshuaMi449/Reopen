@@ -11,6 +11,15 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    plugins: [react()],
+    build: {
+      rollupOptions: {
+        input: {
+          // 主窗口 + 托盘面板两个入口
+          index: resolve('src/renderer/index.html'),
+          tray: resolve('src/renderer/tray.html')
+        }
+      }
+    }
   }
 })

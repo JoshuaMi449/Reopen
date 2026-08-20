@@ -164,6 +164,11 @@ export interface ReopenApi {
   openProjectBrowser(id: string): Promise<StartResult>
   getSettings(): Promise<Settings>
   saveSettings(patch: Partial<Settings>): Promise<Settings>
+  /** 显示主窗口（托盘面板调用；可附带菜单动作） */
+  showMainWindow(action?: string): Promise<void>
+  quitApp(): Promise<void>
+  /** 订阅左上角应用菜单的动作，返回取消订阅函数 */
+  onMenuAction(cb: (action: string) => void): () => void
   /** 订阅状态变化，返回取消订阅函数 */
   onStatus(cb: (e: ProjectStatusEvent) => void): () => void
   /** 订阅日志，返回取消订阅函数 */

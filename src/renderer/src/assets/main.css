@@ -1,7 +1,11 @@
 /* Reopen 界面样式
-   M2 简版列表界面。主题色先写死 PRD 3.8 的莫兰迪默认值（晨雾暖沙），M3 换成 CSS 变量驱动多主题。 */
+   六套主题（PRD 3.8）：莫兰迪（默认）/海洋/石墨 × 亮暗，CSS 变量驱动；
+   风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
-:root {
+/* ---- 浅色三套 ---- */
+:root,
+:root[data-theme='morandi'] {
+  /* 晨雾暖沙 */
   --bg: #ece8e2;
   --card: #ffffff;
   --primary: #c0a29a;
@@ -9,9 +13,98 @@
   --text: #3a3433;
   --text-dim: #8a817c;
   --border: #ddd6cd;
+  --hover: #faf7f3;
+  --input-bg: #fdfbf8;
+  --danger-bg: #fdf3f2;
   --ok: #7ca982;
   --warn: #d9b45b;
   --danger: #c65f5f;
+}
+
+:root[data-theme='ocean'] {
+  /* 晴空 */
+  --bg: #ecf2f7;
+  --card: #ffffff;
+  --primary: #408abf;
+  --primary-strong: #34739f;
+  --text: #2c3a44;
+  --text-dim: #7d8a94;
+  --border: #d7e2ea;
+  --hover: #f5f9fc;
+  --input-bg: #fcfdfe;
+  --danger-bg: #fdf4f3;
+  --ok: #5f9d7c;
+  --warn: #d9a24b;
+  --danger: #c65f5f;
+}
+
+:root[data-theme='slate'] {
+  /* 晨雾 */
+  --bg: #e9e9e6;
+  --card: #ffffff;
+  --primary: #4a4a45;
+  --primary-strong: #5c5c55;
+  --text: #33332f;
+  --text-dim: #84847c;
+  --border: #d8d8d2;
+  --hover: #f6f6f3;
+  --input-bg: #fbfbf9;
+  --danger-bg: #fdf3f2;
+  --ok: #6f9478;
+  --warn: #b98a4a; /* 强调琥珀 */
+  --danger: #c65f5f;
+}
+
+/* ---- 深色三套 ---- */
+:root[data-theme='morandi'].dark {
+  /* 莫兰迪夜 */
+  --bg: #1e1b20;
+  --card: #29242b;
+  --primary: #c9a89e;
+  --primary-strong: #b08f85;
+  --text: #e8e2da;
+  --text-dim: #9a918a;
+  --border: #3a343c;
+  --hover: #2e2830;
+  --input-bg: #221e24;
+  --danger-bg: #33242a;
+  --ok: #7fa883;
+  --warn: #d9b45b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='ocean'].dark {
+  /* 深海 */
+  --bg: #141a21;
+  --card: #1d2730;
+  --primary: #5c85a8;
+  --primary-strong: #6f9bbc;
+  --text: #dde6ec;
+  --text-dim: #8b98a3;
+  --border: #2c3945;
+  --hover: #22303b;
+  --input-bg: #18222b;
+  --danger-bg: #2e2227;
+  --ok: #6ba181;
+  --warn: #d9a24b;
+  --danger: #d0736f;
+}
+
+:root[data-theme='slate'].dark {
+  /* 石墨夜 */
+  --bg: #1a1a18;
+  --card: #242421;
+  --primary: #8a8a82;
+  --primary-strong: #a0a097;
+  --text: #e5e5df;
+  --text-dim: #94948c;
+  --border: #34342f;
+  --hover: #2b2b27;
+  --input-bg: #1f1f1c;
+  --danger-bg: #2e2422;
+  --ok: #6f9478;
+  --warn: #d9a45b; /* 强调琥珀 */
+  --danger: #d0736f;
 }
 
 * {
@@ -101,7 +194,7 @@ select {
 }
 
 .sidebar-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--hover);
 }
 
 .sidebar-item-active {
@@ -264,7 +357,7 @@ select {
 
 .project-row.row-failed {
   border-color: var(--danger);
-  background: #fdf3f2;
+  background: var(--danger-bg);
 }
 
 .row-main {
@@ -276,7 +369,7 @@ select {
 }
 
 .row-main:hover {
-  background: #faf7f3;
+  background: var(--hover);
 }
 
 .status-dot {
@@ -545,7 +638,7 @@ select {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 10px;
-  background: #fdfbf8;
+  background: var(--input-bg);
   color: var(--text);
 }
 
@@ -679,7 +772,7 @@ select {
 }
 
 .context-item-danger:hover {
-  background: #fdf3f2;
+  background: var(--danger-bg);
 }
 
 /* ---------- 标签选择 ---------- */
@@ -711,7 +804,7 @@ select {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
-  background: #fdfbf8;
+  background: var(--input-bg);
   color: var(--text);
 }
 
@@ -722,7 +815,7 @@ select {
 
 .tag-chip {
   border: 1px solid var(--border);
-  background: #fdfbf8;
+  background: var(--input-bg);
   border-radius: 999px;
   padding: 4px 12px;
   font-size: 12px;
@@ -766,12 +859,12 @@ select {
 }
 
 .card:hover {
-  background: #faf7f3;
+  background: var(--hover);
 }
 
 .card-failed {
   border-color: var(--danger);
-  background: #fdf3f2;
+  background: var(--danger-bg);
 }
 
 .card-head {
@@ -946,4 +1039,220 @@ select {
 .autostart-switch input {
   width: 15px;
   height: 15px;
+}
+
+/* ---------- 外观快速面板 ---------- */
+
+.theme-panel {
+  position: fixed;
+  top: 52px;
+  right: 70px;
+  z-index: 301;
+  width: 240px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+  padding: 14px;
+}
+
+.theme-panel-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.theme-styles {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.theme-style {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 8px 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.theme-style:hover {
+  border-color: var(--primary-strong);
+}
+
+.theme-style-on {
+  border-color: var(--primary);
+  background: var(--hover);
+}
+
+.theme-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.theme-darkmodes {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-dark {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  border-radius: 7px;
+  padding: 6px 2px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.theme-dark:hover {
+  border-color: var(--primary-strong);
+}
+
+.theme-dark-on {
+  border-color: var(--primary);
+  background: var(--hover);
+}
+
+/* ---------- 托盘面板 ---------- */
+
+body.tray-window {
+  background: transparent;
+}
+
+body.tray-window #root {
+  height: auto;
+}
+
+.tray-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 6px;
+  padding: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  height: 376px;
+  overflow: hidden;
+}
+
+.tray-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tray-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.tray-running {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tray-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tray-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px 12px;
+  line-height: 1.6;
+}
+
+.tray-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tray-item:hover {
+  background: var(--hover);
+}
+
+.tray-item-failed {
+  color: var(--danger);
+}
+
+.tray-item-icon {
+  color: var(--primary-strong);
+  display: flex;
+}
+
+.tray-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tray-item-port {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.tray-item-fail-icon {
+  flex-shrink: 0;
+}
+
+.tray-item-browser {
+  width: 22px;
+  height: 22px;
+}
+
+.tray-item-action {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.tray-foot {
+  display: flex;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.tray-foot-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 2px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.tray-foot-btn:hover {
+  background: var(--hover);
 }

@@ -22,6 +22,13 @@ const api: ReopenApi = {
   openProjectBrowser: (id) => ipcRenderer.invoke('project:open-browser', id),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+  showMainWindow: (action) => ipcRenderer.invoke('window:show-main', action),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
+  onMenuAction: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, action: string): void => cb(action)
+    ipcRenderer.on('app:menu-action', listener)
+    return () => ipcRenderer.removeListener('app:menu-action', listener)
+  },
   onStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, event: ProjectStatusEvent): void => cb(event)
     ipcRenderer.on('project:status', listener)

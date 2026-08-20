@@ -1,41 +1,10 @@
-import { app, shell, BrowserWindow } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { app, BrowserWindow } from 'electron'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
+import { createAppMenu } from './menu'
 import { autoStartAll } from './projectManager'
-
-function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-}
+import { initTray } from './tray'
+import { createWindow, markQuitting } from './window'
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -56,6 +25,10 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  // 左上角应用菜单（全量标准六菜单）+ 右上角托盘
+  createAppMenu()
+  initTray()
+
   // 自启项：打开 Reopen 自动拉起（PRD 3.5 两层自动机制中的软件层）
   autoStartAll()
 
@@ -64,6 +37,10 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  markQuitting()
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common

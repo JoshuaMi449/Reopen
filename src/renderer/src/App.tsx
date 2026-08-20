@@ -17,8 +17,10 @@ import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
+import { ThemeQuickPanel } from './components/ThemeQuickPanel'
 import { Toast, ToastData } from './components/Toast'
 import { Toolbar } from './components/Toolbar'
+import { applyTheme } from './theme'
 
 interface FormState {
   mode: 'create' | 'edit' | 'manual'
@@ -62,7 +64,26 @@ export default function App(): React.JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null)
   /** 自启项气泡面板是否打开 */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
+  /** 外观快速面板是否打开 */
+  const [themeOpen, setThemeOpen] = useState(false)
+  /** 系统当前亮暗（主题"跟随系统"用） */
+  const [systemDark, setSystemDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // 跟随系统亮暗变化
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent): void => setSystemDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // 应用主题（PRD 3.8：风格+亮暗即时生效）
+  useEffect(() => {
+    applyTheme(settings.theme, settings.darkMode, systemDark)
+  }, [settings.theme, settings.darkMode, systemDark])
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])
@@ -120,6 +141,21 @@ export default function App(): React.JSX.Element {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // 左上角应用菜单的动作（menu.ts 发送）
+  useEffect(() => {
+    const off = window.api.onMenuAction((action) => {
+      if (action === 'add-project') setForm({ mode: 'manual' })
+      else if (action === 'focus-search') searchRef.current?.focus()
+      else if (action === 'set-view-list') updateSettings({ view: 'list' })
+      else if (action === 'set-view-card') updateSettings({ view: 'card' })
+      else if (action === 'settings')
+        setThemeOpen(true) // M3-5 换成完整设置页
+      else if (action === 'about') toast('Reopen 0.1.0（VC复活点）')
+      else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
+    })
+    return off
+  }, [toast, updateSettings])
 
   // 已有标签聚合（颜色在展示时惰性分配：settings.tagColors 有则用，没有按色板顺序 fallback）
   const allTags = useMemo(() => [...new Set(projects.flatMap((p) => p.tags))].sort(), [projects])
@@ -358,7 +394,7 @@ export default function App(): React.JSX.Element {
           sortMode={settings.sortMode}
           onSort={(m) => updateSettings({ sortMode: m })}
           onAdd={() => setForm({ mode: 'manual' })}
-          onOpenSettings={() => toast('偏好设置在 M3-5 实现，先记着')}
+          onOpenSettings={() => setThemeOpen(!themeOpen)}
           onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
           autoStartCount={settings.autoStartIds.length}
           searchInputRef={searchRef}
@@ -431,6 +467,15 @@ export default function App(): React.JSX.Element {
           onRemove={removeFromAutoStart}
           onDropId={addToAutoStart}
           onClose={() => setAutoStartOpen(false)}
+        />
+      )}
+
+      {themeOpen && (
+        <ThemeQuickPanel
+          theme={settings.theme}
+          darkMode={settings.darkMode}
+          onChange={updateSettings}
+          onClose={() => setThemeOpen(false)}
         />
       )}
 

@@ -17,6 +17,8 @@ import {
   saveSettings,
   updateProject
 } from './store'
+import { appQuit, refreshTray } from './tray'
+import { showMainWindow } from './window'
 
 export function registerIpc(): void {
   ipcMain.handle('project:list', () => listProjects())
@@ -37,5 +39,12 @@ export function registerIpc(): void {
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
   ipcMain.handle('project:open-browser', (_e, id: string) => openProjectBrowser(id))
   ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => saveSettings(patch))
+  ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => {
+    const saved = saveSettings(patch)
+    // 托盘启用/图标样式变化 → 立即刷新托盘
+    if ('trayEnabled' in patch || 'trayIcon' in patch) refreshTray()
+    return saved
+  })
+  ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
+  ipcMain.handle('app:quit', () => appQuit())
 }
