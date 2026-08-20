@@ -420,7 +420,15 @@ html.dark .sidebar-logo-word,
   display: flex;
   border: 1px solid var(--border);
   border-radius: 7px;
-  overflow: hidden;
+  /* 不用 overflow:hidden——会裁掉按钮下方的悬停气泡（2026-08-20 实测反馈），改首尾圆角 */
+}
+
+.view-switch button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.view-switch button:last-child {
+  border-radius: 0 6px 6px 0;
 }
 
 .view-switch .icon-btn {
