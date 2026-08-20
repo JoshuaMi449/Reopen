@@ -1,26 +1,13 @@
-import { useEffect, useRef } from 'react'
-import {
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Folder,
-  FileCode2,
-  Play,
-  RotateCcw,
-  Square,
-  Trash2
-} from 'lucide-react'
+import { Check, Folder, FileCode2, Play, Square } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface Props {
   project: Project
   status?: ProjectStatusEvent
-  logs: string[]
-  expanded: boolean
-  onToggle(): void
+  /** 点击行：打开右侧详情抽屉（2026-08-20 拍板，不再行内展开） */
+  onOpen(): void
   onStart(): void
   onStop(): void
-  onDelete(): void
   /** 右键菜单（PRD 3.3） */
   onContextMenu(e: React.MouseEvent): void
   /** 手动排序（访达式拖拽）：仅在手动排序模式下启用 */
@@ -46,16 +33,13 @@ function formatTime(ts?: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 列表行 + 行内展开面板（PRD 3.3 列表行、3.4 行内面板） */
+/** 列表行（PRD 3.3 列表行；点击打开右侧详情抽屉） */
 export function ProjectRow({
   project,
   status,
-  logs,
-  expanded,
-  onToggle,
+  onOpen,
   onStart,
   onStop,
-  onDelete,
   onContextMenu,
   sortDraggable,
   onDragStart,
@@ -74,7 +58,7 @@ export function ProjectRow({
       <div
         className="row-main"
         draggable={sortDraggable}
-        onClick={onToggle}
+        onClick={onOpen}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)
@@ -126,83 +110,7 @@ export function ProjectRow({
               <Play size={16} />
             </button>
           )}
-          <button className="icon-btn" title={expanded ? '收起' : '展开'}>
-            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
         </span>
-      </div>
-
-      {expanded && (
-        <DetailPanel
-          project={project}
-          status={status}
-          logs={logs}
-          onStart={onStart}
-          onStop={onStop}
-          onDelete={onDelete}
-        />
-      )}
-    </div>
-  )
-}
-
-/** 行内展开面板：状态、端口、命令、实时日志（PRD 3.4；卡片视图共用） */
-export function DetailPanel({
-  project,
-  status,
-  logs,
-  onStart,
-  onStop,
-  onDelete
-}: {
-  project: Project
-  status?: ProjectStatusEvent
-  logs: string[]
-  onStart(): void
-  onStop(): void
-  onDelete(): void
-}): React.JSX.Element {
-  const logRef = useRef<HTMLDivElement>(null)
-
-  // 日志自动滚到底
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [logs])
-
-  const st = status?.status ?? 'stopped'
-
-  return (
-    <div className="detail-panel">
-      <div className="detail-meta">
-        <span>
-          状态：<b>{STATUS_TEXT[st]}</b>
-        </span>
-        <span>端口：{status?.port ?? project.port ?? '—'}</span>
-        {project.type === 'service' && <span>命令：{project.command ?? '—'}</span>}
-        <span className="detail-actions">
-          <button
-            className="btn-secondary"
-            onClick={onStart}
-            disabled={st === 'running' || st === 'starting'}
-          >
-            <RotateCcw size={14} /> 重启
-          </button>
-          {st === 'running' || st === 'starting' ? (
-            <button className="btn-secondary" onClick={onStop}>
-              <Square size={14} /> 停止
-            </button>
-          ) : null}
-          <button className="btn-danger" onClick={onDelete}>
-            <Trash2 size={14} /> 删除
-          </button>
-        </span>
-      </div>
-      <div className="detail-log" ref={logRef}>
-        {logs.length === 0 ? (
-          <div className="log-empty">还没有日志。点「重启」开始运行。</div>
-        ) : (
-          logs.map((line, i) => <div key={i}>{line}</div>)
-        )}
       </div>
     </div>
   )

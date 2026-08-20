@@ -14,6 +14,7 @@ import { AutoStartPanel } from './components/AutoStartPanel'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
+import { DetailDrawer } from './components/DetailDrawer'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
@@ -51,7 +52,8 @@ export default function App(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [statuses, setStatuses] = useState<Record<string, ProjectStatusEvent>>({})
   const [logs, setLogs] = useState<Record<string, string[]>>({})
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  /** 右侧详情抽屉显示的项目 id */
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [search, setSearch] = useState('')
   const [form, setForm] = useState<FormState | null>(null)
@@ -351,8 +353,11 @@ export default function App(): React.JSX.Element {
     if (!deleteTarget) return
     await window.api.deleteProject(deleteTarget.id)
     setProjects((ps) => ps.filter((p) => p.id !== deleteTarget.id))
+    if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
   }
+
+  const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
   return (
     <div
@@ -415,12 +420,9 @@ export default function App(): React.JSX.Element {
                 key={p.id}
                 project={p}
                 status={statuses[p.id]}
-                logs={logs[p.id] ?? []}
-                expanded={expandedId === p.id}
-                onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                onOpen={() => setSelectedId(p.id)}
                 onStart={() => handleStart(p)}
                 onStop={() => window.api.stopProject(p.id)}
-                onDelete={() => setDeleteTarget(p)}
                 onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
                 sortDraggable={settings.sortMode === 'manual' || settings.autoStartEnabled}
                 onDragStart={(e) => handleRowDragStart(e, p)}
@@ -435,13 +437,10 @@ export default function App(): React.JSX.Element {
             <CardView
               projects={visibleProjects}
               statuses={statuses}
-              logs={logs}
-              expandedId={expandedId}
               autoStartIds={settings.autoStartIds}
-              onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+              onOpen={(p) => setSelectedId(p.id)}
               onStart={handleStart}
               onStop={(p) => window.api.stopProject(p.id)}
-              onDelete={(p) => setDeleteTarget(p)}
               onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
             />
           )}
@@ -485,6 +484,20 @@ export default function App(): React.JSX.Element {
           y={menu.y}
           items={menuItems(menu.project)}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {selectedProject && (
+        <DetailDrawer
+          project={selectedProject}
+          status={statuses[selectedProject.id]}
+          logs={logs[selectedProject.id] ?? []}
+          onStart={() => handleStart(selectedProject)}
+          onStop={() => window.api.stopProject(selectedProject.id)}
+          onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
+          onDelete={() => setDeleteTarget(selectedProject)}
+          onOpenBrowser={() => handleOpenBrowser(selectedProject)}
+          onClose={() => setSelectedId(null)}
         />
       )}
 

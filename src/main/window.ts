@@ -18,6 +18,8 @@ export function createWindow(): void {
     height: 700,
     show: false,
     autoHideMenuBar: true,
+    // macOS 隐藏标题栏：红黄绿按钮浮在内容上，没有深色黑边（2026-08-20 用户反馈）
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

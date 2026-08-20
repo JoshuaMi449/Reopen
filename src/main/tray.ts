@@ -3,17 +3,14 @@ import { app, BrowserWindow, nativeImage, Tray, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import { getSettings } from './store'
+import icon from '../../resources/icon.png?asset'
 
 let tray: Tray | null = null
 let panel: BrowserWindow | null = null
 
-/** 托盘图标：lucide Zap 的 SVG 转模板图（黑白自动适配深色顶栏）或彩色 */
+/** 托盘图标：先用工程自带 PNG（M4 换正式设计的图标）；黑白模板自动适配深色顶栏 */
 function trayIconImage(mono: boolean): Electron.NativeImage {
-  const color = mono ? '#000000' : '#c9a89e'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`
-  const img = nativeImage.createFromDataURL(
-    `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
-  )
+  const img = nativeImage.createFromPath(icon).resize({ width: 18, height: 18 })
   if (mono) img.setTemplateImage(true)
   return img
 }
