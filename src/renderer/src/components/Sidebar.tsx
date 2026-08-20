@@ -20,7 +20,7 @@ export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.
   ]
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-tour="sidebar">
       <nav className="sidebar-nav">
         {items.map((item) => (
           <button

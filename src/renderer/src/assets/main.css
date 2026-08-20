@@ -1666,3 +1666,101 @@ body.tray-window #root {
   align-items: center;
   gap: 6px;
 }
+
+/* ---------- 新手引导 ---------- */
+
+.welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.welcome-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.welcome h1 {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.welcome p {
+  color: var(--text-dim);
+  line-height: 1.9;
+  font-size: 14px;
+}
+
+.welcome-btn {
+  margin-top: 10px;
+  padding: 9px 36px;
+  font-size: 14px;
+}
+
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 16, 18, 0.55);
+  z-index: 900;
+}
+
+.tour-highlight {
+  position: relative !important;
+  z-index: 901 !important;
+  outline: 2px solid var(--primary-strong);
+  outline-offset: 3px;
+  border-radius: 10px;
+  background: var(--card) !important;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 910;
+  width: 320px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+
+.tour-step {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.tour-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.tour-card p {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.tour-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}

@@ -52,7 +52,7 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        <button className="icon-btn" title="自启项" onClick={onOpenAutoStart}>
+        <button className="icon-btn" title="自启项" onClick={onOpenAutoStart} data-tour="autostart">
           <Zap size={16} />
           {autoStartCount > 0 && <span className="autostart-badge">{autoStartCount}</span>}
         </button>
@@ -87,7 +87,7 @@ export function Toolbar({
 
         <span className="toolbar-divider" />
 
-        <button className="icon-btn" title="添加项目" onClick={onAdd}>
+        <button className="icon-btn" title="添加项目" onClick={onAdd} data-tour="add">
           <Plus size={16} />
         </button>
         <button className="icon-btn" title="偏好设置" onClick={onOpenSettings}>

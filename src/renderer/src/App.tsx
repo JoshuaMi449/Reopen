@@ -15,6 +15,7 @@ import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { DetailDrawer } from './components/DetailDrawer'
+import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
@@ -65,6 +66,8 @@ export default function App(): React.JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null)
   /** 自启项气泡面板是否打开 */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
+  /** 新手引导是否显示（首次打开） */
+  const [showOnboarding, setShowOnboarding] = useState(false)
   /** 系统当前亮暗（主题"跟随系统"用） */
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -107,7 +110,10 @@ export default function App(): React.JSX.Element {
       setProjects(ps)
       window.api.adoptAllRunning()
     })
-    window.api.getSettings().then(setSettings)
+    window.api.getSettings().then((s) => {
+      setSettings(s)
+      if (!s.onboarded) setShowOnboarding(true)
+    })
     // 设置窗口改了什么，主窗口即时同步
     return window.api.onSettingsChanged(setSettings)
   }, [])
@@ -403,7 +409,7 @@ export default function App(): React.JSX.Element {
           searchInputRef={searchRef}
         />
 
-        <main className="project-list">
+        <main className="project-list" data-tour="list">
           {projects.length === 0 ? (
             <div className="empty">
               还没有项目。
@@ -521,6 +527,15 @@ export default function App(): React.JSX.Element {
       )}
 
       <Toast toasts={toasts} />
+
+      {showOnboarding && (
+        <Onboarding
+          onDone={() => {
+            updateSettings({ onboarded: true })
+            setShowOnboarding(false)
+          }}
+        />
+      )}
     </div>
   )
 }
