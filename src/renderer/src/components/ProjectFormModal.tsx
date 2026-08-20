@@ -1,49 +1,112 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import type { DetectSuccess, NewProjectInput, ProjectType } from '../../../shared/types'
+import type { DetectSuccess, NewProjectInput, Project, ProjectType } from '../../../shared/types'
 
 interface Props {
-  detect: DetectSuccess
-  /** 已有标签：可直接点选（用户要求：选之前已有的标签） */
+  /** create：拖拽识别后登记；edit：编辑已有项目；manual：「+」按钮手动添加 */
+  mode: 'create' | 'edit' | 'manual'
+  detect?: DetectSuccess
+  project?: Project
+  /** 已有标签：可直接点选 */
   existingTags: string[]
   onSubmit(input: NewProjectInput): void
   onCancel(): void
 }
 
-/** 确认表单：全自动猜预填，只需确认或修改（PRD 3.2） */
+interface FormValues {
+  name: string
+  type: ProjectType
+  path: string
+  command: string
+  port: string
+  openBrowser: boolean
+  note: string
+  tags: string[]
+}
+
+function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Project): FormValues {
+  if (mode === 'edit' && project) {
+    return {
+      name: project.name,
+      type: project.type,
+      path: project.path,
+      command: project.command ?? '',
+      port: project.port?.toString() ?? '',
+      openBrowser: project.openBrowser,
+      note: project.note,
+      tags: project.tags
+    }
+  }
+  if (mode === 'create' && detect) {
+    return {
+      name: detect.suggested.name,
+      type: detect.type,
+      path: detect.path,
+      command: detect.suggested.command ?? '',
+      port: detect.suggested.port?.toString() ?? '',
+      openBrowser: false,
+      note: '',
+      tags: []
+    }
+  }
+  return {
+    name: '',
+    type: 'service',
+    path: '',
+    command: '',
+    port: '',
+    openBrowser: false,
+    note: '',
+    tags: []
+  }
+}
+
+const TITLES: Record<Props['mode'], string> = {
+  create: '登记项目',
+  edit: '编辑项目',
+  manual: '添加项目'
+}
+
+const SUBMIT_TEXT: Record<Props['mode'], string> = {
+  create: '添加',
+  edit: '保存',
+  manual: '添加'
+}
+
+/** 项目表单：登记/编辑/手动三种模式（PRD 3.2 确认表单 + 3.3 右键编辑） */
 export function ProjectFormModal({
+  mode,
   detect,
+  project,
   existingTags,
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
-  const [name, setName] = useState(detect.suggested.name)
-  const [type, setType] = useState<ProjectType>(detect.type)
-  const [path, setPath] = useState(detect.path)
-  const [command, setCommand] = useState(detect.suggested.command ?? '')
-  const [port, setPort] = useState(detect.suggested.port?.toString() ?? '')
+  const init = initialValues(mode, detect, project)
+  const [name, setName] = useState(init.name)
+  const [type, setType] = useState<ProjectType>(init.type)
+  const [path, setPath] = useState(init.path)
+  const [command, setCommand] = useState(init.command)
+  const [port, setPort] = useState(init.port)
   // PRD 3.2：启动后开浏览器默认关（两种类型都是）
-  const [openBrowser, setOpenBrowser] = useState(false)
-  const [note, setNote] = useState('')
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [openBrowser, setOpenBrowser] = useState(init.openBrowser)
+  const [note, setNote] = useState(init.note)
+  const [selectedTags, setSelectedTags] = useState<string[]>(init.tags)
   const [tagInput, setTagInput] = useState('')
-
-  const switchType = (t: ProjectType): void => {
-    setType(t)
-  }
 
   const toggleTag = (tag: string): void => {
     setSelectedTags((ts) => (ts.includes(tag) ? ts.filter((t) => t !== tag) : [...ts, tag]))
   }
 
   const commandMissing = type === 'service' && !command.trim()
+  const pathMissing = !path.trim()
 
   const submit = (): void => {
     const portNum = Number(port.trim())
     onSubmit({
-      name: name.trim() || detect.suggested.name,
+      name: name.trim() || init.name,
       type,
-      path,
+      path: path.trim(),
       command: type === 'service' ? command.trim() || undefined : undefined,
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       openBrowser,
@@ -62,7 +125,7 @@ export function ProjectFormModal({
     <div className="modal-backdrop">
       <div className="modal modal-form">
         <div className="modal-header">
-          <h2>登记项目</h2>
+          <h2>{TITLES[mode]}</h2>
           <button className="icon-btn" onClick={onCancel} title="关闭">
             <X size={16} />
           </button>
@@ -71,7 +134,7 @@ export function ProjectFormModal({
         <div className="form-body">
           <label>
             <span>类型</span>
-            <select value={type} onChange={(e) => switchType(e.target.value as ProjectType)}>
+            <select value={type} onChange={(e) => setType(e.target.value as ProjectType)}>
               <option value="service">本地服务（起命令）</option>
               <option value="web">网页文件（起临时服务）</option>
             </select>
@@ -84,7 +147,11 @@ export function ProjectFormModal({
 
           <label>
             <span>路径</span>
-            <input value={path} onChange={(e) => setPath(e.target.value)} />
+            <input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="项目文件夹或 html 文件的路径"
+            />
           </label>
 
           {type === 'service' && (
@@ -145,11 +212,12 @@ export function ProjectFormModal({
 
         <div className="modal-actions">
           {commandMissing && <span className="form-error">本地服务需要填启动命令</span>}
+          {!commandMissing && pathMissing && <span className="form-error">需要填路径</span>}
           <button className="btn-secondary" onClick={onCancel}>
             取消
           </button>
-          <button className="btn-primary" onClick={submit} disabled={commandMissing}>
-            添加
+          <button className="btn-primary" onClick={submit} disabled={commandMissing || pathMissing}>
+            {SUBMIT_TEXT[mode]}
           </button>
         </div>
       </div>

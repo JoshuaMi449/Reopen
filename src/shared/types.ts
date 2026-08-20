@@ -88,6 +88,64 @@ export interface StartResult {
   reason?: string
 }
 
+/** 应用设置（settings.json；随 M3 各步扩展） */
+export interface Settings {
+  /** 手动排序的 id 顺序（访达式"手动拖拽"排序） */
+  manualOrder: string[]
+  /** 列表/卡片视图 */
+  view: 'list' | 'card'
+  /** 当前排序方式 */
+  sortMode: 'manual' | 'recent' | 'name'
+  /** 标签 → 颜色（访达式彩色标签，色板循环分配） */
+  tagColors: Record<string, string>
+  /** 自启项总开关（默认关，PRD 3.5） */
+  autoStartEnabled: boolean
+  /** 自启项内的项目 id */
+  autoStartIds: string[]
+  /** 主题风格（PRD 3.8） */
+  theme: 'morandi' | 'ocean' | 'slate'
+  /** 亮暗：跟随系统 / 浅 / 深 */
+  darkMode: 'system' | 'light' | 'dark'
+  /** 关闭窗口 = 最小化到托盘（默认开，2026-08-20 拍板） */
+  closeToTray: boolean
+  /** 托盘图标：黑白模板 / 彩色 */
+  trayIcon: 'mono' | 'color'
+  /** 菜单栏（托盘）启用，默认开（PRD 3.7） */
+  trayEnabled: boolean
+  /** 全局唤起窗口的快捷键（默认 ⌥+R） */
+  hotkey: string
+  /** 项目快捷启动绑定：项目 id → 组合键 */
+  quickLaunch: Record<string, string>
+  /** 开机自启（Mac 登录项） */
+  launchAtLogin: boolean
+  /** 失败时发系统通知 */
+  notifyOnFail: boolean
+  /** 列表间距（外观设置） */
+  rowDensity: 'comfortable' | 'compact'
+  /** Onboarding 是否已完成（仅首次显示） */
+  onboarded: boolean
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  manualOrder: [],
+  view: 'list',
+  sortMode: 'manual',
+  tagColors: {},
+  autoStartEnabled: false,
+  autoStartIds: [],
+  theme: 'morandi',
+  darkMode: 'system',
+  closeToTray: true,
+  trayIcon: 'mono',
+  trayEnabled: true,
+  hotkey: 'Alt+R',
+  quickLaunch: {},
+  launchAtLogin: false,
+  notifyOnFail: false,
+  rowDensity: 'comfortable',
+  onboarded: false
+}
+
 /** 渲染层可用的全部 API（preload 通过 contextBridge 暴露为 window.api） */
 export interface ReopenApi {
   /** 拖拽的 File 对象 → 磁盘路径（Electron 32+ 需 webUtils） */
@@ -96,6 +154,7 @@ export interface ReopenApi {
   detectPath(path: string): Promise<DetectOutcome>
   parseApp(path: string): Promise<DetectOutcome>
   addProject(input: NewProjectInput): Promise<Project>
+  updateProject(id: string, input: NewProjectInput): Promise<Project>
   deleteProject(id: string): Promise<void>
   startProject(id: string): Promise<StartResult>
   stopProject(id: string): Promise<void>
@@ -103,6 +162,8 @@ export interface ReopenApi {
   adoptAllRunning(): Promise<void>
   /** 在默认浏览器打开该项目（右键菜单），需项目已运行 */
   openProjectBrowser(id: string): Promise<StartResult>
+  getSettings(): Promise<Settings>
+  saveSettings(patch: Partial<Settings>): Promise<Settings>
   /** 订阅状态变化，返回取消订阅函数 */
   onStatus(cb: (e: ProjectStatusEvent) => void): () => void
   /** 订阅日志，返回取消订阅函数 */

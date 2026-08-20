@@ -22,6 +22,11 @@ interface Props {
   onDelete(): void
   /** 右键菜单（PRD 3.3） */
   onContextMenu(e: React.MouseEvent): void
+  /** 手动排序（访达式拖拽）：仅在手动排序模式下启用 */
+  sortDraggable?: boolean
+  onDragStart?(e: React.DragEvent): void
+  onDragOver?(e: React.DragEvent): void
+  onDrop?(e: React.DragEvent): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -48,7 +53,11 @@ export function ProjectRow({
   onStart,
   onStop,
   onDelete,
-  onContextMenu
+  onContextMenu,
+  sortDraggable,
+  onDragStart,
+  onDragOver,
+  onDrop
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -60,11 +69,15 @@ export function ProjectRow({
     <div className={`project-row ${failed ? 'row-failed' : ''}`}>
       <div
         className="row-main"
+        draggable={sortDraggable}
         onClick={onToggle}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)
         }}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         <span className={`status-dot dot-${st}`} title={STATUS_TEXT[st]} />
         <span className="row-icon">
@@ -124,8 +137,8 @@ export function ProjectRow({
   )
 }
 
-/** 行内展开面板：状态、端口、命令、实时日志（PRD 3.4） */
-function DetailPanel({
+/** 行内展开面板：状态、端口、命令、实时日志（PRD 3.4；卡片视图共用） */
+export function DetailPanel({
   project,
   status,
   logs,

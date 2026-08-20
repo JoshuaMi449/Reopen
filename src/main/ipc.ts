@@ -1,6 +1,6 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
 import { ipcMain } from 'electron'
-import type { NewProjectInput } from '../shared/types'
+import type { NewProjectInput, Settings } from '../shared/types'
 import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
@@ -9,7 +9,14 @@ import {
   startProject,
   stopProject
 } from './projectManager'
-import { addProject, deleteProject, listProjects } from './store'
+import {
+  addProject,
+  deleteProject,
+  getSettings,
+  listProjects,
+  saveSettings,
+  updateProject
+} from './store'
 
 export function registerIpc(): void {
   ipcMain.handle('project:list', () => listProjects())
@@ -21,9 +28,14 @@ export function registerIpc(): void {
     adoptRunning(project)
     return project
   })
+  ipcMain.handle('project:update', (_e, id: string, input: NewProjectInput) =>
+    updateProject(id, input)
+  )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:start', (_e, id: string) => startProject(id))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
   ipcMain.handle('project:open-browser', (_e, id: string) => openProjectBrowser(id))
+  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => saveSettings(patch))
 }

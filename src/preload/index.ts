@@ -14,11 +14,14 @@ const api: ReopenApi = {
   detectPath: (path) => ipcRenderer.invoke('project:detect', path),
   parseApp: (path) => ipcRenderer.invoke('project:parse-app', path),
   addProject: (input: NewProjectInput) => ipcRenderer.invoke('project:add', input),
+  updateProject: (id, input) => ipcRenderer.invoke('project:update', id, input),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
   startProject: (id) => ipcRenderer.invoke('project:start', id),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
   adoptAllRunning: () => ipcRenderer.invoke('project:adopt-all'),
   openProjectBrowser: (id) => ipcRenderer.invoke('project:open-browser', id),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   onStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, event: ProjectStatusEvent): void => cb(event)
     ipcRenderer.on('project:status', listener)
