@@ -83,6 +83,8 @@ export function getSettings(): Settings {
     console.error('读取 settings.json 失败，按默认设置继续：', err)
   }
   if (!settings) settings = { ...DEFAULT_SETTINGS }
+  // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（2026-08-20）
+  if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
   return settings
 }
 

@@ -17,6 +17,9 @@ export function createWindow(): void {
     // 三栏布局默认宽度（2026-08-20 拍板：左 190 + 右 380 固定，中间弹性；窗口可调）
     width: 1120,
     height: 700,
+    // 最小尺寸锁死：保证三栏+工具栏内容都可见，不能无限缩小（2026-08-20 拍板）
+    minWidth: 980,
+    minHeight: 620,
     show: false,
     autoHideMenuBar: true,
     // macOS 隐藏标题栏：红黄绿按钮浮在内容上，没有深色黑边（2026-08-20 用户反馈）

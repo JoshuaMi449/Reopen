@@ -1,20 +1,20 @@
-import { Clock, FileCode2, Folder, LayoutGrid, Tag } from 'lucide-react'
+import { FileCode2, Folder, LayoutGrid, Settings as SettingsIcon, Tag } from 'lucide-react'
+import logo from '../../../../resources/tray-icon.png'
 
-/** 侧边栏分类：全部/最近使用/服务/网页 + tag:xxx */
-export type Category = 'all' | 'recent' | 'service' | 'web' | `tag:${string}`
+/** 侧边栏分类：全部/服务/网页 + tag:xxx（2026-08-20 拍板：删"最近使用"） */
+export type Category = 'all' | 'service' | 'web' | `tag:${string}`
 
 interface Props {
   category: Category
   tags: { name: string; color: string }[]
-  counts: { all: number; recent: number; service: number; web: number }
+  counts: { all: number; service: number; web: number }
   onSelect(c: Category): void
 }
 
-/** 侧边栏（PRD 3.3：按类型和标签浏览你的项目） */
+/** 侧边栏（PRD 3.3：按类型和标签浏览你的项目；底部 logo + 设置入口，2026-08-20 拍板） */
 export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.Element {
   const items: { key: Category; label: string; icon: React.ReactNode; count: number }[] = [
     { key: 'all', label: '全部', icon: <LayoutGrid size={15} />, count: counts.all },
-    { key: 'recent', label: '最近使用', icon: <Clock size={15} />, count: counts.recent },
     { key: 'service', label: '服务', icon: <Folder size={15} />, count: counts.service },
     { key: 'web', label: '网页', icon: <FileCode2 size={15} />, count: counts.web }
   ]
@@ -54,6 +54,19 @@ export function Sidebar({ category, tags, counts, onSelect }: Props): React.JSX.
           })}
         </div>
       )}
+
+      <div className="sidebar-bottom">
+        <div className="sidebar-logo">
+          <img src={logo} alt="Reopen" draggable={false} />
+          <span>Reopen</span>
+        </div>
+        <button className="sidebar-item" onClick={() => window.api.openSettingsWindow()}>
+          <span className="sidebar-icon">
+            <SettingsIcon size={15} />
+          </span>
+          <span className="sidebar-label">设置</span>
+        </button>
+      </div>
     </aside>
   )
 }

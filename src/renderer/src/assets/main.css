@@ -146,36 +146,20 @@ select {
 .app {
   height: 100vh;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
   background: var(--bg);
 }
 
-/* 标题行：红黄绿按钮浮在本行左侧，logo 在按钮右侧（2026-08-20 用户要求） */
-.titlebar {
+/* 右侧容器：工具栏 + 两块圆角卡片区（2026-08-20 拍板：左栏贴边到顶，中右保持卡片） */
+.app-right {
+  flex: 1;
   display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 6px 0 78px;
-  flex-shrink: 0;
-  -webkit-app-region: drag;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  min-width: 0;
 }
 
-.titlebar-logo {
-  width: 16px;
-  height: 16px;
-}
-
-.titlebar-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.3px;
-}
-
-/* 三块圆角卡片区（2026-08-20 拍板：Proma classic 式，四边有间隙浮在背景上） */
+/* 两块圆角卡片区（Proma classic 式，四边有间隙浮在背景上） */
 .app-body {
   flex: 1;
   display: flex;
@@ -193,12 +177,13 @@ select {
   border-radius: 12px;
   /* 三栏前后层次：从左到右逐级变亮（bg→card），营造纵深 */
   background: color-mix(in srgb, var(--bg) 46%, var(--card) 54%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08); /* Proma 式下阴影 */
 }
 
 .project-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 20px 24px;
+  padding: 16px; /* 四边统一（2026-08-20 用户反馈） */
 }
 
 /* ---------- 侧边栏 ---------- */
@@ -206,15 +191,14 @@ select {
 .sidebar {
   width: 190px;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 8px;
+  /* 贴边到顶（2026-08-20 拍板）：无圆角无间隙，顶部让位红黄绿按钮 */
+  padding: 44px 8px 14px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
-  /* 三栏前后层次：最左最接近窗口底色 */
-  background: color-mix(in srgb, var(--bg) 72%, var(--card) 28%);
+  background: var(--bg);
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.05); /* 右投影与中栏拉开前后 */
   -webkit-app-region: drag; /* 侧边栏顶部区域可拖动窗口 */
 }
 
@@ -280,6 +264,35 @@ select {
   gap: 2px;
 }
 
+/* 底部：logo（纯展示）+ 设置入口（2026-08-20 拍板） */
+.sidebar-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 10px 6px;
+}
+
+.sidebar-logo img {
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-logo span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
 .tag-dot {
   width: 9px;
   height: 9px;
@@ -310,16 +323,30 @@ select {
 }
 
 .search-box {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 8px;
-  padding: 6px 10px;
-  max-width: 380px;
+  /* 收起式搜索（2026-08-20 拍板）：默认宽度 0，点击搜索 icon 滑出 */
+  width: 0;
+  padding: 6px 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    width 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.2s,
+    opacity 0.15s,
+    border-color 0.15s;
   -webkit-app-region: no-drag;
+}
+
+.search-box-open {
+  width: 240px;
+  padding: 6px 10px;
+  opacity: 1;
+  border-color: var(--border);
 }
 
 .search-box:focus-within {
@@ -346,6 +373,29 @@ select {
   align-items: center;
   gap: 6px;
   -webkit-app-region: no-drag;
+}
+
+/* 悬停说明气泡（2026-08-20 拍板：1.5 秒弹出，浮在触发元素上方） */
+.tip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tip-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  z-index: 950;
+  pointer-events: none;
 }
 
 .toolbar-divider {
@@ -570,6 +620,7 @@ select {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08); /* Proma 式下阴影 */
   animation: drawer-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -956,6 +1007,25 @@ select {
 
 /* ---------- 卡片视图 ---------- */
 
+/* 标签排序组头（列表与卡片视图共用；卡片视图里横跨整行，2026-08-20 拍板） */
+.list-group-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 10px 2px 6px;
+}
+
+.list-group-header .tag-dot {
+  background: var(--text-dim); /* 无标签组头用灰色 */
+}
+
+.card-grid-full {
+  grid-column: 1 / -1;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -1062,8 +1132,7 @@ select {
 
 .autostart-panel {
   position: fixed;
-  top: 52px;
-  left: 320px;
+  /* 位置由 App 按闪电 icon 计算（2026-08-20 拍板：icon 下方右对齐，不挡中间列表） */
   z-index: 301;
   width: 300px;
   background: var(--card);

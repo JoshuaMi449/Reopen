@@ -12,7 +12,7 @@ const STEPS: TourStep[] = [
   {
     target: 'sidebar',
     title: '按类型和标签浏览',
-    desc: '左侧分类栏：全部 / 最近使用 / 服务 / 网页，还有你打的彩色标签。'
+    desc: '左侧分类栏：全部 / 服务 / 网页，还有你打的彩色标签；底部是设置入口。'
   },
   {
     target: 'list',

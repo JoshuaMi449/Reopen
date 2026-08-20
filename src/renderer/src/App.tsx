@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type {
   DetectNeedParseApp,
@@ -11,7 +11,6 @@ import type {
 } from '../../shared/types'
 import { DEFAULT_SETTINGS } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
-import logo from '../../../resources/tray-icon.png'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
@@ -57,6 +56,8 @@ export default function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [search, setSearch] = useState('')
+  /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起，2026-08-20 拍板） */
+  const [searchOpen, setSearchOpen] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
@@ -74,6 +75,8 @@ export default function App(): React.JSX.Element {
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
   const searchRef = useRef<HTMLInputElement>(null)
+  /** 自启 icon 引用（自启面板定位锚点） */
+  const autoStartBtnRef = useRef<HTMLButtonElement>(null)
 
   // 跟随系统亮暗变化
   useEffect(() => {
@@ -138,12 +141,13 @@ export default function App(): React.JSX.Element {
     }
   }, [toast])
 
-  // ⌘F 聚焦搜索框（应用内快捷键）
+  // ⌘F 展开并聚焦搜索框（应用内快捷键；2026-08-20 搜索改收起式后同步调整）
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
-        searchRef.current?.focus()
+        setSearchOpen(true)
+        requestAnimationFrame(() => searchRef.current?.focus())
       }
     }
     window.addEventListener('keydown', handler)
@@ -167,12 +171,11 @@ export default function App(): React.JSX.Element {
   // 已有标签聚合（颜色在展示时惰性分配：settings.tagColors 有则用，没有按色板顺序 fallback）
   const allTags = useMemo(() => [...new Set(projects.flatMap((p) => p.tags))].sort(), [projects])
 
-  // 分类 + 搜索 + 排序（PRD 3.3）
+  // 分类 + 搜索 + 排序（PRD 3.3；排序体系 2026-08-20 重做：名称/最近打开/添加日期/标签/无）
   const visibleProjects = useMemo(() => {
     let list = [...projects]
     if (category === 'service') list = list.filter((p) => p.type === 'service')
     else if (category === 'web') list = list.filter((p) => p.type === 'web')
-    else if (category === 'recent') list = list.filter((p) => p.lastStartedAt)
     else if (category.startsWith('tag:')) {
       const tag = category.slice(4)
       list = list.filter((p) => p.tags.includes(tag))
@@ -189,12 +192,27 @@ export default function App(): React.JSX.Element {
     }
     if (settings.sortMode === 'name') {
       list.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+    } else if (settings.sortMode === 'created') {
+      list.sort((a, b) => b.createdAt - a.createdAt)
     } else if (settings.sortMode === 'recent') {
       list.sort(
         (a, b) => (b.lastStartedAt ?? 0) - (a.lastStartedAt ?? 0) || b.createdAt - a.createdAt
       )
+    } else if (settings.sortMode === 'tag') {
+      // 按第一个标签分组：无标签排最后；组间按标签名，组内按名称
+      const tagOf = (p: Project): string => p.tags[0] ?? ''
+      list.sort((a, b) => {
+        const ta = tagOf(a)
+        const tb = tagOf(b)
+        if (ta !== tb) {
+          if (!ta) return 1
+          if (!tb) return -1
+          return ta.localeCompare(tb, 'zh')
+        }
+        return a.name.localeCompare(b.name, 'zh')
+      })
     } else {
-      // 手动排序：按 settings.manualOrder，没记录过的排后面
+      // 'none'：手动拖拽顺序：按 settings.manualOrder，没记录过的排后面
       const order = settings.manualOrder
       list.sort((a, b) => {
         const ia = order.indexOf(a.id)
@@ -208,10 +226,29 @@ export default function App(): React.JSX.Element {
     return list
   }, [projects, category, search, settings.sortMode, settings.manualOrder])
 
+  // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」）
+  const listItems = useMemo(() => {
+    if (settings.sortMode !== 'tag') return visibleProjects.map((p) => ({ p, header: null }))
+    let last: string | undefined
+    return visibleProjects.map((p) => {
+      const t = p.tags[0]
+      const header =
+        t !== last
+          ? {
+              label: t || '无标签',
+              color: t
+                ? (settings.tagColors[t] ?? TAG_COLORS[allTags.indexOf(t) % TAG_COLORS.length])
+                : ''
+            }
+          : null
+      last = t
+      return { p, header }
+    })
+  }, [visibleProjects, settings.sortMode, settings.tagColors, allTags])
+
   const counts = useMemo(
     () => ({
       all: projects.length,
-      recent: projects.filter((p) => p.lastStartedAt).length,
       service: projects.filter((p) => p.type === 'service').length,
       web: projects.filter((p) => p.type === 'web').length
     }),
@@ -263,6 +300,45 @@ export default function App(): React.JSX.Element {
   const removeFromAutoStart = (id: string): void => {
     updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
+
+  // 自启面板定位：闪电 icon 正下方、右对齐 icon（2026-08-20 拍板；effect 里读 ref，避免渲染期访问）
+  const [autoStartPanelPos, setAutoStartPanelPos] = useState<{ top: number; right: number } | null>(
+    null
+  )
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      if (!autoStartOpen) {
+        setAutoStartPanelPos(null)
+        return
+      }
+      const rect = autoStartBtnRef.current?.getBoundingClientRect()
+      if (rect) {
+        setAutoStartPanelPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [autoStartOpen])
+
+  // 自启面板关闭：Esc / 点面板外（点 icon 由 toggle 处理；拖拽期间 mousedown 不触发，天然不关）
+  useEffect(() => {
+    if (!autoStartOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setAutoStartOpen(false)
+    }
+    const onMouseDown = (e: MouseEvent): void => {
+      const panel = document.querySelector('.autostart-panel')
+      if (!panel || panel.contains(e.target as Node)) return
+      if (autoStartBtnRef.current?.contains(e.target as Node)) return
+      setAutoStartOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onMouseDown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [autoStartOpen])
 
   const handleRowDrop = (e: React.DragEvent, target: Project): void => {
     // 文件拖入不归行处理，冒泡给窗口的登记逻辑
@@ -385,94 +461,102 @@ export default function App(): React.JSX.Element {
         </div>
       )}
 
-      {/* 标题行：红黄绿按钮右侧放 logo（2026-08-20 用户要求，按钮区域不再被卡片侵占） */}
-      <div className="titlebar">
-        <img className="titlebar-logo" src={logo} alt="Reopen" draggable={false} />
-        <span className="titlebar-name">Reopen</span>
-      </div>
-
-      <Toolbar
-        search={search}
-        onSearch={setSearch}
-        view={settings.view}
-        onView={(v) => updateSettings({ view: v })}
-        sortMode={settings.sortMode}
-        onSort={(m) => updateSettings({ sortMode: m })}
-        onAdd={() => setForm({ mode: 'manual' })}
-        onOpenSettings={() => window.api.openSettingsWindow()}
-        onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
-        autoStartCount={settings.autoStartIds.length}
-        autoStartEnabled={settings.autoStartEnabled}
-        searchInputRef={searchRef}
+      <Sidebar
+        category={category}
+        tags={allTags.map((t, i) => ({
+          name: t,
+          color: settings.tagColors[t] ?? TAG_COLORS[i % TAG_COLORS.length]
+        }))}
+        counts={counts}
+        onSelect={setCategory}
       />
 
-      <div className="app-body">
-        <Sidebar
-          category={category}
-          tags={allTags.map((t, i) => ({
-            name: t,
-            color: settings.tagColors[t] ?? TAG_COLORS[i % TAG_COLORS.length]
-          }))}
-          counts={counts}
-          onSelect={setCategory}
+      <div className="app-right">
+        <Toolbar
+          search={search}
+          onSearch={setSearch}
+          searchOpen={searchOpen}
+          onSearchOpen={setSearchOpen}
+          view={settings.view}
+          onView={(v) => updateSettings({ view: v })}
+          sortMode={settings.sortMode}
+          onSort={(m) => updateSettings({ sortMode: m })}
+          onAdd={() => setForm({ mode: 'manual' })}
+          onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
+          autoStartCount={settings.autoStartIds.length}
+          autoStartEnabled={settings.autoStartEnabled}
+          searchInputRef={searchRef}
+          autoStartBtnRef={autoStartBtnRef}
         />
 
-        <div className="app-main">
-          <main className="project-list" data-tour="list">
-            {projects.length === 0 ? (
-              <div className="empty">
-                还没有项目。
-                <br />
-                把一个项目文件夹或 html 文件拖进这个窗口试试。
-              </div>
-            ) : visibleProjects.length === 0 ? (
-              <div className="empty">没有符合条件的项目。</div>
-            ) : settings.view === 'list' ? (
-              visibleProjects.map((p) => (
-                <ProjectRow
-                  key={p.id}
-                  project={p}
-                  status={statuses[p.id]}
-                  onOpen={() => setSelectedId(p.id)}
-                  onStart={() => handleStart(p)}
-                  onStop={() => window.api.stopProject(p.id)}
-                  onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-                  sortDraggable={settings.sortMode === 'manual' || settings.autoStartEnabled}
-                  onDragStart={(e) => handleRowDragStart(e, p)}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
-                  }}
-                  onDrop={(e) => handleRowDrop(e, p)}
-                  autoStartChecked={settings.autoStartIds.includes(p.id)}
+        <div className="app-body">
+          <div className="app-main">
+            <main className="project-list" data-tour="list">
+              {projects.length === 0 ? (
+                <div className="empty">
+                  还没有项目。
+                  <br />
+                  把一个项目文件夹或 html 文件拖进这个窗口试试。
+                </div>
+              ) : visibleProjects.length === 0 ? (
+                <div className="empty">没有符合条件的项目。</div>
+              ) : settings.view === 'list' ? (
+                listItems.map(({ p, header }) => (
+                  <Fragment key={p.id}>
+                    {header && (
+                      <div className="list-group-header">
+                        <span
+                          className="tag-dot"
+                          style={header.color ? { background: header.color } : undefined}
+                        />
+                        {header.label}
+                      </div>
+                    )}
+                    <ProjectRow
+                      project={p}
+                      status={statuses[p.id]}
+                      onOpen={() => setSelectedId(p.id)}
+                      onStart={() => handleStart(p)}
+                      onStop={() => window.api.stopProject(p.id)}
+                      onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                      sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                      onDragStart={(e) => handleRowDragStart(e, p)}
+                      onDragOver={(e) => {
+                        if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
+                      }}
+                      onDrop={(e) => handleRowDrop(e, p)}
+                      autoStartChecked={settings.autoStartIds.includes(p.id)}
+                    />
+                  </Fragment>
+                ))
+              ) : (
+                <CardView
+                  items={listItems}
+                  statuses={statuses}
+                  autoStartIds={settings.autoStartIds}
+                  onOpen={(p) => setSelectedId(p.id)}
+                  onStart={handleStart}
+                  onStop={(p) => window.api.stopProject(p.id)}
+                  onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
                 />
-              ))
-            ) : (
-              <CardView
-                projects={visibleProjects}
-                statuses={statuses}
-                autoStartIds={settings.autoStartIds}
-                onOpen={(p) => setSelectedId(p.id)}
-                onStart={handleStart}
-                onStop={(p) => window.api.stopProject(p.id)}
-                onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-              />
-            )}
-          </main>
-        </div>
+              )}
+            </main>
+          </div>
 
-        {selectedProject && (
-          <DetailDrawer
-            project={selectedProject}
-            status={statuses[selectedProject.id]}
-            logs={logs[selectedProject.id] ?? []}
-            onStart={() => handleStart(selectedProject)}
-            onStop={() => window.api.stopProject(selectedProject.id)}
-            onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
-            onDelete={() => setDeleteTarget(selectedProject)}
-            onOpenBrowser={() => handleOpenBrowser(selectedProject)}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
+          {selectedProject && (
+            <DetailDrawer
+              project={selectedProject}
+              status={statuses[selectedProject.id]}
+              logs={logs[selectedProject.id] ?? []}
+              onStart={() => handleStart(selectedProject)}
+              onStop={() => window.api.stopProject(selectedProject.id)}
+              onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
+              onDelete={() => setDeleteTarget(selectedProject)}
+              onOpenBrowser={() => handleOpenBrowser(selectedProject)}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
       </div>
 
       {form && (
@@ -489,11 +573,9 @@ export default function App(): React.JSX.Element {
       {autoStartOpen && settings.autoStartEnabled && (
         <AutoStartPanel
           items={autoStartItems}
-          enabled={settings.autoStartEnabled}
-          onToggleEnabled={() => updateSettings({ autoStartEnabled: !settings.autoStartEnabled })}
           onRemove={removeFromAutoStart}
           onDropId={addToAutoStart}
-          onClose={() => setAutoStartOpen(false)}
+          style={autoStartPanelPos ?? undefined}
         />
       )}
 

@@ -5,28 +5,25 @@ import type { Project } from '../../../shared/types'
 interface Props {
   /** 面板内（自启项）的项目，按 autoStartIds 顺序 */
   items: Project[]
-  enabled: boolean
-  onToggleEnabled(): void
   onRemove(id: string): void
   onDropId(id: string): void
-  onClose(): void
+  /** 面板定位（App 按闪电 icon 位置计算） */
+  style?: React.CSSProperties
 }
 
-/** 自启项气泡面板（PRD 3.5：浮在主界面上方的小面板，列表行拖入即加入） */
-export function AutoStartPanel({
-  items,
-  enabled,
-  onToggleEnabled,
-  onRemove,
-  onDropId,
-  onClose
-}: Props): React.JSX.Element {
+/**
+ * 自启项气泡面板（2026-08-20 拍板简化版）：
+ * - 闪电 icon 下方弹出（定位由 App 传入 style）
+ * - 面板内只有项目列表+移出（总开关只在设置里，无 ✕）
+ * - 关闭：再点 icon / Esc / 点面板外（拖拽期间天然不触发关闭）
+ */
+export function AutoStartPanel({ items, onRemove, onDropId, style }: Props): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
 
-  // 2026-08-20 修复：不再全屏遮罩——遮罩会挡住列表，导致行拖不进面板（用户实测反馈）
   return (
     <div
       className={`autostart-panel ${dragOver ? 'autostart-panel-over' : ''}`}
+      style={style}
       onDragOver={(e) => {
         // 只接收行拖拽（带 reopen-id），不接收文件
         if (!e.dataTransfer.types.includes('Files')) {
@@ -45,12 +42,6 @@ export function AutoStartPanel({
       <div className="autostart-head">
         <Zap size={14} />
         <span className="autostart-title">自启项</span>
-        <label className="autostart-switch" title="总开关">
-          <input type="checkbox" checked={enabled} onChange={onToggleEnabled} />
-        </label>
-        <button className="icon-btn" onClick={onClose} title="关闭">
-          <X size={14} />
-        </button>
       </div>
 
       <div className="autostart-hint">打开软件后，自动启动你放进来的产品</div>
