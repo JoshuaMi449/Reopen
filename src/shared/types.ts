@@ -153,6 +153,8 @@ export interface ReopenApi {
   listProjects(): Promise<Project[]>
   detectPath(path: string): Promise<DetectOutcome>
   parseApp(path: string): Promise<DetectOutcome>
+  /** 「+」按钮：打开访达选项目文件夹（取消返回 null） */
+  pickProjectFolder(): Promise<string | null>
   addProject(input: NewProjectInput): Promise<Project>
   updateProject(id: string, input: NewProjectInput): Promise<Project>
   deleteProject(id: string): Promise<void>

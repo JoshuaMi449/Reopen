@@ -35,6 +35,15 @@ export function registerIpc(): void {
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:detect', (_e, path: string) => detectPath(path))
   ipcMain.handle('project:parse-app', (_e, path: string) => parseApp(path))
+  // 「+」按钮：打开访达选项目文件夹（2026-08-20 拍板；取消返回 null）
+  ipcMain.handle('dialog:pick-project-folder', async () => {
+    const res = await dialog.showOpenDialog({
+      title: '选择项目文件夹',
+      properties: ['openDirectory']
+    })
+    if (res.canceled || res.filePaths.length === 0) return null
+    return res.filePaths[0]
+  })
   ipcMain.handle('project:add', async (_e, input: NewProjectInput) => {
     const project = addProject(input)
     // 登记时检测：项目其实已经在跑（端口有响应）就直接显示运行中

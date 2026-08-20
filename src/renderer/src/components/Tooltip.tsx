@@ -7,7 +7,7 @@ interface Props {
   children: ReactNode
 }
 
-/** 悬停 1.5 秒弹出说明气泡（2026-08-20 拍板：工具栏 icon 全覆盖） */
+/** 悬停 0.6 秒弹出说明气泡（2026-08-20 提速：1.5s 太慢，用户实测反馈） */
 export function Tooltip({ text, children }: Props): React.JSX.Element {
   const [show, setShow] = useState(false)
   const timer = useRef<number | null>(null)
@@ -17,7 +17,7 @@ export function Tooltip({ text, children }: Props): React.JSX.Element {
       className="tip-wrap"
       onMouseEnter={() => {
         if (timer.current) clearTimeout(timer.current)
-        timer.current = window.setTimeout(() => setShow(true), 1500)
+        timer.current = window.setTimeout(() => setShow(true), 600)
       }}
       onMouseLeave={() => {
         if (timer.current) clearTimeout(timer.current)

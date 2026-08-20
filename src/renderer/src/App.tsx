@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { ExternalLink, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type {
   DetectNeedParseApp,
+  DetectOutcome,
   DetectSuccess,
   NewProjectInput,
   Project,
@@ -255,15 +256,8 @@ export default function App(): React.JSX.Element {
     [projects]
   )
 
-  // 文件拖入登记（PRD 3.2：拖入 → 识别 → 表单/询问）
-  const handleDrop = async (e: React.DragEvent): Promise<void> => {
-    e.preventDefault()
-    setDragOver(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
-    const path = window.api.getPathForFile(files[0])
-    if (!path) return
-    const outcome = await window.api.detectPath(path)
+  // 识别结果的统一处理：成功→确认表单；.app→询问解析；识别不了→提示；重复→提示
+  const handleDetectOutcome = (outcome: DetectOutcome): void => {
     if (outcome.ok) {
       setForm({ mode: 'create', detect: outcome })
     } else if (outcome.kind === 'unsupported-app') {
@@ -273,6 +267,24 @@ export default function App(): React.JSX.Element {
     } else if (outcome.kind === 'duplicate') {
       toast(`「${outcome.name}」已经登记过了，不用重复添加`)
     }
+  }
+
+  // 文件拖入登记（PRD 3.2：拖入 → 识别 → 表单/询问）
+  const handleDrop = async (e: React.DragEvent): Promise<void> => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+    const path = window.api.getPathForFile(files[0])
+    if (!path) return
+    handleDetectOutcome(await window.api.detectPath(path))
+  }
+
+  // 「+」按钮：打开访达选文件夹 → 自动识别 → 补信息（2026-08-20 拍板）
+  const handlePickFolder = async (): Promise<void> => {
+    const path = await window.api.pickProjectFolder()
+    if (!path) return
+    handleDetectOutcome(await window.api.detectPath(path))
   }
 
   // 行拖拽：手动排序 + 拖入自启项气泡面板共用
@@ -472,25 +484,26 @@ export default function App(): React.JSX.Element {
       />
 
       <div className="app-right">
-        <Toolbar
-          search={search}
-          onSearch={setSearch}
-          searchOpen={searchOpen}
-          onSearchOpen={setSearchOpen}
-          view={settings.view}
-          onView={(v) => updateSettings({ view: v })}
-          sortMode={settings.sortMode}
-          onSort={(m) => updateSettings({ sortMode: m })}
-          onAdd={() => setForm({ mode: 'manual' })}
-          onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
-          autoStartCount={settings.autoStartIds.length}
-          autoStartEnabled={settings.autoStartEnabled}
-          searchInputRef={searchRef}
-          autoStartBtnRef={autoStartBtnRef}
-        />
-
         <div className="app-body">
           <div className="app-main">
+            {/* toolbar 属中间栏：右栏滑出时随中间整体挤压（2026-08-20 拍板） */}
+            <Toolbar
+              search={search}
+              onSearch={setSearch}
+              searchOpen={searchOpen}
+              onSearchOpen={setSearchOpen}
+              view={settings.view}
+              onView={(v) => updateSettings({ view: v })}
+              sortMode={settings.sortMode}
+              onSort={(m) => updateSettings({ sortMode: m })}
+              onAdd={handlePickFolder}
+              onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
+              autoStartCount={settings.autoStartIds.length}
+              autoStartEnabled={settings.autoStartEnabled}
+              searchInputRef={searchRef}
+              autoStartBtnRef={autoStartBtnRef}
+            />
+
             <main className="project-list" data-tour="list">
               {projects.length === 0 ? (
                 <div className="empty">
