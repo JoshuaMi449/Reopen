@@ -168,8 +168,6 @@ export interface ReopenApi {
   saveSettings(patch: Partial<Settings>): Promise<Settings>
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */
   showMainWindow(action?: string): Promise<void>
-  /** 动态最小窗口宽度（右栏日志开合时调用） */
-  setMinWidth(width: number): Promise<void>
   quitApp(): Promise<void>
   /** 打开偏好设置窗口（独立窗口，Proma 式） */
   openSettingsWindow(group?: string): Promise<void>

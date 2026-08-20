@@ -1,6 +1,9 @@
-import { Fragment } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Check, FileCode2, Folder, Play, Square } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
+
+const GAP = 12
+const TARGET = 220
 
 interface ListItem {
   p: Project
@@ -37,8 +40,34 @@ export function CardView({
   onStop,
   onContextMenu
 }: Props): React.JSX.Element {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [cols, setCols] = useState<{ n: number; w: number }>({ n: 3, w: TARGET })
+
+  // 动态列宽（2026-08-20 拍板）：整数列 + 居中左右等距，卡片宽度随窗口自适应
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const compute = (): void => {
+      const W = el.clientWidth
+      const n = Math.max(1, Math.round((W + GAP) / (TARGET + GAP)))
+      const w = Math.floor((W - (n - 1) * GAP) / n)
+      setCols({ n, w })
+    }
+    const id = requestAnimationFrame(compute) // 初始计算放 rAF，避免 effect 内同步 setState
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => {
+      cancelAnimationFrame(id)
+      ro.disconnect()
+    }
+  }, [])
+
   return (
-    <div className="card-grid">
+    <div
+      ref={gridRef}
+      className="card-grid"
+      style={{ gridTemplateColumns: `repeat(${cols.n}, ${cols.w}px)`, justifyContent: 'center' }}
+    >
       {items.map(({ p, header }) => {
         const st = statuses[p.id]?.status ?? 'stopped'
         const failed = st === 'failed'

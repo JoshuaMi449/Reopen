@@ -1068,7 +1068,8 @@ html.dark .sidebar-logo-word,
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 220px); /* 卡片固定宽度：窗口变宽只增列数不拉伸（2026-08-20 实测反馈） */
+  grid-template-columns: repeat(auto-fill, 220px); /* JS 生效前的兜底；实际列宽由 CardView 动态计算（2026-08-20 拍板：整数列+居中） */
+  justify-content: center;
   gap: 12px;
 }
 

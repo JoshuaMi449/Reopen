@@ -481,11 +481,6 @@ export default function App(): React.JSX.Element {
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
-  // 动态最小窗口宽度（2026-08-20 拍板）：卡片一排 3 个为准；打开日志右栏再加 400
-  useEffect(() => {
-    window.api.setMinWidth(selectedProject ? 1340 : 940)
-  }, [selectedProject])
-
   return (
     <div
       className="app"

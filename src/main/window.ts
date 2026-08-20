@@ -22,8 +22,8 @@ export function createWindow(): void {
     // 三栏布局默认宽度（2026-08-20 拍板：左 190 + 右 380 固定，中间弹性；窗口可调）
     width: winWidth,
     height: winHeight,
-    // 最小宽度动态调整：卡片一排 3 个（无右栏 940）；打开日志右栏再加 400（渲染层按需调，2026-08-20 拍板）
-    minWidth: 940,
+    // 最小宽度固定 1100（2026-08-20 拍板）：保证日志滑进来后中间还能留 2 列卡片；窗口不动、日志往里滑挤压
+    minWidth: 1100,
     minHeight: 620,
     show: false,
     autoHideMenuBar: true,
@@ -69,13 +69,6 @@ export function showMainWindow(action?: string): void {
   mainWindow?.focus()
   if (action) {
     mainWindow?.webContents.send('app:menu-action', action)
-  }
-}
-
-/** 动态最小宽度：右栏（日志）开合时渲染层调用（2026-08-20 拍板：保证卡片一排 3 个） */
-export function setMinWidth(width: number): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setMinimumSize(width, 620)
   }
 }
 
