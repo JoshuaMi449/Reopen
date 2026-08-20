@@ -16,11 +16,18 @@ interface Props {
   statuses: Record<string, ProjectStatusEvent>
   /** 自启项内的项目 id（打勾同步显示） */
   autoStartIds: string[]
+  /** 标签 → 颜色（右下角折角标签用） */
+  tagColor(tag: string): string
   /** 点击卡片：打开右侧详情抽屉 */
   onOpen(p: Project): void
   onStart(p: Project): void
   onStop(p: Project): void
   onContextMenu(e: React.MouseEvent, p: Project): void
+}
+
+/** 折角上显示的标签名：超 5 字截断（标签本身限制 6 字，2026-08-20 拍板） */
+function cornerLabel(tag: string): string {
+  return tag.length > 5 ? `${tag.slice(0, 4)}…` : tag
 }
 
 function formatTime(ts?: number): string {
@@ -35,6 +42,7 @@ export function CardView({
   items,
   statuses,
   autoStartIds,
+  tagColor,
   onOpen,
   onStart,
   onStop,
@@ -136,16 +144,16 @@ export function CardView({
                 {failed && statuses[p.id]?.reason && (
                   <div className="card-fail-reason">{statuses[p.id].reason}</div>
                 )}
-                {p.tags.length > 0 && (
-                  <div className="card-tags">
-                    {p.tags.map((t) => (
-                      <span key={t} className="card-tag">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
+              {/* 右下角折角标签（2026-08-20 拍板）：三角填色+标签名，不再占卡片高度 */}
+              {p.tags.length > 0 && (
+                <span
+                  className="card-corner-tag"
+                  style={{ '--corner': tagColor(p.tags[0]) } as React.CSSProperties}
+                >
+                  <span>{cornerLabel(p.tags[0])}</span>
+                </span>
+              )}
             </div>
           </Fragment>
         )

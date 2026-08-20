@@ -118,6 +118,8 @@ export function ProjectFormModal({
           .map((t) => t.trim())
           .filter(Boolean)
       ]
+        .map((t) => t.slice(0, 6)) // 标签最多 6 个字（2026-08-20 拍板：卡片折角放不下更长）
+        .filter((t, i, arr) => arr.indexOf(t) === i)
     })
   }
 
@@ -204,7 +206,11 @@ export function ProjectFormModal({
               <input
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                placeholder={existingTags.length ? '或输入新标签，逗号分隔' : '输入标签，逗号分隔'}
+                placeholder={
+                  existingTags.length
+                    ? '或输入新标签（最多6字），逗号分隔'
+                    : '输入标签（最多6字），逗号分隔'
+                }
               />
             </div>
           </div>

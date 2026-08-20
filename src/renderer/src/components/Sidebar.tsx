@@ -63,14 +63,10 @@ export function Sidebar({
         </div>
       )}
 
-      {/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，一左一右；hover 有方块；有新版时 icon 右上角红点 */}
-      <div className="sidebar-bottom">
+      {/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，整条是一个整体——hover 整条高亮、整条可点开设置；有新版时 icon 右上角红点 */}
+      <div className="sidebar-bottom" onClick={() => window.api.openSettingsWindow()}>
         <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
-        <button
-          className="sidebar-settings-btn"
-          title="设置"
-          onClick={() => window.api.openSettingsWindow()}
-        >
+        <button className="sidebar-settings-btn" title="设置">
           <SettingsIcon size={15} />
           {showUpdateDot && <span className="update-dot" />}
         </button>

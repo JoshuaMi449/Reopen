@@ -264,7 +264,8 @@ select {
   gap: 2px;
 }
 
-/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，hover 均有方块；
+/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，整条=一个整体，
+   hover 整条高亮方块、整条可点开设置；
    no-drag 必须——sidebar 是窗口拖动区，不加会吞掉点击和 hover（2026-08-20 实测反馈） */
 .sidebar-bottom {
   margin-top: auto;
@@ -272,20 +273,20 @@ select {
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--border);
-  padding: 8px 4px 4px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
   -webkit-app-region: no-drag;
+}
+
+.sidebar-bottom:hover {
+  background: var(--hover);
 }
 
 /* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白 */
 .sidebar-logo-word {
-  height: 20px;
+  height: 26px; /* 回到最初文字版观感大小（2026-08-20 实测反馈） */
   width: auto;
-  padding: 6px 8px;
-  border-radius: 7px;
-}
-
-.sidebar-logo-word:hover {
-  background: var(--hover);
 }
 
 .sidebar-settings-btn {
@@ -301,10 +302,6 @@ select {
   border-radius: 7px;
   color: var(--text);
   cursor: pointer;
-}
-
-.sidebar-settings-btn:hover {
-  background: var(--hover);
 }
 
 /* 有新版更新时的红点（M4 接入检查更新后显示） */
@@ -1079,11 +1076,48 @@ html.dark .sidebar-logo-word,
 }
 
 .card {
+  position: relative; /* 右下角折角标签的定位基准（2026-08-20） */
+  overflow: hidden;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px;
   cursor: pointer;
+}
+
+/* 右下角折角标签：三角填色 + 沿斜边旋转的标签名（2026-08-20 拍板，不再占卡片高度） */
+.card-corner-tag {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 62px;
+  height: 62px;
+  pointer-events: none;
+}
+
+.card-corner-tag::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-style: solid;
+  border-width: 0 0 62px 62px;
+  border-color: transparent transparent var(--corner) transparent;
+}
+
+.card-corner-tag > span {
+  position: absolute;
+  right: -1px;
+  bottom: 13px;
+  width: 46px;
+  transform: rotate(-45deg);
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.1;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card:hover {
@@ -1131,13 +1165,6 @@ html.dark .sidebar-logo-word,
 
 .card-fail-reason {
   color: var(--danger);
-}
-
-.card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
 }
 
 .card-tag {

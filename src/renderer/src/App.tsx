@@ -576,6 +576,10 @@ export default function App(): React.JSX.Element {
                   items={listItems}
                   statuses={statuses}
                   autoStartIds={settings.autoStartIds}
+                  tagColor={(t) =>
+                    settings.tagColors[t] ??
+                    TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
+                  }
                   onOpen={(p) => setSelectedId(p.id)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
