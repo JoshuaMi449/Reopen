@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * 悬停 0.6 秒弹出说明气泡（2026-08-20 拍板：工具栏 icon 全覆盖）。
+ * 悬停 0.3 秒弹出说明气泡（2026-08-20 拍板：工具栏 icon 全覆盖，速度经两次提速）。
  * 用原生 mouseenter/mouseleave 监听（React 合成事件对 select 等原生控件不触发，用户实测反馈）。
  */
 export function Tooltip({ text, children }: Props): React.JSX.Element {
@@ -21,7 +21,7 @@ export function Tooltip({ text, children }: Props): React.JSX.Element {
     if (!el) return
     const enter = (): void => {
       if (timer.current) clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => setShow(true), 600)
+      timer.current = window.setTimeout(() => setShow(true), 300)
     }
     const leave = (): void => {
       if (timer.current) clearTimeout(timer.current)

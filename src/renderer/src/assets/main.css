@@ -264,7 +264,8 @@ select {
   gap: 2px;
 }
 
-/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，hover 均有方块 */
+/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，hover 均有方块；
+   no-drag 必须——sidebar 是窗口拖动区，不加会吞掉点击和 hover（2026-08-20 实测反馈） */
 .sidebar-bottom {
   margin-top: auto;
   display: flex;
@@ -272,11 +273,12 @@ select {
   justify-content: space-between;
   border-top: 1px solid var(--border);
   padding: 8px 4px 4px;
+  -webkit-app-region: no-drag;
 }
 
 /* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白 */
 .sidebar-logo-word {
-  height: 16px;
+  height: 20px;
   width: auto;
   padding: 6px 8px;
   border-radius: 7px;

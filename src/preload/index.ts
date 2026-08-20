@@ -27,6 +27,8 @@ const api: ReopenApi = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   showMainWindow: (action) => ipcRenderer.invoke('window:show-main', action),
+  /** 动态最小窗口宽度（右栏日志开合时调用） */
+  setMinWidth: (width) => ipcRenderer.invoke('window:set-min-width', width),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   openSettingsWindow: (group) => ipcRenderer.invoke('window:open-settings', group),
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),

@@ -22,7 +22,7 @@ import {
   updateProject
 } from './store'
 import { appQuit, refreshTray } from './tray'
-import { showMainWindow } from './window'
+import { setMinWidth, showMainWindow } from './window'
 
 /** 设置变化广播给所有窗口（主窗口/托盘面板同步） */
 function broadcastSettings(settings: Settings): void {
@@ -72,6 +72,7 @@ export function registerIpc(): void {
 
   // 窗口与应用
   ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
+  ipcMain.handle('window:set-min-width', (_e, width: number) => setMinWidth(width))
   ipcMain.handle('window:open-settings', (_e, group?: string) => openSettingsWindow(group))
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {

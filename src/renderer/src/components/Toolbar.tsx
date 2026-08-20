@@ -101,7 +101,6 @@ export function Toolbar({
             <option value="recent">最近打开</option>
             <option value="created">添加日期</option>
             <option value="tag">标签</option>
-            <option disabled>——————</option>
             <option value="none">无</option>
           </select>
         </Tooltip>
