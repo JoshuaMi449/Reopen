@@ -36,18 +36,6 @@ interface MenuState {
   project: Project
 }
 
-// 访达式彩色标签色板（新标签按序分配）
-const TAG_COLORS = [
-  '#e74c3c',
-  '#e67e22',
-  '#f1c40f',
-  '#2ecc71',
-  '#3498db',
-  '#9b59b6',
-  '#e84393',
-  '#16a085'
-]
-
 export default function App(): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([])
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
@@ -67,7 +55,7 @@ export default function App(): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
   const [dragId, setDragId] = useState<string | null>(null)
-  /** 自启项气泡面板是否打开 */
+  /** 自启项面板列是否打开（2026-08-21 拍板：占一列的嵌入式列卡片） */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
   /** 新手引导是否显示（首次打开） */
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -169,7 +157,7 @@ export default function App(): React.JSX.Element {
     return off
   }, [toast, updateSettings])
 
-  // 已有标签聚合（颜色在展示时惰性分配：settings.tagColors 有则用，没有按色板顺序 fallback）
+  // 已有标签聚合（表单联想下拉的数据源；2026-08-21 拍板：标签无颜色，列表/卡片不展示）
   const allTags = useMemo(() => [...new Set(projects.flatMap((p) => p.tags))].sort(), [projects])
 
   // 分类 + 搜索 + 排序（PRD 3.3；排序体系 2026-08-20 重做：名称/最近打开/添加日期/标签/无）
@@ -227,25 +215,17 @@ export default function App(): React.JSX.Element {
     return list
   }, [projects, category, search, settings.sortMode, settings.manualOrder])
 
-  // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」）
+  // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」；2026-08-21 起无颜色，只留文字）
   const listItems = useMemo(() => {
     if (settings.sortMode !== 'tag') return visibleProjects.map((p) => ({ p, header: null }))
     let last: string | undefined
     return visibleProjects.map((p) => {
       const t = p.tags[0]
-      const header =
-        t !== last
-          ? {
-              label: t || '无标签',
-              color: t
-                ? (settings.tagColors[t] ?? TAG_COLORS[allTags.indexOf(t) % TAG_COLORS.length])
-                : ''
-            }
-          : null
+      const header = t !== last ? { label: t || '无标签' } : null
       last = t
       return { p, header }
     })
-  }, [visibleProjects, settings.sortMode, settings.tagColors, allTags])
+  }, [visibleProjects, settings.sortMode])
 
   const counts = useMemo(
     () => ({
@@ -287,7 +267,7 @@ export default function App(): React.JSX.Element {
     handleDetectOutcome(await window.api.detectPath(path))
   }
 
-  // 行拖拽：手动排序 + 拖入自启项气泡面板共用
+  // 项目拖拽（行与卡片共用）：手动排序 + 拖入自启项面板
   const handleRowDragStart = (e: React.DragEvent, p: Project): void => {
     e.dataTransfer.setData('application/x-reopen-id', p.id)
     e.dataTransfer.effectAllowed = 'move'
@@ -313,7 +293,7 @@ export default function App(): React.JSX.Element {
     updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
 
-  // 自启面板已改为中间栏内嵌展开条（2026-08-20 拍板）：不再浮层定位，列表被下推、不遮挡卡片
+  // 自启面板已改为 .app-body 内占一列的嵌入式列卡片（2026-08-21 拍板）：挤入时项目自动让一列，不遮挡
 
   // 自启面板关闭：Esc / 点面板外（点 icon 由 toggle 处理；拖拽期间 mousedown 不触发，天然不关）
   useEffect(() => {
@@ -325,8 +305,9 @@ export default function App(): React.JSX.Element {
       const panel = document.querySelector('.autostart-panel')
       if (!panel || panel.contains(e.target as Node)) return
       if (autoStartBtnRef.current?.contains(e.target as Node)) return
-      // 按在项目行上=准备拖拽进面板，不能关（2026-08-20 实测反馈：一按下面板就关了，拖不进去）
+      // 按在项目行/卡片上=准备拖拽进面板，不能关（2026-08-20/21 实测反馈：一按下面板就关了，拖不进去）
       if ((e.target as Element).closest('.project-row')) return
+      if ((e.target as Element).closest('.card')) return
       setAutoStartOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -483,15 +464,7 @@ export default function App(): React.JSX.Element {
         </div>
       )}
 
-      <Sidebar
-        category={category}
-        tags={allTags.map((t, i) => ({
-          name: t,
-          color: settings.tagColors[t] ?? TAG_COLORS[i % TAG_COLORS.length]
-        }))}
-        counts={counts}
-        onSelect={setCategory}
-      />
+      <Sidebar category={category} tags={allTags} counts={counts} onSelect={setCategory} />
 
       <div className="app-right">
         <div className="app-body">
@@ -514,14 +487,6 @@ export default function App(): React.JSX.Element {
               autoStartBtnRef={autoStartBtnRef}
             />
 
-            {autoStartOpen && settings.autoStartEnabled && (
-              <AutoStartPanel
-                items={autoStartItems}
-                onRemove={removeFromAutoStart}
-                onDropId={addToAutoStart}
-              />
-            )}
-
             <main className="project-list" data-tour="list">
               {projects.length === 0 ? (
                 <div className="empty">
@@ -534,15 +499,7 @@ export default function App(): React.JSX.Element {
               ) : settings.view === 'list' ? (
                 listItems.map(({ p, header }) => (
                   <Fragment key={p.id}>
-                    {header && (
-                      <div className="list-group-header">
-                        <span
-                          className="tag-dot"
-                          style={header.color ? { background: header.color } : undefined}
-                        />
-                        {header.label}
-                      </div>
-                    )}
+                    {header && <div className="list-group-header">{header.label}</div>}
                     <ProjectRow
                       project={p}
                       status={statuses[p.id]}
@@ -557,10 +514,6 @@ export default function App(): React.JSX.Element {
                       }}
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
-                      tagColor={(t) =>
-                        settings.tagColors[t] ??
-                        TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
-                      }
                     />
                   </Fragment>
                 ))
@@ -569,10 +522,12 @@ export default function App(): React.JSX.Element {
                   items={listItems}
                   statuses={statuses}
                   autoStartIds={settings.autoStartIds}
-                  tagColor={(t) =>
-                    settings.tagColors[t] ??
-                    TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
-                  }
+                  sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                  onDragStart={(e, p) => handleRowDragStart(e, p)}
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
+                  }}
+                  onDrop={(e, p) => handleRowDrop(e, p)}
                   onOpen={(p) => setSelectedId(p.id)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
@@ -581,6 +536,14 @@ export default function App(): React.JSX.Element {
               )}
             </main>
           </div>
+
+          {autoStartOpen && settings.autoStartEnabled && (
+            <AutoStartPanel
+              items={autoStartItems}
+              onRemove={removeFromAutoStart}
+              onDropId={addToAutoStart}
+            />
+          )}
 
           {selectedProject && (
             <DetailDrawer
@@ -604,13 +567,6 @@ export default function App(): React.JSX.Element {
           detect={form.detect}
           project={form.project}
           existingTags={allTags}
-          tagColor={(t) =>
-            settings.tagColors[t] ?? TAG_COLORS[Math.abs(allTags.indexOf(t)) % TAG_COLORS.length]
-          }
-          onPickTagColor={(t, c) =>
-            updateSettings({ tagColors: { ...settings.tagColors, [t]: c } })
-          }
-          palette={TAG_COLORS}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
         />

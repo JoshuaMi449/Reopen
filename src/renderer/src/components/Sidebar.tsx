@@ -6,7 +6,8 @@ export type Category = 'all' | 'service' | 'web' | `tag:${string}`
 
 interface Props {
   category: Category
-  tags: { name: string; color: string }[]
+  /** 已有标签名（2026-08-21 拍板：标签无颜色，只用于筛选） */
+  tags: string[]
   counts: { all: number; service: number; web: number }
   onSelect(c: Category): void
   /** 检查更新发现新版本时，设置 icon 右上角显示红点（M4 接入更新检查后由 App 传入） */
@@ -46,16 +47,15 @@ export function Sidebar({
       {tags.length > 0 && (
         <div className="sidebar-tags">
           <div className="sidebar-tags-title">标签</div>
-          {tags.map((t) => {
-            const key = `tag:${t.name}` as Category
+          {tags.map((name) => {
+            const key = `tag:${name}` as Category
             return (
               <button
-                key={t.name}
+                key={name}
                 className={`sidebar-item ${category === key ? 'sidebar-item-active' : ''}`}
                 onClick={() => onSelect(key)}
               >
-                <span className="tag-dot" style={{ background: t.color }} />
-                <span className="sidebar-label">{t.name}</span>
+                <span className="sidebar-label">{name}</span>
                 <Tag size={13} className="sidebar-tag-icon" />
               </button>
             )

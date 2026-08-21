@@ -198,7 +198,6 @@ select {
   gap: 14px;
   overflow-y: auto;
   background: var(--bg);
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.05); /* 右投影与中栏拉开前后 */
   -webkit-app-region: drag; /* 侧边栏顶部区域可拖动窗口 */
 }
 
@@ -321,13 +320,6 @@ html.dark .sidebar-logo-word,
 :root[data-theme='special-md'] .sidebar-logo-word,
 :root[data-theme='special-td'] .sidebar-logo-word {
   filter: invert(1);
-}
-
-.tag-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .sidebar-tag-icon {
@@ -506,17 +498,6 @@ html.dark .sidebar-logo-word,
   background: var(--hover);
 }
 
-/* 行内标签（2026-08-20 实测反馈：列表模式也要显示标签；色点+名字不撑高行） */
-.row-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .status-dot {
   width: 9px;
   height: 9px;
@@ -660,10 +641,10 @@ html.dark .sidebar-logo-word,
 /* ---------- 右侧详情抽屉（2026-08-20 拍板：点击项目从右侧滑出预览） ---------- */
 
 .drawer {
-  /* 嵌入式第三栏圆角卡（2026-08-20 拍板）：外层做宽度动画丝滑滑出，内层固定 380px 不重排 */
+  /* 嵌入式第三栏圆角卡（2026-08-21 拍板：占两列=456 外宽；外层做宽度动画丝滑滑出，内层固定 452px 不重排） */
   position: relative;
   flex-shrink: 0;
-  width: 380px;
+  width: 456px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -673,7 +654,7 @@ html.dark .sidebar-logo-word,
 }
 
 .drawer-inner {
-  width: 380px;
+  width: 452px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -688,7 +669,7 @@ html.dark .sidebar-logo-word,
     border-width: 0;
   }
   to {
-    width: 380px;
+    width: 456px;
   }
 }
 
@@ -1006,32 +987,52 @@ html.dark .sidebar-logo-word,
   line-height: 28px;
 }
 
+/* 标签控件（2026-08-21 拍板：空的输入框 + 点击展开联想下拉，无颜色无圆角 chip） */
 .tag-picker {
   flex: 1;
+  position: relative; /* 下拉面板定位基准 */
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
-  align-items: center;
-  position: relative; /* 下拉面板定位基准（2026-08-20） */
+  min-width: 0;
 }
 
-/* 选择标签按钮 + 下拉面板（2026-08-20 拍板：标签改下拉选择，颜色用户自选） */
-.tag-picker-toggle {
-  display: inline-flex;
+.tag-picker input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.tag-picker input:focus {
+  outline: none;
+  border-color: var(--primary-strong);
+}
+
+/* 已选标签：纯文字行，点 × 移除 */
+.tag-picked {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
-  border: 1px dashed var(--border);
-  background: transparent;
-  border-radius: 999px;
-  padding: 4px 12px;
+  gap: 4px 10px;
   font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tag-picked-x {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  padding: 0;
   color: var(--text-dim);
   cursor: pointer;
 }
 
-.tag-picker-toggle:hover {
-  border-color: var(--primary-strong);
-  color: var(--text);
+.tag-picked-x:hover {
+  color: var(--danger);
 }
 
 .tag-dropdown {
@@ -1039,22 +1040,21 @@ html.dark .sidebar-logo-word,
   top: calc(100% + 6px);
   left: 0;
   z-index: 320;
-  width: 260px;
+  width: 100%;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .tag-dropdown-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 150px;
+  max-height: 170px;
   overflow-y: auto;
 }
 
@@ -1082,73 +1082,34 @@ html.dark .sidebar-logo-word,
 }
 
 .tag-dropdown-new {
+  border-top: 1px solid var(--border);
+  padding: 4px 0 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
 }
 
-.tag-color-row {
+.tag-dropdown-new-item {
   display: flex;
-  gap: 7px;
-}
-
-.tag-color-dot {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-}
-
-.tag-color-on {
-  border-color: var(--text);
-  box-shadow: 0 0 0 2px var(--card);
-}
-
-.tag-picker input {
-  flex: 1;
-  min-width: 120px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  background: var(--input-bg);
-  color: var(--text);
-}
-
-.tag-picker input:focus {
-  outline: none;
-  border-color: var(--primary-strong);
-}
-
-.tag-chip {
-  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border: 1px solid var(--border);
-  background: var(--input-bg);
-  border-radius: 999px;
-  padding: 4px 10px;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--primary-strong);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tag-dropdown-new-item:hover {
+  background: var(--hover);
+}
+
+.tag-dropdown-empty {
+  padding: 6px 8px;
   font-size: 12px;
   color: var(--text-dim);
-  cursor: pointer;
-}
-
-.tag-chip:hover {
-  border-color: var(--primary-strong);
-  color: var(--text);
-}
-
-.tag-chip-on {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-}
-
-.tag-chip-on:hover {
-  color: #fff;
 }
 
 /* ---------- 卡片视图 ---------- */
@@ -1164,17 +1125,15 @@ html.dark .sidebar-logo-word,
   padding: 10px 2px 6px;
 }
 
-.list-group-header .tag-dot {
-  background: var(--text-dim); /* 无标签组头用灰色 */
-}
-
 .card-grid-full {
   grid-column: 1 / -1;
 }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 220px); /* JS 生效前的兜底；实际列宽由 CardView 动态计算（2026-08-20 拍板：整数列+居中） */
+  /* 固定 220 列宽正式方案（2026-08-21 拍板）：列数由 app-main 宽度自动决定，
+     面板/抽屉挤入时 auto-fill 自然让列（4/3/2/1 列均正好整除） */
+  grid-template-columns: repeat(auto-fill, 220px);
   justify-content: center;
   gap: 12px;
 }
@@ -1185,48 +1144,12 @@ html.dark .sidebar-logo-word,
 }
 
 .card {
-  position: relative; /* 右下角折角标签的定位基准（2026-08-20） */
   overflow: hidden;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px;
   cursor: pointer;
-}
-
-/* 右下角折角标签：三角填色 + 沿斜边旋转的标签名（2026-08-20 拍板，不再占卡片高度） */
-.card-corner-tag {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 62px;
-  height: 62px;
-  pointer-events: none;
-}
-
-.card-corner-tag::before {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  border-style: solid;
-  border-width: 0 0 62px 62px;
-  border-color: transparent transparent var(--corner) transparent;
-}
-
-.card-corner-tag > span {
-  position: absolute;
-  right: -1px;
-  bottom: 13px;
-  width: 46px;
-  transform: rotate(-45deg);
-  text-align: center;
-  font-size: 10px;
-  line-height: 1.1;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .card:hover {
@@ -1308,29 +1231,41 @@ html.dark .sidebar-logo-word,
 }
 
 .autostart-panel {
-  /* 内嵌展开条（2026-08-20 拍板）：toolbar 下方、列表上方，把列表下推、不遮挡卡片 */
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  /* 占一列宽度的嵌入式列卡片（2026-08-21 拍板）：外宽 224=220 内容+边框 2×2，
+     与卡片列等宽，挤入时项目自动让一列；外层做宽度动画，内层固定 220 不重排 */
+  position: relative;
+  flex-shrink: 0;
+  width: 224px;
   background: var(--card);
-  animation: autostart-in 0.18s ease-out;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08); /* 与抽屉同款下阴影 */
+  animation: panel-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes autostart-in {
+@keyframes panel-in {
   from {
-    opacity: 0;
-    transform: translateY(-6px);
+    width: 0;
+    border-width: 0;
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
+    width: 224px;
   }
 }
 
 .autostart-panel-over {
-  background: var(--hover);
+  border-color: var(--primary-strong); /* 拖入时整列边框高亮 */
+}
+
+.autostart-panel-inner {
+  width: 220px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px;
+  overflow-y: auto;
 }
 
 .autostart-head {
@@ -1353,11 +1288,11 @@ html.dark .sidebar-logo-word,
 
 .autostart-list {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .autostart-empty {
@@ -1371,13 +1306,14 @@ html.dark .sidebar-logo-word,
   gap: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 3px 6px 3px 10px;
+  border-radius: 8px;
+  padding: 7px 8px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .autostart-item-name {
-  max-width: 140px;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1385,6 +1321,7 @@ html.dark .sidebar-logo-word,
 
 .autostart-item-icon {
   color: var(--accent);
+  flex-shrink: 0;
 }
 /* ---------- 外观快速面板 ---------- */
 

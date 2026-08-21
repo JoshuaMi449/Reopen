@@ -19,11 +19,11 @@ export function createWindow(): void {
   const winHeight = Math.round(winWidth * 0.625)
 
   mainWindow = new BrowserWindow({
-    // 三栏布局默认宽度（2026-08-20 拍板：左 190 + 右 380 固定，中间弹性；窗口可调）
+    // 三栏布局默认宽度（2026-08-21 拍板：左 190 固定、中间 4 列卡片 950、自启面板占 1 列 224、日志占 2 列 456；窗口可调）
     width: winWidth,
     height: winHeight,
-    // 最小宽度固定 1100（2026-08-20 拍板）：保证日志滑进来后中间还能留 2 列卡片；窗口不动、日志往里滑挤压
-    minWidth: 1100,
+    // 最小宽度 1160（2026-08-21 拍板）：精确最小 1156=190 侧栏+16 padding+950 四列，保证最小窗口下仍 4 列
+    minWidth: 1160,
     minHeight: 620,
     show: false,
     autoHideMenuBar: true,
