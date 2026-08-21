@@ -1,4 +1,4 @@
-import { Check, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
+import { Check, ExternalLink, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface Props {
@@ -22,6 +22,8 @@ interface Props {
   onDrop?(e: React.DragEvent): void
   /** 在自启项里（PRD 3.5：打勾同步显示） */
   autoStartChecked?: boolean
+  /** 点端口在浏览器打开（运行中时端口可点，2026-08-21 网站常驻） */
+  onOpenBrowser?(): void
   /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
   tagColor?(tag: string): string | undefined
 }
@@ -56,7 +58,8 @@ export function ProjectRow({
   onDragEnd,
   onDrop,
   autoStartChecked,
-  tagColor
+  tagColor,
+  onOpenBrowser
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -104,7 +107,26 @@ export function ProjectRow({
             })}
           </span>
         )}
-        <span className="row-port">{port ? `:${port}` : ''}</span>
+        {/* 运行中端口可点开浏览器（2026-08-21 网站常驻） */}
+        <span className="row-port">
+          {running && port ? (
+            <a
+              className="port-link"
+              title="在浏览器打开"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenBrowser?.()
+              }}
+            >
+              :{port}
+              <ExternalLink size={11} />
+            </a>
+          ) : port ? (
+            `:${port}`
+          ) : (
+            ''
+          )}
+        </span>
         <span className="row-last">{formatTime(project.lastStartedAt)}</span>
         {project.note && <span className="row-note">{project.note}</span>}
         {failed && status?.reason && (

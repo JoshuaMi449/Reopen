@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { Check, FileCode2, Folder, Play, Square, Tag } from 'lucide-react'
+import { Check, ExternalLink, FileCode2, Folder, Play, Square, Tag } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface ListItem {
@@ -27,6 +27,8 @@ interface Props {
   onDrop(e: React.DragEvent, p: Project): void
   /** 点击卡片：打开右侧详情抽屉 */
   onOpen(p: Project): void
+  /** 点端口在浏览器打开（运行中时端口可点，2026-08-21 网站常驻） */
+  onOpenBrowser(p: Project): void
   onStart(p: Project): void
   onStop(p: Project): void
   onContextMenu(e: React.MouseEvent, p: Project): void
@@ -55,6 +57,7 @@ export function CardView({
   onDragEnd,
   onDrop,
   onOpen,
+  onOpenBrowser,
   onStart,
   onStop,
   onContextMenu
@@ -122,7 +125,26 @@ export function CardView({
                 </span>
               </div>
               <div className="card-body">
-                <div className="card-port">{port ? `localhost:${port}` : '未设置端口'}</div>
+                {/* 运行中端口可点开浏览器（2026-08-21 网站常驻） */}
+                <div className="card-port">
+                  {active && port ? (
+                    <a
+                      className="port-link"
+                      title="在浏览器打开"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenBrowser(p)
+                      }}
+                    >
+                      localhost:{port}
+                      <ExternalLink size={11} />
+                    </a>
+                  ) : port ? (
+                    `localhost:${port}`
+                  ) : (
+                    '未设置端口'
+                  )}
+                </div>
                 <div className="card-last">上次启动：{formatTime(p.lastStartedAt)}</div>
                 {p.note && <div className="card-note">{p.note}</div>}
                 {failed && statuses[p.id]?.reason && (

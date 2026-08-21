@@ -132,9 +132,16 @@ export default function App(): React.JSX.Element {
 
   // 初始加载：项目清单 + 设置 + 检测已在运行的项目直接显示运行中
   useEffect(() => {
-    window.api.listProjects().then((ps) => {
+    window.api.listProjects().then(async (ps) => {
       setProjects(ps)
-      window.api.adoptAllRunning()
+      await window.api.adoptAllRunning()
+      // 网站常驻（2026-08-21 拍板）：打开 Reopen 自动把网页项目拉回在线（服务类保持手动）
+      for (const p of ps) {
+        if (p.type !== 'web') continue
+        const r = await window.api.startProject(p.id)
+        // adopt 已接管的会返回"已经在运行了"，静默；真失败由状态红点呈现
+        if (!r.ok && r.reason && r.reason !== '已经在运行了') toast(r.reason, 'error')
+      }
     })
     window.api.getSettings().then((s) => {
       setSettings(s)
@@ -142,7 +149,7 @@ export default function App(): React.JSX.Element {
     })
     // 设置窗口改了什么，主窗口即时同步
     return window.api.onSettingsChanged(setSettings)
-  }, [])
+  }, [toast])
 
   // 订阅主进程推送：状态变化 + 日志（PRD 3.4）
   useEffect(() => {
@@ -493,6 +500,11 @@ export default function App(): React.JSX.Element {
       const project = await window.api.addProject(input)
       setProjects((ps) => [...ps, project])
       toast(`已添加「${project.name}」`, 'success')
+      // 网站常驻（2026-08-21 拍板）：网页类型登记提交即上线，端口挂在行上随时点开
+      if (project.type === 'web') {
+        const r = await window.api.startProject(project.id)
+        if (!r.ok && r.reason) toast(r.reason, 'error')
+      }
     }
     setForm(null)
   }
@@ -708,6 +720,7 @@ export default function App(): React.JSX.Element {
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
                       tagColor={tagColor}
+                      onOpenBrowser={() => handleOpenBrowser(p)}
                     />
                   </Fragment>
                 ))
@@ -733,6 +746,7 @@ export default function App(): React.JSX.Element {
                   onDrop={(e, p) => handleRowDrop(e, p)}
                   tagColor={tagColor}
                   onOpen={(p) => setSelectedId(p.id)}
+                  onOpenBrowser={(p) => handleOpenBrowser(p)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
                   onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}

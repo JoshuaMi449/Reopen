@@ -234,11 +234,16 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
   if (project.port && (await checkPortOpen(project.port))) {
     return { ok: false, reason: `端口 ${project.port} 已被占用` }
   }
+  // 端口稳定（2026-08-21 网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）；被占则交给系统自动分配
+  let wantPort = project.port
+  if (!wantPort && project.lastPort && !(await checkPortOpen(project.lastPort))) {
+    wantPort = project.lastPort
+  }
   setStatus(rt, project, 'starting')
   try {
     const { server, port, entryPath } = await startWebServer(
       project.path,
-      project.port,
+      wantPort,
       project.entryPath
     )
     rt.server = server

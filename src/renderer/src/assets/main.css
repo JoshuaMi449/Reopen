@@ -952,6 +952,20 @@ html.dark .sidebar-logo-word,
   color: var(--text-dim);
 }
 
+/* 运行中端口可点开浏览器（2026-08-21 网站常驻） */
+.port-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.port-link:hover {
+  text-decoration: underline;
+}
+
 /* 标签重命名输入框（2026-08-21） */
 .rename-input {
   width: 100%;
