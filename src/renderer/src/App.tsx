@@ -599,6 +599,8 @@ export default function App(): React.JSX.Element {
           current={settings.tagColors[tag]}
           onPick={(color) => {
             void handleTagPickColor(tag, color)
+            // 选完颜色（或点无色）菜单立即关闭（2026-08-21 用户反馈）
+            setTagMenu(null)
           }}
         />
       )

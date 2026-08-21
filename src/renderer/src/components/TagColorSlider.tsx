@@ -34,7 +34,13 @@ export function TagColorSlider({ colors, current, onPick }: Props): React.JSX.El
         max={colors.length}
         step={1}
         value={preview}
-        style={{ '--cur': curColor ?? '#9e9e9e' } as React.CSSProperties}
+        // 无色时刻度线=透明+描边（和空心 icon 一致），有颜色时=实心色+白边（2026-08-21 用户反馈）
+        style={
+          {
+            '--cur': curColor ?? 'transparent',
+            '--ring': curColor ? '#fff' : 'var(--text-dim)'
+          } as React.CSSProperties
+        }
         // 拖动过程只更新预览（React 的 onChange=持续 input），松手/键盘松开才真正提交，避免频繁写盘
         onChange={(e) => setPreview(Number(e.target.value))}
         onPointerUp={() => commit(preview)}

@@ -955,8 +955,8 @@ html.dark .sidebar-logo-word,
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--cur, #9e9e9e);
-  border: 2px solid #fff;
+  background: var(--cur, transparent);
+  border: 2px solid var(--ring, var(--text-dim));
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
