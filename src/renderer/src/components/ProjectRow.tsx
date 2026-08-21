@@ -22,6 +22,8 @@ interface Props {
   onDrop?(e: React.DragEvent): void
   /** 在自启项里（PRD 3.5：打勾同步显示） */
   autoStartChecked?: boolean
+  /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
+  tagColor?(tag: string): string | undefined
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -53,7 +55,8 @@ export function ProjectRow({
   onDragOver,
   onDragEnd,
   onDrop,
-  autoStartChecked
+  autoStartChecked,
+  tagColor
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -86,15 +89,18 @@ export function ProjectRow({
             <Check size={13} />
           </span>
         )}
-        {/* 标签放行中间（名称之后；2026-08-21 拍板：Tag icon+文字，无颜色无圆角） */}
+        {/* 标签放行中间（名称之后；2026-08-21 拍板：Tag icon+文字，染了色则 icon 填色） */}
         {project.tags.length > 0 && (
           <span className="row-tags">
-            {project.tags.map((t) => (
-              <span key={t} className="row-tag">
-                <Tag size={11} />
-                {t}
-              </span>
-            ))}
+            {project.tags.map((t) => {
+              const color = tagColor?.(t)
+              return (
+                <span key={t} className="row-tag">
+                  <Tag size={11} fill={color} color={color ?? undefined} />
+                  {t}
+                </span>
+              )
+            })}
           </span>
         )}
         <span className="row-port">{port ? `:${port}` : ''}</span>

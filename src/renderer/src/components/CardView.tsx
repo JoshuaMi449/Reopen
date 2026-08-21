@@ -13,6 +13,8 @@ interface Props {
   statuses: Record<string, ProjectStatusEvent>
   /** 自启项内的项目 id（打勾同步显示） */
   autoStartIds: string[]
+  /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
+  tagColor(tag: string): string | undefined
   /** 正在被拖拽的项目 id（半透明拖影） */
   dragId: string | null
   /** 拖拽悬停的目标 id：其后面显示占位空位（动态让位） */
@@ -44,6 +46,7 @@ export function CardView({
   items,
   statuses,
   autoStartIds,
+  tagColor,
   dragId,
   dragOverId,
   sortDraggable,
@@ -126,15 +129,18 @@ export function CardView({
                   <div className="card-fail-reason">{statuses[p.id].reason}</div>
                 )}
               </div>
-              {/* 右下角标签（2026-08-21 拍板）：绝对定位不撑高卡片，Tag icon+文字，无三角无颜色 */}
+              {/* 右下角标签（2026-08-21 拍板）：绝对定位不撑高卡片，Tag icon+文字，染了色则 icon 填色 */}
               {p.tags.length > 0 && (
                 <div className="card-tags">
-                  {p.tags.map((t) => (
-                    <span key={t} className="card-tag-item">
-                      <Tag size={11} />
-                      {t}
-                    </span>
-                  ))}
+                  {p.tags.map((t) => {
+                    const color = tagColor(t)
+                    return (
+                      <span key={t} className="card-tag-item">
+                        <Tag size={11} fill={color} color={color ?? undefined} />
+                        {t}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
             </div>

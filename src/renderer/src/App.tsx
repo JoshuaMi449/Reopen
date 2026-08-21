@@ -20,7 +20,7 @@ import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
-import { TagColorModal } from './components/TagColorModal'
+import { TagColorSlider } from './components/TagColorSlider'
 import { TagRenameDialog } from './components/TagRenameDialog'
 import { Toast, ToastData } from './components/Toast'
 import { Toolbar } from './components/Toolbar'
@@ -78,8 +78,6 @@ export default function App(): React.JSX.Element {
   const [tagRename, setTagRename] = useState<string | null>(null)
   /** 待删除确认的标签名 */
   const [tagDelete, setTagDelete] = useState<string | null>(null)
-  /** 正在染色的标签名 */
-  const [tagColorPick, setTagColorPick] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastData[]>([])
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
@@ -333,6 +331,7 @@ export default function App(): React.JSX.Element {
       if (e.key === 'Escape') setAutoStartOpen(false)
     }
     const onMouseDown = (e: MouseEvent): void => {
+      if (e.button !== 0) return // 右键等不关面板（2026-08-21）
       const panel = document.querySelector('.autostart-panel')
       if (!panel || panel.contains(e.target as Node)) return
       if (autoStartBtnRef.current?.contains(e.target as Node)) return
@@ -575,18 +574,15 @@ export default function App(): React.JSX.Element {
     toast(`标签「${tag}」已删除`, 'success')
   }
 
-  /** 标签染色（null=清除） */
-  const handleTagPickColor = async (color: string | null): Promise<void> => {
-    const tag = tagColorPick
-    setTagColorPick(null)
-    if (!tag) return
+  /** 标签染色（null=清除；滑块拖动松手时提交） */
+  const handleTagPickColor = async (tag: string, color: string | null): Promise<void> => {
     const next = { ...settings.tagColors }
     if (color) next[tag] = color
     else delete next[tag]
     await updateSettings({ tagColors: next })
   }
 
-  /** 标签右键菜单项 */
+  /** 标签右键菜单项（2026-08-21 拍板：染色不是弹窗，而是菜单里内嵌渐变色板滑块+无色按钮） */
   const tagMenuItems = (tag: string): MenuItem[] => [
     {
       label: '重命名…',
@@ -594,9 +590,18 @@ export default function App(): React.JSX.Element {
       onClick: () => setTagRename(tag)
     },
     {
-      label: '染色…',
+      label: '染色',
       icon: <Palette size={14} />,
-      onClick: () => setTagColorPick(tag)
+      onClick: () => undefined,
+      custom: (
+        <TagColorSlider
+          colors={TAG_COLORS}
+          current={settings.tagColors[tag]}
+          onPick={(color) => {
+            void handleTagPickColor(tag, color)
+          }}
+        />
+      )
     },
     {
       label: '删除标签',
@@ -698,6 +703,7 @@ export default function App(): React.JSX.Element {
                       }}
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
+                      tagColor={tagColor}
                     />
                   </Fragment>
                 ))
@@ -721,6 +727,7 @@ export default function App(): React.JSX.Element {
                     setDragOverId(null)
                   }}
                   onDrop={(e, p) => handleRowDrop(e, p)}
+                  tagColor={tagColor}
                   onOpen={(p) => setSelectedId(p.id)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
@@ -798,16 +805,6 @@ export default function App(): React.JSX.Element {
           confirmText="删除"
           onConfirm={handleTagDelete}
           onCancel={() => setTagDelete(null)}
-        />
-      )}
-
-      {tagColorPick && (
-        <TagColorModal
-          tag={tagColorPick}
-          colors={TAG_COLORS}
-          current={settings.tagColors[tagColorPick]}
-          onPick={handleTagPickColor}
-          onCancel={() => setTagColorPick(null)}
         />
       )}
 
