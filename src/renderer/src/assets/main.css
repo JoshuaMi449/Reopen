@@ -966,6 +966,131 @@ html.dark .sidebar-logo-word,
   text-decoration: underline;
 }
 
+/* ---------- 项目组（2026-08-21 拍板：组收纳子项，标签打组上，组自启只拉成品） ---------- */
+
+/* 组行 */
+.group-row .row-main {
+  font-weight: 500;
+}
+
+.group-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.group-summary {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* 组内子行缩进 */
+.child-row .row-main {
+  padding-left: 30px;
+}
+
+/* 卡片模式的组头卡（全宽一条，点击展开/收起） */
+.group-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  position: relative;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.group-card:hover {
+  background: var(--hover);
+}
+
+.group-card-collapsed {
+  margin-bottom: 0;
+}
+
+.group-card .group-summary {
+  margin-left: auto;
+}
+
+/* 组预览弹窗（GroupPreviewModal） */
+.group-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.group-name-row span {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.group-name-row input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.group-name-row input:focus {
+  outline: none;
+  border-color: var(--primary-strong);
+}
+
+.multi-item-off {
+  opacity: 0.5;
+}
+
+.multi-count {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 组抽屉：子项列表 */
+.drawer-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.drawer-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.drawer-child:hover {
+  background: var(--hover);
+}
+
+.drawer-child-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-child-port {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 /* 标签重命名输入框（2026-08-21） */
 .rename-input {
   width: 100%;

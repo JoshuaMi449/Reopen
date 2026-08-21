@@ -17,7 +17,8 @@ import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { DetailDrawer } from './components/DetailDrawer'
-import { MultiProjectModal } from './components/MultiProjectModal'
+import { GroupPreviewModal } from './components/GroupPreviewModal'
+import { GroupRow } from './components/GroupRow'
 import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
@@ -71,8 +72,10 @@ export default function App(): React.JSX.Element {
   /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起，2026-08-20 拍板） */
   const [searchOpen, setSearchOpen] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
-  /** 多项目容器候选清单（2026-08-21 S2）：打开表单时隐藏，表单提交/取消后重现继续挑 */
+  /** 多项目容器候选（2026-08-21 S2，组预览勾选式）：确认后登记成组 */
   const [multi, setMulti] = useState<DetectMulti | null>(null)
+  /** 展开的组 id（2026-08-21 项目组；新登记的组默认展开） */
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -200,24 +203,62 @@ export default function App(): React.JSX.Element {
   // 已有标签聚合（表单联想下拉的数据源；2026-08-21 拍板：标签无颜色，列表/卡片不展示）
   const allTags = useMemo(() => [...new Set(projects.flatMap((p) => p.tags))].sort(), [projects])
 
+  // 组 → 子项映射（2026-08-21 项目组：子项按登记顺序固定在组内）
+  const childrenMap = useMemo(() => {
+    const m = new Map<string, Project[]>()
+    for (const p of projects) {
+      if (!p.parentId) continue
+      const arr = m.get(p.parentId)
+      if (arr) arr.push(p)
+      else m.set(p.parentId, [p])
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.createdAt - b.createdAt)
+    return m
+  }, [projects])
+
+  const childrenOf = useCallback(
+    (id: string): Project[] => childrenMap.get(id) ?? [],
+    [childrenMap]
+  )
+
+  const toggleGroup = (id: string): void => {
+    setExpandedGroups((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   // 分类 + 搜索 + 排序（PRD 3.3；排序体系 2026-08-20 重做：名称/最近打开/添加日期/标签/无）
+  // 2026-08-21 项目组：顶层视角——组与独立项目同层，子项只随组出现；组按子项内容进分类
   const visibleProjects = useMemo(() => {
-    let list = [...projects]
-    if (category === 'service') list = list.filter((p) => p.type === 'service')
-    else if (category === 'web') list = list.filter((p) => p.type === 'web')
-    else if (category.startsWith('tag:')) {
+    let list = projects.filter((p) => !p.parentId)
+    const groupHas = (g: Project, type: 'service' | 'web'): boolean =>
+      childrenOf(g.id).some((c) => c.type === type)
+    if (category === 'service') {
+      list = list.filter(
+        (p) => p.type === 'service' || (p.type === 'group' && groupHas(p, 'service'))
+      )
+    } else if (category === 'web') {
+      list = list.filter((p) => p.type === 'web' || (p.type === 'group' && groupHas(p, 'web')))
+    } else if (category.startsWith('tag:')) {
       const tag = category.slice(4)
-      list = list.filter((p) => p.tags.includes(tag))
+      list = list.filter(
+        (p) =>
+          p.tags.includes(tag) ||
+          (p.type === 'group' && childrenOf(p.id).some((c) => c.tags.includes(tag)))
+      )
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.note.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)) ||
-          p.port?.toString().includes(q)
-      )
+      const match = (p: Project): boolean =>
+        p.name.toLowerCase().includes(q) ||
+        p.note.toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)) ||
+        (p.port?.toString().includes(q) ?? false)
+      // 子项命中 → 组跟着显示
+      list = list.filter((p) => match(p) || (p.type === 'group' && childrenOf(p.id).some(match)))
     }
     if (settings.sortMode === 'name') {
       list.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
@@ -253,27 +294,46 @@ export default function App(): React.JSX.Element {
       })
     }
     return list
-  }, [projects, category, search, settings.sortMode, settings.manualOrder])
+  }, [projects, category, search, settings.sortMode, settings.manualOrder, childrenOf])
 
   // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」；2026-08-21 起无颜色，只留文字）
+  // 2026-08-21 项目组：展开的组后面紧跟其子项（子项无组头、不参与顶层排序）
   const listItems = useMemo(() => {
-    if (settings.sortMode !== 'tag') return visibleProjects.map((p) => ({ p, header: null }))
+    const items: { p: Project; header: { label: string } | null }[] = []
     let last: string | undefined
-    return visibleProjects.map((p) => {
-      const t = p.tags[0]
-      const header = t !== last ? { label: t || '无标签' } : null
-      last = t
-      return { p, header }
-    })
-  }, [visibleProjects, settings.sortMode])
+    for (const p of visibleProjects) {
+      let header: { label: string } | null = null
+      if (settings.sortMode === 'tag') {
+        const t = p.tags[0]
+        header = t !== last ? { label: t || '无标签' } : null
+        last = t
+      }
+      items.push({ p, header })
+      if (p.type === 'group' && expandedGroups.has(p.id)) {
+        for (const c of childrenOf(p.id)) items.push({ p: c, header: null })
+      }
+    }
+    return items
+  }, [visibleProjects, settings.sortMode, expandedGroups, childrenOf])
 
+  // 2026-08-21 项目组：条目数按顶层算（组算 1 个）；组按子项内容计入分类
   const counts = useMemo(
     () => ({
-      all: projects.length,
-      service: projects.filter((p) => p.type === 'service').length,
-      web: projects.filter((p) => p.type === 'web').length
+      all: projects.filter((p) => !p.parentId).length,
+      service: projects.filter(
+        (p) =>
+          !p.parentId &&
+          (p.type === 'service' ||
+            (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'service')))
+      ).length,
+      web: projects.filter(
+        (p) =>
+          !p.parentId &&
+          (p.type === 'web' ||
+            (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'web')))
+      ).length
     }),
-    [projects]
+    [projects, childrenOf]
   )
 
   // 识别结果的统一处理：成功→确认表单；多项目→候选清单；.app→询问解析；识别不了→提示；重复→提示
@@ -326,8 +386,18 @@ export default function App(): React.JSX.Element {
 
   const addToAutoStart = (id: string): void => {
     if (settings.autoStartIds.includes(id)) return
+    const p = projects.find((x) => x.id === id)
+    // 2026-08-21 拍板：组内子项不能单独自启，自启打在组上（只拉成品子项）
+    if (p?.parentId) {
+      toast('组内子项不能单独自启——请把整个组拖进来', 'error')
+      return
+    }
     updateSettings({ autoStartIds: [...settings.autoStartIds, id] })
-    toast('已加入自启项：打开 Reopen 会自动启动它')
+    toast(
+      p?.type === 'group'
+        ? '已加入自启项：打开 Reopen 只自动拉起组里的成品网站'
+        : '已加入自启项：打开 Reopen 会自动启动它'
+    )
   }
 
   const removeFromAutoStart = (id: string): void => {
@@ -433,6 +503,22 @@ export default function App(): React.JSX.Element {
 
   // 右键菜单项（随运行状态变化；PRD 3.3）
   const menuItems = (p: Project): MenuItem[] => {
+    // 组（2026-08-21 项目组）：不启动，只有编辑/删除
+    if (p.type === 'group') {
+      return [
+        {
+          label: '编辑',
+          icon: <Pencil size={14} />,
+          onClick: () => setForm({ mode: 'edit', project: p })
+        },
+        {
+          label: '删除',
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: () => setDeleteTarget(p)
+        }
+      ]
+    }
     const st = statuses[p.id]?.status ?? 'stopped'
     const items: MenuItem[] = []
     if (st === 'running' || st === 'starting') {
@@ -485,7 +571,8 @@ export default function App(): React.JSX.Element {
       openBrowser: p.openBrowser,
       note: p.note,
       tags: p.tags,
-      entryPath: p.entryPath
+      entryPath: p.entryPath,
+      parentId: p.parentId
     })
     setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     toast(`已重新定位「${updated.name}」`, 'success')
@@ -509,6 +596,44 @@ export default function App(): React.JSX.Element {
     setForm(null)
   }
 
+  /** 组预览确认：登记组 + 按勾选顺序登记子项（成品先勾选的在前），成品子项登记即上线（2026-08-21 拍板） */
+  const handleGroupCreate = async (name: string, selected: DetectSuccess[]): Promise<void> => {
+    const group = await window.api.addProject({
+      name,
+      type: 'group',
+      path: multi?.path ?? '',
+      openBrowser: false,
+      note: '',
+      tags: []
+    })
+    const added: Project[] = [group]
+    for (const s of selected) {
+      const child = await window.api.addProject({
+        name: s.suggested.name,
+        type: s.type,
+        path: s.path,
+        command: s.suggested.command,
+        port: s.suggested.port,
+        entryPath: s.suggested.entryPath,
+        openBrowser: false,
+        note: '',
+        tags: [],
+        parentId: group.id
+      })
+      added.push(child)
+      // 成品网页登记即上线（网站常驻）
+      if (child.type === 'web') {
+        const r = await window.api.startProject(child.id)
+        if (!r.ok && r.reason) toast(r.reason, 'error')
+      }
+    }
+    setProjects((ps) => [...ps, ...added])
+    setMulti(null)
+    // 新组默认展开，登记完立刻能看到子项
+    setExpandedGroups((s) => new Set(s).add(group.id))
+    toast(`已登记项目组「${name}」（${selected.length} 个子项）`, 'success')
+  }
+
   const handleParseApp = async (): Promise<void> => {
     if (!appPrompt) return
     const outcome = await window.api.parseApp(appPrompt.path)
@@ -519,8 +644,23 @@ export default function App(): React.JSX.Element {
 
   const handleDelete = async (): Promise<void> => {
     if (!deleteTarget) return
+    // 组（2026-08-21 项目组）：先停掉在线的子项、删子项，再删组本身
+    if (deleteTarget.type === 'group') {
+      for (const c of childrenOf(deleteTarget.id)) {
+        try {
+          await window.api.stopProject(c.id)
+        } catch {
+          // 没在运行就算了
+        }
+        await window.api.deleteProject(c.id)
+      }
+      setProjects((ps) =>
+        ps.filter((p) => p.parentId !== deleteTarget.id && p.id !== deleteTarget.id)
+      )
+    } else {
+      setProjects((ps) => ps.filter((p) => p.id !== deleteTarget.id))
+    }
     await window.api.deleteProject(deleteTarget.id)
-    setProjects((ps) => ps.filter((p) => p.id !== deleteTarget.id))
     if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
   }
@@ -546,7 +686,8 @@ export default function App(): React.JSX.Element {
         note: p.note,
         tags: next(p.tags),
         lastPort: p.lastPort,
-        entryPath: p.entryPath
+        entryPath: p.entryPath,
+        parentId: p.parentId
       })
       setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     }
@@ -693,37 +834,75 @@ export default function App(): React.JSX.Element {
               ) : visibleProjects.length === 0 ? (
                 <div className="empty">没有符合条件的项目。</div>
               ) : settings.view === 'list' ? (
-                listItems.map(({ p, header }) => (
-                  <Fragment key={p.id}>
-                    {header && <div className="list-group-header">{header.label}</div>}
-                    <ProjectRow
-                      project={p}
-                      status={statuses[p.id]}
-                      onOpen={() => setSelectedId(p.id)}
-                      onStart={() => handleStart(p)}
-                      onStop={() => window.api.stopProject(p.id)}
-                      onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-                      sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
-                      dragging={dragId === p.id}
-                      dropTarget={dragOverId === p.id}
-                      onDragStart={(e) => handleRowDragStart(e, p)}
-                      onDragOver={(e) => {
-                        if (!e.dataTransfer.types.includes('Files')) {
-                          e.preventDefault()
-                          setDragOverId(p.id)
+                listItems.map(({ p, header }) =>
+                  p.type === 'group' ? (
+                    // 组行（2026-08-21 项目组）：展开/收起，子项由 listItems 顺序跟随
+                    <Fragment key={p.id}>
+                      {header && <div className="list-group-header">{header.label}</div>}
+                      <GroupRow
+                        group={p}
+                        expanded={expandedGroups.has(p.id)}
+                        onToggle={() => toggleGroup(p.id)}
+                        childrenCount={childrenOf(p.id).length}
+                        onlineCount={
+                          childrenOf(p.id).filter((c) => statuses[c.id]?.status === 'running')
+                            .length
                         }
-                      }}
-                      onDragEnd={() => {
-                        setDragId(null)
-                        setDragOverId(null)
-                      }}
-                      onDrop={(e) => handleRowDrop(e, p)}
-                      autoStartChecked={settings.autoStartIds.includes(p.id)}
-                      tagColor={tagColor}
-                      onOpenBrowser={() => handleOpenBrowser(p)}
-                    />
-                  </Fragment>
-                ))
+                        tagColor={tagColor}
+                        autoStartChecked={settings.autoStartIds.includes(p.id)}
+                        onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                        sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                        dragging={dragId === p.id}
+                        dropTarget={dragOverId === p.id}
+                        onDragStart={(e) => handleRowDragStart(e, p)}
+                        onDragOver={(e) => {
+                          if (!e.dataTransfer.types.includes('Files')) {
+                            e.preventDefault()
+                            setDragOverId(p.id)
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null)
+                          setDragOverId(null)
+                        }}
+                        onDrop={(e) => handleRowDrop(e, p)}
+                      />
+                    </Fragment>
+                  ) : (
+                    <Fragment key={p.id}>
+                      {header && <div className="list-group-header">{header.label}</div>}
+                      <ProjectRow
+                        project={p}
+                        status={statuses[p.id]}
+                        onOpen={() => setSelectedId(p.id)}
+                        onStart={() => handleStart(p)}
+                        onStop={() => window.api.stopProject(p.id)}
+                        onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                        sortDraggable={
+                          !p.parentId && (settings.sortMode === 'none' || settings.autoStartEnabled)
+                        }
+                        dragging={dragId === p.id}
+                        dropTarget={dragOverId === p.id}
+                        onDragStart={(e) => handleRowDragStart(e, p)}
+                        onDragOver={(e) => {
+                          if (!e.dataTransfer.types.includes('Files')) {
+                            e.preventDefault()
+                            setDragOverId(p.id)
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null)
+                          setDragOverId(null)
+                        }}
+                        onDrop={(e) => handleRowDrop(e, p)}
+                        autoStartChecked={settings.autoStartIds.includes(p.id)}
+                        tagColor={tagColor}
+                        onOpenBrowser={() => handleOpenBrowser(p)}
+                        isChild={Boolean(p.parentId)}
+                      />
+                    </Fragment>
+                  )
+                )
               ) : (
                 <CardView
                   items={listItems}
@@ -750,6 +929,9 @@ export default function App(): React.JSX.Element {
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
                   onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                  expandedGroups={expandedGroups}
+                  childrenOf={childrenOf}
+                  onToggleGroup={toggleGroup}
                 />
               )}
             </main>
@@ -774,6 +956,14 @@ export default function App(): React.JSX.Element {
               onDelete={() => setDeleteTarget(selectedProject)}
               onOpenBrowser={() => handleOpenBrowser(selectedProject)}
               onClose={() => setSelectedId(null)}
+              // 组视图（2026-08-21 项目组）：子项列表，可逐个启停/点端口
+              groupChildren={
+                selectedProject.type === 'group' ? childrenOf(selectedProject.id) : undefined
+              }
+              statuses={statuses}
+              onChildStart={handleStart}
+              onChildStop={(c) => window.api.stopProject(c.id)}
+              onChildOpenBrowser={handleOpenBrowser}
             />
           )}
         </div>
@@ -790,13 +980,12 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      {/* 多项目容器候选清单（2026-08-21 S2 逐个确认式）：表单打开时让位，关闭后重现；已登记的候选打勾 */}
-      {multi && !form && (
-        <MultiProjectModal
+      {/* 多项目容器 → 项目组预览勾选（2026-08-21 拍板）：确认后登记成组 */}
+      {multi && (
+        <GroupPreviewModal
           multi={multi}
-          projects={projects}
-          onPick={(detect) => setForm({ mode: 'create', detect })}
-          onDone={() => setMulti(null)}
+          onConfirm={handleGroupCreate}
+          onCancel={() => setMulti(null)}
         />
       )}
 
@@ -858,8 +1047,12 @@ export default function App(): React.JSX.Element {
 
       {deleteTarget && (
         <ConfirmDialog
-          title="删除项目"
-          message={`确定把「${deleteTarget.name}」从 Reopen 移除吗？\n只从 Reopen 移除登记，不删你电脑上的原文件。`}
+          title={deleteTarget.type === 'group' ? '删除项目组' : '删除项目'}
+          message={
+            deleteTarget.type === 'group'
+              ? `确定把「${deleteTarget.name}」整个组从 Reopen 移除吗？\n组里的 ${childrenOf(deleteTarget.id).length} 个子项目会一起移除，不删你电脑上的原文件。`
+              : `确定把「${deleteTarget.name}」从 Reopen 移除吗？\n只从 Reopen 移除登记，不删你电脑上的原文件。`
+          }
           confirmText="移除"
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}

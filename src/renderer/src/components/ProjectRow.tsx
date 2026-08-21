@@ -24,6 +24,8 @@ interface Props {
   autoStartChecked?: boolean
   /** 点端口在浏览器打开（运行中时端口可点，2026-08-21 网站常驻） */
   onOpenBrowser?(): void
+  /** 是组内子项（缩进显示，2026-08-21 项目组） */
+  isChild?: boolean
   /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
   tagColor?(tag: string): string | undefined
 }
@@ -59,7 +61,8 @@ export function ProjectRow({
   onDrop,
   autoStartChecked,
   tagColor,
-  onOpenBrowser
+  onOpenBrowser,
+  isChild
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -68,7 +71,11 @@ export function ProjectRow({
   const port = status?.port ?? project.port
 
   return (
-    <div className={`project-row ${failed ? 'row-failed' : ''} ${dragging ? 'dragging' : ''}`}>
+    <div
+      className={`project-row ${failed ? 'row-failed' : ''} ${dragging ? 'dragging' : ''} ${
+        isChild ? 'child-row' : ''
+      }`}
+    >
       <div
         className={`row-main ${dropTarget ? 'drop-target' : ''}`}
         draggable={sortDraggable}

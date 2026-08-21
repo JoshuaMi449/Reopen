@@ -3,6 +3,7 @@ import {
   ExternalLink,
   FileCode2,
   Folder,
+  Layers,
   Pencil,
   Play,
   RotateCcw,
@@ -22,6 +23,12 @@ interface Props {
   onDelete(): void
   onOpenBrowser(): void
   onClose(): void
+  /** 组的子项（2026-08-21 项目组：组抽屉显示子项列表，可逐个启停/点端口） */
+  groupChildren?: Project[]
+  statuses?: Record<string, ProjectStatusEvent>
+  onChildStart?(p: Project): void
+  onChildStop?(p: Project): void
+  onChildOpenBrowser?(p: Project): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -48,7 +55,12 @@ export function DetailDrawer({
   onEdit,
   onDelete,
   onOpenBrowser,
-  onClose
+  onClose,
+  groupChildren,
+  statuses,
+  onChildStart,
+  onChildStop,
+  onChildOpenBrowser
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -59,6 +71,88 @@ export function DetailDrawer({
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
+
+  // 组视图（2026-08-21 项目组）：子项列表，无日志区
+  if (project.type === 'group' && groupChildren) {
+    return (
+      <aside className="drawer">
+        <div className="drawer-inner">
+          <div className="drawer-head">
+            <span className="drawer-icon">
+              <Layers size={15} />
+            </span>
+            <span className="drawer-name">{project.name}</span>
+            <button className="icon-btn" title="关闭" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="drawer-meta">
+            {project.tags.length > 0 && (
+              <div className="drawer-tags">
+                {project.tags.map((t) => (
+                  <span key={t} className="card-tag">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="drawer-children">
+            {groupChildren.length === 0 ? (
+              <div className="log-empty">这个组里还没有子项目。</div>
+            ) : (
+              groupChildren.map((c) => {
+                const cst = statuses?.[c.id]?.status ?? 'stopped'
+                const cActive = cst === 'running' || cst === 'starting'
+                const cPort = statuses?.[c.id]?.port ?? c.port
+                return (
+                  <div key={c.id} className="drawer-child">
+                    <span className={`status-dot dot-${cst}`} title={STATUS_TEXT[cst]} />
+                    <span className="row-icon">
+                      {c.type === 'service' ? <Folder size={15} /> : <FileCode2 size={15} />}
+                    </span>
+                    <span className="drawer-child-name">{c.name}</span>
+                    {cActive && cPort ? (
+                      <a
+                        className="port-link"
+                        title="在浏览器打开"
+                        onClick={() => onChildOpenBrowser?.(c)}
+                      >
+                        :{cPort}
+                        <ExternalLink size={11} />
+                      </a>
+                    ) : (
+                      <span className="drawer-child-port">{cPort ? `:${cPort}` : ''}</span>
+                    )}
+                    {cActive ? (
+                      <button className="icon-btn" title="停止" onClick={() => onChildStop?.(c)}>
+                        <Square size={14} />
+                      </button>
+                    ) : (
+                      <button className="icon-btn" title="启动" onClick={() => onChildStart?.(c)}>
+                        <Play size={14} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <div className="drawer-actions">
+            <button className="btn-secondary" onClick={onEdit}>
+              <Pencil size={14} /> 编辑
+            </button>
+            <button className="btn-danger" onClick={onDelete}>
+              <Trash2 size={14} /> 删除
+            </button>
+          </div>
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside className="drawer">

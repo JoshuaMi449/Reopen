@@ -1,7 +1,7 @@
 // 共享类型：主进程与渲染进程共用的数据定义（PRD 第三章功能需求的数据模型）
 
-/** 项目类型：本地服务（起命令） / 网页文件（起临时服务+开浏览器） */
-export type ProjectType = 'service' | 'web'
+/** 项目类型：本地服务（起命令） / 网页文件（起临时服务+开浏览器） / 项目组（收纳子项，2026-08-21 拍板） */
+export type ProjectType = 'service' | 'web' | 'group'
 
 /** 运行时状态：只存在主进程内存，不写进 JSON */
 export type ProjectStatus = 'stopped' | 'starting' | 'running' | 'failed'
@@ -18,6 +18,8 @@ export interface Project {
   port?: number
   /** 网页入口文件相对路径（如 /supos-case-anjia.html；2026-08-21 S3：启动打开该文件而非目录根） */
   entryPath?: string
+  /** 属于哪个项目组（2026-08-21 拍板：组收纳子项，子项与独立项目同结构） */
+  parentId?: string
   /** 启动后打开默认浏览器，默认关 */
   openBrowser: boolean
   note: string

@@ -1,5 +1,16 @@
 import { Fragment } from 'react'
-import { Check, ExternalLink, FileCode2, Folder, Play, Square, Tag } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileCode2,
+  Folder,
+  Layers,
+  Play,
+  Square,
+  Tag
+} from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface ListItem {
@@ -32,6 +43,10 @@ interface Props {
   onStart(p: Project): void
   onStop(p: Project): void
   onContextMenu(e: React.MouseEvent, p: Project): void
+  /** 展开的组 id（2026-08-21 项目组：组头卡点击切换，子卡跟在后面） */
+  expandedGroups: Set<string>
+  childrenOf(id: string): Project[]
+  onToggleGroup(id: string): void
 }
 
 function formatTime(ts?: number): string {
@@ -60,11 +75,54 @@ export function CardView({
   onOpenBrowser,
   onStart,
   onStop,
-  onContextMenu
+  onContextMenu,
+  expandedGroups,
+  childrenOf,
+  onToggleGroup
 }: Props): React.JSX.Element {
   return (
     <div className="card-grid">
       {items.map(({ p, header }) => {
+        // 组头卡（2026-08-21 项目组）：全宽一条，点击展开/收起，子卡跟在后面
+        if (p.type === 'group') {
+          const children = childrenOf(p.id)
+          const online = children.filter((c) => statuses[c.id]?.status === 'running').length
+          const expanded = expandedGroups.has(p.id)
+          return (
+            <Fragment key={p.id}>
+              {header && <div className="list-group-header card-grid-full">{header.label}</div>}
+              <div
+                className={`group-card card-grid-full ${expanded ? '' : 'group-card-collapsed'} ${
+                  dragOverId === p.id ? 'drop-target' : ''
+                }`}
+                draggable={sortDraggable}
+                onClick={() => onToggleGroup(p.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  onContextMenu(e, p)
+                }}
+                onDragStart={(e) => onDragStart(e, p)}
+                onDragOver={(e) => onDragOver(e, p)}
+                onDragEnd={onDragEnd}
+                onDrop={(e) => onDrop(e, p)}
+              >
+                <span className="group-arrow">
+                  {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                </span>
+                <Layers size={15} />
+                <span className="group-card-name">{p.name}</span>
+                {autoStartIds.includes(p.id) && (
+                  <span className="autostart-check" title="在自启项里（开机只拉组内成品网站）">
+                    <Check size={13} />
+                  </span>
+                )}
+                <span className="group-summary">
+                  {children.length} 个子项 · {online} 个在线
+                </span>
+              </div>
+            </Fragment>
+          )
+        }
         const st = statuses[p.id]?.status ?? 'stopped'
         const failed = st === 'failed'
         const active = st === 'running' || st === 'starting'
@@ -76,7 +134,8 @@ export function CardView({
               className={`card ${failed ? 'card-failed' : ''} ${dragId === p.id ? 'dragging' : ''} ${
                 dragOverId === p.id ? 'drop-target' : ''
               }`}
-              draggable={sortDraggable}
+              // 组内子项不可拖拽排序（顺序固定在组内，2026-08-21 项目组）
+              draggable={sortDraggable && !p.parentId}
               onDragStart={(e) => onDragStart(e, p)}
               onDragOver={(e) => onDragOver(e, p)}
               onDragEnd={onDragEnd}

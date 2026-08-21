@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Zap } from 'lucide-react'
+import { Layers, X, Zap } from 'lucide-react'
 import type { Project } from '../../../shared/types'
 
 interface Props {
@@ -51,8 +51,21 @@ export function AutoStartPanel({ items, onRemove, onDropId }: Props): React.JSX.
           ) : (
             items.map((p) => (
               <div key={p.id} className="autostart-item">
-                <Zap size={12} className="autostart-item-icon" />
-                <span className="autostart-item-name">{p.name}</span>
+                {p.type === 'group' ? (
+                  <Layers
+                    size={12}
+                    className="autostart-item-icon"
+                    // 组：开机只拉成品子项（2026-08-21 拍板）
+                  />
+                ) : (
+                  <Zap size={12} className="autostart-item-icon" />
+                )}
+                <span
+                  className="autostart-item-name"
+                  title={p.type === 'group' ? '开机只拉组内成品网站' : undefined}
+                >
+                  {p.name}
+                </span>
                 <button className="icon-btn" title="移出自启项" onClick={() => onRemove(p.id)}>
                   <X size={13} />
                 </button>

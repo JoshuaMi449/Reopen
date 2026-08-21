@@ -143,6 +143,9 @@ function buildPath(): string {
 export async function startProject(id: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
+  if (project.type === 'group') {
+    return { ok: false, reason: '组不能直接启动——展开组，启动里面的子项' }
+  }
   const rt = getRuntime(id)
   if (rt.status === 'running' || rt.status === 'starting') {
     return { ok: false, reason: '已经在运行了' }
@@ -266,6 +269,7 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
  *  幂等重复 emit（2026-08-21 修复）：渲染层加载完成后调用一次兜底——若之前的 emit 因时序竞争丢失
  *  （StrictMode 双跑/订阅未就绪），rt 已 running 也重新推一次状态，界面才能从灰色恢复绿点 */
 export async function adoptRunning(project: Project): Promise<void> {
+  if (project.type === 'group') return // 组没有端口，跳过（2026-08-21 项目组）
   const rt = getRuntime(project.id)
   if (rt.status === 'starting') return // 自己正在启动中（健康检查在跑），不插手
   // 端口优先用登记值，其次上次实际运行端口（web 自动分配/端口写错时也能找回，2026-08-20）
@@ -284,13 +288,23 @@ export async function adoptAllRunning(): Promise<void> {
   }
 }
 
-/** 打开 Reopen 时自动拉起自启项（PRD 3.5：软件层自动启动；失败静默，界面上标红可见） */
+/** 打开 Reopen 时自动拉起自启项（PRD 3.5：软件层自动启动；失败静默，界面上标红可见）
+ *  2026-08-21 拍板：组在自启里 = 只拉组内成品子项（web 类型），开发子项保留手动启动 */
 export async function autoStartAll(): Promise<void> {
   const { autoStartEnabled, autoStartIds } = getSettings()
   if (!autoStartEnabled || autoStartIds.length === 0) return
+  const projects = listProjects()
   for (const id of autoStartIds) {
+    const project = projects.find((p) => p.id === id)
+    if (!project) continue
     try {
-      await startProject(id)
+      if (project.type === 'group') {
+        for (const child of projects.filter((p) => p.parentId === id && p.type === 'web')) {
+          await startProject(child.id)
+        }
+      } else {
+        await startProject(id)
+      }
     } catch {
       // 单个项目失败不影响其他
     }

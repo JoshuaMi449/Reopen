@@ -176,34 +176,39 @@ export function ProjectFormModal({
     <div className="modal-backdrop">
       <div className="modal modal-form">
         <div className="modal-header">
-          <h2>{TITLES[mode]}</h2>
+          <h2>{mode === 'edit' && type === 'group' ? '编辑项目组' : TITLES[mode]}</h2>
           <button className="icon-btn" onClick={onCancel} title="关闭">
             <X size={16} />
           </button>
         </div>
 
         <div className="form-body">
-          <label>
-            <span>类型</span>
-            <select value={type} onChange={(e) => setType(e.target.value as ProjectType)}>
-              <option value="service">本地服务（起命令）</option>
-              <option value="web">网页文件（起临时服务）</option>
-            </select>
-          </label>
+          {/* 组（2026-08-21 项目组）：只编辑名称/备注/标签，类型与路径不可改 */}
+          {type !== 'group' && (
+            <label>
+              <span>类型</span>
+              <select value={type} onChange={(e) => setType(e.target.value as ProjectType)}>
+                <option value="service">本地服务（起命令）</option>
+                <option value="web">网页文件（起临时服务）</option>
+              </select>
+            </label>
+          )}
 
           <label>
             <span>名称</span>
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </label>
 
-          <label>
-            <span>路径</span>
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="项目文件夹或 html 文件的路径"
-            />
-          </label>
+          {type !== 'group' && (
+            <label>
+              <span>路径</span>
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="项目文件夹或 html 文件的路径"
+              />
+            </label>
+          )}
 
           {type === 'service' && (
             <label>
@@ -216,23 +221,29 @@ export function ProjectFormModal({
             </label>
           )}
 
-          <label>
-            <span>端口</span>
-            <input
-              value={port}
-              onChange={(e) => setPort(e.target.value)}
-              placeholder={type === 'service' ? '如 5173（读不到就填项目的端口）' : '留空自动分配'}
-            />
-          </label>
+          {type !== 'group' && (
+            <label>
+              <span>端口</span>
+              <input
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder={
+                  type === 'service' ? '如 5173（读不到就填项目的端口）' : '留空自动分配'
+                }
+              />
+            </label>
+          )}
 
-          <label className="form-switch">
-            <span>启动后打开浏览器</span>
-            <input
-              type="checkbox"
-              checked={openBrowser}
-              onChange={(e) => setOpenBrowser(e.target.checked)}
-            />
-          </label>
+          {type !== 'group' && (
+            <label className="form-switch">
+              <span>启动后打开浏览器</span>
+              <input
+                type="checkbox"
+                checked={openBrowser}
+                onChange={(e) => setOpenBrowser(e.target.checked)}
+              />
+            </label>
+          )}
 
           <label>
             <span>备注</span>
