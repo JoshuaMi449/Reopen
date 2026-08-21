@@ -67,7 +67,9 @@ export function CardView({
           <Fragment key={p.id}>
             {header && <div className="list-group-header card-grid-full">{header.label}</div>}
             <div
-              className={`card ${failed ? 'card-failed' : ''} ${dragId === p.id ? 'dragging' : ''}`}
+              className={`card ${failed ? 'card-failed' : ''} ${dragId === p.id ? 'dragging' : ''} ${
+                dragOverId === p.id ? 'drop-target' : ''
+              }`}
               draggable={sortDraggable}
               onDragStart={(e) => onDragStart(e, p)}
               onDragOver={(e) => onDragOver(e, p)}
@@ -136,8 +138,6 @@ export function CardView({
                 </div>
               )}
             </div>
-            {/* 拖拽悬停占位：目标卡片后面张开空位格子（2026-08-21） */}
-            {dragOverId === p.id && <div className="drop-slot drop-slot-card" />}
           </Fragment>
         )
       })}

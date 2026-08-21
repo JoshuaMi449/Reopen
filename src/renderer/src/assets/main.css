@@ -433,36 +433,50 @@ html.dark .sidebar-logo-word,
   color: var(--primary-strong);
 }
 
-.view-switch {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  /* 不用 overflow:hidden——会裁掉按钮下方的悬停气泡（2026-08-20 实测反馈），改首尾圆角 */
+/* 排序图标按钮 + 弹出小菜单（2026-08-21 拍板：图标化压缩，极端窄栏也能全部放下） */
+.sort-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
-.view-switch button:first-child {
-  border-radius: 6px 0 0 6px;
-}
-
-.view-switch button:last-child {
-  border-radius: 0 6px 6px 0;
-}
-
-.view-switch .icon-btn {
-  border-radius: 0;
-}
-
-.sort-select {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 5px 8px;
+.sort-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 320;
+  min-width: 132px;
   background: var(--card);
-  color: var(--text);
-  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.toolbar-sort-hint {
-  display: none;
+.sort-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sort-menu-item:hover {
+  background: var(--hover);
+}
+
+.sort-menu-item-on {
+  color: var(--primary-strong);
 }
 
 .empty {
@@ -522,50 +536,37 @@ html.dark .sidebar-logo-word,
   opacity: 0.45;
 }
 
-/* 拖拽悬停占位：目标后面张开空位，下面的内容让位（2026-08-21） */
-.drop-slot-row {
-  height: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  animation: slot-row-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  pointer-events: none;
+/* 拖拽悬停指示线（2026-08-21 拍板）：absolute 画在目标边缘，不占空间不重排、不会闪；
+   语义=插到目标后面（行=目标行底边横线；卡片=目标右缘竖线） */
+.row-main {
+  position: relative;
 }
 
-@keyframes slot-row-in {
-  from {
-    height: 0;
-  }
-  to {
-    height: 46px;
-  }
+.drop-target::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary);
 }
 
-.drop-slot-card {
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  animation: slot-card-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  pointer-events: none;
-}
-
-@keyframes slot-card-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.card.drop-target::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: -7px; /* 落在卡片间隙中间 */
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
 }
 
 /* ---------- 极端压缩自适应（2026-08-21 拍板：日志+自启都开=中间栏只剩1列时自动简化） ---------- */
-/* 中间栏窄于 420px（1 列）时：工具栏只留搜索/添加/自启，列表行只留名称+启动按钮 */
+/* 中间栏窄于 420px（1 列）时：列表行只留名称+启动按钮 */
 @container (max-width: 420px) {
-  .sort-select,
-  .view-switch {
-    display: none;
-  }
-
   .row-port,
   .row-last,
   .row-note,
@@ -603,8 +604,15 @@ html.dark .sidebar-logo-word,
 }
 
 .row-name {
+  flex: 1; /* 名称占满剩余空间，把启动按钮顶到最右 */
+  min-width: 0;
   font-weight: 500;
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  /* 名字太长时尾部渐隐，而不是生硬截断（2026-08-21 用户拍板） */
+  mask-image: linear-gradient(90deg, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent);
 }
 
 .row-port {
@@ -615,7 +623,6 @@ html.dark .sidebar-logo-word,
 .row-last {
   color: var(--text-dim);
   font-size: 12px;
-  flex: 1;
 }
 
 .row-note {
@@ -639,6 +646,7 @@ html.dark .sidebar-logo-word,
 .row-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0; /* 启动/停止按钮永远不收缩，位置不动（2026-08-21） */
 }
 
 /* ---------- 按钮 ---------- */

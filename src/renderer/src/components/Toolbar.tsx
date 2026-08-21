@@ -1,5 +1,5 @@
-import type { RefObject } from 'react'
-import { LayoutGrid, List, Plus, Search, Zap } from 'lucide-react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { ArrowUpDown, Check, LayoutGrid, List, Plus, Search, Zap } from 'lucide-react'
 import type { Settings } from '../../../shared/types'
 import { Tooltip } from './Tooltip'
 
@@ -24,7 +24,16 @@ interface Props {
   autoStartBtnRef: RefObject<HTMLButtonElement | null>
 }
 
-/** 顶部工具栏（2026-08-20 拍板：右侧=搜索 icon→自启→排序→视图切换→+；搜索收起式；悬停提示全覆盖） */
+const SORT_OPTIONS: { value: Settings['sortMode']; label: string }[] = [
+  { value: 'name', label: '名称' },
+  { value: 'recent', label: '最近打开' },
+  { value: 'created', label: '添加日期' },
+  { value: 'tag', label: '标签' },
+  { value: 'none', label: '无' }
+]
+
+/** 顶部工具栏（2026-08-21 拍板：搜索→添加→自启→排序图标→视图单按钮；
+ *  排序从下拉框改图标+弹出小菜单、视图切换合成一个按钮——极端窄栏时全部放得下） */
 export function Toolbar({
   search,
   onSearch,
@@ -41,6 +50,31 @@ export function Toolbar({
   searchInputRef,
   autoStartBtnRef
 }: Props): React.JSX.Element {
+  /** 排序小菜单是否打开（点外部/Esc/选中后关闭） */
+  const [sortOpen, setSortOpen] = useState(false)
+  const sortBtnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!sortOpen) return
+    const onDown = (e: MouseEvent): void => {
+      if (
+        sortBtnRef.current?.contains(e.target as Node) ||
+        (e.target as Element).closest('.sort-menu')
+      )
+        return
+      setSortOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setSortOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [sortOpen])
+
   return (
     <header className="toolbar">
       <div className={`search-box ${searchOpen ? 'search-box-open' : ''}`}>
@@ -97,41 +131,46 @@ export function Toolbar({
           </Tooltip>
         )}
 
-        <Tooltip text="排序方式">
-          <select
-            className="sort-select"
-            value={sortMode}
-            onChange={(e) => onSort(e.target.value as Settings['sortMode'])}
-            title="排序方式"
-          >
-            <option value="name">名称</option>
-            <option value="recent">最近打开</option>
-            <option value="created">添加日期</option>
-            <option value="tag">标签</option>
-            <option value="none">无</option>
-          </select>
-        </Tooltip>
-
-        <div className="view-switch">
-          <Tooltip text="列表视图">
+        <div className="sort-wrap">
+          <Tooltip text="排序方式">
             <button
-              className={`icon-btn ${view === 'list' ? 'icon-btn-active' : ''}`}
-              title="列表视图"
-              onClick={() => onView('list')}
+              ref={sortBtnRef}
+              className={`icon-btn ${sortOpen ? 'icon-btn-active' : ''}`}
+              title="排序方式"
+              onClick={() => setSortOpen((v) => !v)}
             >
-              <List size={15} />
+              <ArrowUpDown size={15} />
             </button>
           </Tooltip>
-          <Tooltip text="卡片视图">
-            <button
-              className={`icon-btn ${view === 'card' ? 'icon-btn-active' : ''}`}
-              title="卡片视图"
-              onClick={() => onView('card')}
-            >
-              <LayoutGrid size={15} />
-            </button>
-          </Tooltip>
+          {sortOpen && (
+            <div className="sort-menu">
+              {SORT_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  className={`sort-menu-item ${sortMode === o.value ? 'sort-menu-item-on' : ''}`}
+                  onClick={() => {
+                    onSort(o.value)
+                    setSortOpen(false)
+                  }}
+                >
+                  {o.label}
+                  {sortMode === o.value && <Check size={12} />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* 视图切换合成一个按钮：显示目标视图图标，点一下切过去（2026-08-21 拍板） */}
+        <Tooltip text={view === 'list' ? '切换到卡片视图' : '切换到列表视图'}>
+          <button
+            className="icon-btn"
+            title="切换视图"
+            onClick={() => onView(view === 'list' ? 'card' : 'list')}
+          >
+            {view === 'list' ? <LayoutGrid size={15} /> : <List size={15} />}
+          </button>
+        </Tooltip>
       </div>
     </header>
   )

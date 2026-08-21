@@ -320,6 +320,40 @@ export default function App(): React.JSX.Element {
     }
   }, [autoStartOpen])
 
+  /** 松手后的平滑移动动画（FLIP，2026-08-21 拍板）：重排前记旧位置 → 重排后反向位移 → 过渡归零 */
+  const animateFlip = (from: Map<HTMLElement, { x: number; y: number }>): void => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>('.project-row, .card'))
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          els.forEach((el) => {
+            const before = from.get(el)
+            if (!before) return
+            const r = el.getBoundingClientRect()
+            const dx = before.x - r.left
+            const dy = before.y - r.top
+            if (dx !== 0 || dy !== 0) {
+              el.style.transition = 'none'
+              el.style.transform = `translate(${dx}px, ${dy}px)`
+            }
+          })
+          requestAnimationFrame(() => {
+            els.forEach((el) => {
+              el.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)'
+              el.style.transform = ''
+            })
+            setTimeout(() => {
+              els.forEach((el) => {
+                el.style.transition = ''
+                el.style.transform = ''
+              })
+            }, 280)
+          })
+        })
+      })
+    })
+  }
+
   const handleRowDrop = (e: React.DragEvent, target: Project): void => {
     // 文件拖入不归行处理，冒泡给窗口的登记逻辑
     if (e.dataTransfer.types.includes('Files')) return
@@ -337,7 +371,13 @@ export default function App(): React.JSX.Element {
     // 插到目标行后面（to+1）：拖 A 到 B 上 = A 移到 B 后面。
     // 之前插目标前面，拖到相邻行等于原位，看起来"拖了根本不会排序"（2026-08-20 实测反馈）
     order.splice(to === -1 ? order.length : to + 1, 0, id)
-    updateSettings({ manualOrder: order })
+    // 重排前记录所有项目元素的位置，供松手后的平滑移动动画使用
+    const before = new Map<HTMLElement, { x: number; y: number }>()
+    document.querySelectorAll<HTMLElement>('.project-row, .card').forEach((el) => {
+      const r = el.getBoundingClientRect()
+      before.set(el, { x: r.left, y: r.top })
+    })
+    void updateSettings({ manualOrder: order }).then(() => animateFlip(before))
   }
 
   const handleStart = async (p: Project): Promise<void> => {
@@ -515,6 +555,7 @@ export default function App(): React.JSX.Element {
                       onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
                       sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
                       dragging={dragId === p.id}
+                      dropTarget={dragOverId === p.id}
                       onDragStart={(e) => handleRowDragStart(e, p)}
                       onDragOver={(e) => {
                         if (!e.dataTransfer.types.includes('Files')) {
@@ -529,8 +570,6 @@ export default function App(): React.JSX.Element {
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
                     />
-                    {/* 拖拽悬停占位：目标后面张开空位，下面的行让位（2026-08-21） */}
-                    {dragOverId === p.id && <div className="drop-slot drop-slot-row" />}
                   </Fragment>
                 ))
               ) : (

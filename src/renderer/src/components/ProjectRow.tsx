@@ -14,6 +14,8 @@ interface Props {
   sortDraggable?: boolean
   /** 正在被拖拽（半透明拖影，2026-08-21） */
   dragging?: boolean
+  /** 拖拽悬停在本行上：行底显示插入指示线（2026-08-21） */
+  dropTarget?: boolean
   onDragStart?(e: React.DragEvent): void
   onDragOver?(e: React.DragEvent): void
   onDragEnd?(e: React.DragEvent): void
@@ -46,6 +48,7 @@ export function ProjectRow({
   onContextMenu,
   sortDraggable,
   dragging,
+  dropTarget,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -61,7 +64,7 @@ export function ProjectRow({
   return (
     <div className={`project-row ${failed ? 'row-failed' : ''} ${dragging ? 'dragging' : ''}`}>
       <div
-        className="row-main"
+        className={`row-main ${dropTarget ? 'drop-target' : ''}`}
         draggable={sortDraggable}
         onClick={onOpen}
         onContextMenu={(e) => {
