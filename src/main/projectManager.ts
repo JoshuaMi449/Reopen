@@ -2,6 +2,7 @@
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { BrowserWindow, Notification, shell } from 'electron'
 import { existsSync } from 'fs'
+import { get } from 'http'
 import { homedir } from 'os'
 import { join } from 'path'
 import { connect } from 'net'
@@ -93,6 +94,18 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
     return
   }
+  // 跨平台拷贝的依赖（2026-08-21 实测：Windows 项目整个拷到 Mac，node_modules 里是 Windows 二进制）
+  if (
+    /Permission denied/.test(text) ||
+    /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text)
+  ) {
+    fail(
+      rt,
+      project,
+      '这个项目的依赖可能是从 Windows 电脑拷贝过来的，Mac 上跑不了——删掉项目里的 node_modules 重新 npm install 就行'
+    )
+    return
+  }
   fail(rt, project, fallback)
 }
 
@@ -131,6 +144,26 @@ function checkPortOpen(port: number): Promise<boolean> {
       resolvePromise(false)
     })
     sock.once('error', () => resolvePromise(false))
+  })
+}
+
+/** 探测端口上是不是一个正在响应的网站（2xx/3xx 且是 HTML）。
+ *  接管用（2026-08-21）：用户手动在 7100 跑的成品站，Reopen 不再另起炉灶，直接认领显示 */
+function probeWebPort(port: number): Promise<boolean> {
+  return new Promise((resolvePromise) => {
+    const req = get({ host: '127.0.0.1', port, path: '/', timeout: 1500 }, (res) => {
+      res.resume()
+      const code = res.statusCode ?? 0
+      const contentType = String(res.headers['content-type'] ?? '')
+      resolvePromise(
+        code >= 200 && code < 400 && (contentType.includes('text/html') || contentType === '')
+      )
+    })
+    req.once('timeout', () => {
+      req.destroy()
+      resolvePromise(false)
+    })
+    req.once('error', () => resolvePromise(false))
   })
 }
 
@@ -233,14 +266,23 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
 }
 
 async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
-  // 端口占用预检（用户可在表单指定端口，留空则自动分配）
-  if (project.port && (await checkPortOpen(project.port))) {
-    return { ok: false, reason: `端口 ${project.port} 已被占用` }
-  }
-  // 端口稳定（2026-08-21 网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）；被占则交给系统自动分配
-  let wantPort = project.port
-  if (!wantPort && project.lastPort && !(await checkPortOpen(project.lastPort))) {
-    wantPort = project.lastPort
+  // 端口稳定（2026-08-21 网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）
+  let wantPort = project.port ?? project.lastPort
+  if (wantPort && (await checkPortOpen(wantPort))) {
+    // 端口被占：先探测是不是一个已经跑着的网站（用户手动起在 7100 的成品站等）——是则直接接管，不再另起炉灶（2026-08-21 实测）
+    if (await probeWebPort(wantPort)) {
+      rt.port = wantPort
+      setStatus(rt, project, 'running', wantPort)
+      touchStartedAt(project.id)
+      touchLastPort(project.id, wantPort)
+      emitLog(project.id, `端口 ${wantPort} 已有网站在运行，直接接管`)
+      return { ok: true }
+    }
+    // 不是网站：显式填的端口报占用；沿用 lastPort 的交给系统自动分配
+    if (project.port) {
+      return { ok: false, reason: `端口 ${project.port} 已被占用` }
+    }
+    wantPort = undefined
   }
   setStatus(rt, project, 'starting')
   try {

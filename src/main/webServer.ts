@@ -1,7 +1,7 @@
 // 网页文件临时服务：静态文件 http 服务，端口自动分配（PRD 3.1 网页文件类型）
 import { createReadStream, existsSync, statSync } from 'fs'
 import { createServer, Server } from 'http'
-import { basename, dirname, extname, resolve, sep } from 'path'
+import { basename, dirname, extname, join, resolve, sep } from 'path'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -43,14 +43,20 @@ export function startWebServer(
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0])
     const target = urlPath === '/' ? entryName : urlPath
-    const filePath = resolve(rootDir, `.${target}`)
+    let filePath = resolve(rootDir, `./${target}`)
     // 防目录穿越：解析后的路径必须在服务根目录内
     if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
       res.writeHead(403)
       res.end('Forbidden')
       return
     }
+    // 目录 → 自动补 index.html（站内子页面导航如 /factory/ 或 /integrator/，2026-08-21 实测）
+    if (existsSync(filePath) && statSync(filePath).isDirectory()) {
+      filePath = join(filePath, 'index.html')
+    }
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+      // 404 时把实际找的路径打到主进程日志，排查"打开是空的"这类问题不用盲猜（2026-08-21 教训）
+      console.error('[webServer] 404:', filePath)
       res.writeHead(404)
       res.end('Not Found')
       return

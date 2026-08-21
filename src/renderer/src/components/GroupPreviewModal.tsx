@@ -13,9 +13,13 @@ interface Props {
  *  拖入的文件夹里有多个项目 → 弹组名输入+候选勾选（默认全勾，成品网站排最前）→ 确认登记成一个组 */
 export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.JSX.Element {
   const [name, setName] = useState(multi.path.split('/').pop() || '项目组')
-  // 勾选状态：候选 path 的集合（默认全勾）
+  // 勾选状态：候选 path 的集合。默认只勾「成品网站」（web 且无 entryPath=整站成品）；
+  // 散装 html（单页附件）与开发项目默认不勾，要的再手动勾（2026-08-21 实测：用户只要网站首页端口）
   const [checked, setChecked] = useState<Set<string>>(
-    () => new Set(multi.projects.map((p) => p.path))
+    () =>
+      new Set(
+        multi.projects.filter((p) => p.type === 'web' && !p.suggested.entryPath).map((p) => p.path)
+      )
   )
   // 成品（web 类型）排最前，开发项目在后
   const sorted = useMemo(

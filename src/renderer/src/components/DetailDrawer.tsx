@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import {
+  ChevronLeft,
   ExternalLink,
   FileCode2,
   Folder,
@@ -31,6 +32,8 @@ interface Props {
   onChildOpenBrowser?(p: Project): void
   /** 点子项行：打开该子项自己的详情抽屉（看日志等，2026-08-21 实测补） */
   onChildOpen?(p: Project): void
+  /** 左上角返回（组内子项的详情里返回组视图，2026-08-21 实测补） */
+  onBack?(): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -63,7 +66,8 @@ export function DetailDrawer({
   onChildStart,
   onChildStop,
   onChildOpenBrowser,
-  onChildOpen
+  onChildOpen,
+  onBack
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -183,6 +187,11 @@ export function DetailDrawer({
     <aside className="drawer">
       <div className="drawer-inner">
         <div className="drawer-head">
+          {onBack && (
+            <button className="icon-btn" title="返回组" onClick={onBack}>
+              <ChevronLeft size={16} />
+            </button>
+          )}
           <span className={`status-dot dot-${st}`} />
           <span className="drawer-icon">
             {project.type === 'service' ? <Folder size={15} /> : <FileCode2 size={15} />}
