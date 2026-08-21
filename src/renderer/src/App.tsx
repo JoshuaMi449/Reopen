@@ -477,7 +477,8 @@ export default function App(): React.JSX.Element {
       port: p.port,
       openBrowser: p.openBrowser,
       note: p.note,
-      tags: p.tags
+      tags: p.tags,
+      entryPath: p.entryPath
     })
     setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     toast(`已重新定位「${updated.name}」`, 'success')
@@ -532,7 +533,8 @@ export default function App(): React.JSX.Element {
         openBrowser: p.openBrowser,
         note: p.note,
         tags: next(p.tags),
-        lastPort: p.lastPort
+        lastPort: p.lastPort,
+        entryPath: p.entryPath
       })
       setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     }

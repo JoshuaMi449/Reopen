@@ -257,10 +257,12 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
   }
 }
 
-/** 接管显示：端口有服务在响应 → 直接标记运行中（不启动任何东西） */
+/** 接管显示：端口有服务在响应 → 标记运行中（不启动任何东西）。
+ *  幂等重复 emit（2026-08-21 修复）：渲染层加载完成后调用一次兜底——若之前的 emit 因时序竞争丢失
+ *  （StrictMode 双跑/订阅未就绪），rt 已 running 也重新推一次状态，界面才能从灰色恢复绿点 */
 export async function adoptRunning(project: Project): Promise<void> {
   const rt = getRuntime(project.id)
-  if (rt.status !== 'stopped') return
+  if (rt.status === 'starting') return // 自己正在启动中（健康检查在跑），不插手
   // 端口优先用登记值，其次上次实际运行端口（web 自动分配/端口写错时也能找回，2026-08-20）
   const port = project.port ?? project.lastPort
   if (!port) return
