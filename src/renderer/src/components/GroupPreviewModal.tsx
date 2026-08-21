@@ -14,10 +14,12 @@ interface Props {
  *  二轮拍板：候选行显示网站标题；默认只勾「最大的成品」（fileCount 最多），多个成品不再全勾 */
 export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.JSX.Element {
   const [name, setName] = useState(multi.path.split('/').pop() || '项目组')
-  // 勾选状态：候选 path 的集合。默认只勾「最大的成品」（整站成品里 fileCount 最多的那个）；
-  // 散装 html（单页附件）与开发项目默认不勾，要的再手动勾（2026-08-21 实测：用户只要官网首页端口）
+  // 勾选状态：候选 path 的集合。默认只勾「最大的成品」（含成品预览方式且非单页附件、fileCount 最多的那个）；
+  // 散装 html（单页附件）与纯开发项目默认不勾，要的再手动勾（2026-08-21 实测：用户只要官网首页端口）
   const [checked, setChecked] = useState<Set<string>>(() => {
-    const finished = multi.projects.filter((p) => p.type === 'web' && !p.suggested.entryPath)
+    const finished = multi.projects.filter((p) =>
+      p.suggested.launchModes.some((m) => m.kind === 'preview' && !m.entryPath)
+    )
     if (finished.length === 0) return new Set()
     const max = Math.max(...finished.map((p) => p.suggested.fileCount ?? 0))
     return new Set(finished.filter((p) => (p.suggested.fileCount ?? 0) === max).map((p) => p.path))

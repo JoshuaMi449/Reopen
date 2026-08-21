@@ -9,7 +9,8 @@ import {
   adoptRunning,
   openProjectBrowser,
   startProject,
-  stopProject
+  stopProject,
+  switchLaunchMode
 } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
 import { refreshShortcuts } from './shortcuts'
@@ -54,10 +55,13 @@ export function registerIpc(): void {
     updateProject(id, input)
   )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
-  ipcMain.handle('project:start', (_e, id: string) => startProject(id))
+  ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
   ipcMain.handle('project:open-browser', (_e, id: string) => openProjectBrowser(id))
+  ipcMain.handle('project:switch-mode', (_e, id: string, modeId: string) =>
+    switchLaunchMode(id, modeId)
+  )
 
   // 设置
   ipcMain.handle('settings:get', () => getSettings())

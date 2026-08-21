@@ -34,6 +34,8 @@ interface Props {
   onChildOpen?(p: Project): void
   /** 左上角返回（组内子项的详情里返回组视图，2026-08-21 实测补） */
   onBack?(): void
+  /** 切换启动方式（Phase B 2026-08-21 拍板：运行中先停、按新方式重启） */
+  onSwitchMode?(modeId: string): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -67,7 +69,8 @@ export function DetailDrawer({
   onChildStop,
   onChildOpenBrowser,
   onChildOpen,
-  onBack
+  onBack,
+  onSwitchMode
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -78,6 +81,10 @@ export function DetailDrawer({
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
+
+  // 启动方式切换（Phase B 2026-08-21 拍板）：多种方式时显示分段选择
+  const modes = project.launchModes ?? []
+  const activeModeId = project.activeMode ?? modes[0]?.id
 
   // 组视图（2026-08-21 项目组）：子项列表，无日志区
   if (project.type === 'group' && groupChildren) {
@@ -234,6 +241,25 @@ export function DetailDrawer({
             </div>
           )}
         </div>
+
+        {modes.length > 1 && (
+          <div className="mode-switch">
+            <span className="drawer-meta-label">启动方式</span>
+            <div className="mode-switch-row">
+              {modes.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`mode-chip ${m.id === activeModeId ? 'mode-chip-on' : ''}`}
+                  title={m.command ? `${m.label}：${m.command}` : m.label}
+                  onClick={() => onSwitchMode?.(m.id)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="drawer-actions">
           {active ? (

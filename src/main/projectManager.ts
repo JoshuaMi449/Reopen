@@ -6,8 +6,15 @@ import { get } from 'http'
 import { homedir } from 'os'
 import { join } from 'path'
 import { connect } from 'net'
-import type { Project, ProjectStatus, ProjectStatusEvent, StartResult } from '../shared/types'
-import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
+import type {
+  LaunchMode,
+  Project,
+  ProjectStatus,
+  ProjectStatusEvent,
+  StartResult
+} from '../shared/types'
+import { launchKindToType } from '../shared/types'
+import { getSettings, listProjects, touchLastPort, touchStartedAt, updateProject } from './store'
 import { startWebServer } from './webServer'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
@@ -173,7 +180,24 @@ function buildPath(): string {
   return [...extra, process.env.PATH].filter(Boolean).join(':')
 }
 
-export async function startProject(id: string): Promise<StartResult> {
+/** 项目的启动方式：指定 id > activeMode > 第一个；老数据无 launchModes 按 type 生成单方式（Phase B 兼容，2026-08-21） */
+function resolveMode(project: Project, modeId?: string): LaunchMode | undefined {
+  const modes = project.launchModes ?? []
+  const mode = modes.find((m) => m.id === (modeId ?? project.activeMode)) ?? modes[0]
+  if (mode) return mode
+  if (project.type === 'web') {
+    return { id: 'preview', kind: 'preview', label: '成品预览', entryPath: project.entryPath }
+  }
+  return {
+    id: 'dev',
+    kind: 'dev',
+    label: '开发服务器',
+    command: project.command,
+    port: project.port
+  }
+}
+
+export async function startProject(id: string, modeId?: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
   if (project.type === 'group') {
@@ -186,36 +210,62 @@ export async function startProject(id: string): Promise<StartResult> {
   if (!existsSync(project.path)) {
     return { ok: false, reason: '项目路径不存在（可能被移动或删除了）' }
   }
-  return project.type === 'web' ? startWeb(project, rt) : startService(project, rt)
+  // Phase B（2026-08-21）：按启动方式分发——preview=内置静态服务器、dev=开发服务器、
+  // python-static=真实 python http.server、docker=docker compose up
+  const mode = resolveMode(project, modeId)
+  if (!mode) return { ok: false, reason: '该项目没有启动方式' }
+  if (mode.kind === 'preview') return startWeb(project, rt, mode)
+  if (mode.kind === 'docker') return startDocker(project, rt, mode)
+  if (mode.kind === 'python-static') return startPythonStatic(project, rt, mode)
+  return startService(project, rt, mode.command ?? project.command, mode.port ?? project.port)
 }
 
-async function startService(project: Project, rt: Runtime): Promise<StartResult> {
-  if (!project.command) return { ok: false, reason: '该项目没有启动命令' }
+async function startService(
+  project: Project,
+  rt: Runtime,
+  command: string | undefined,
+  port: number | undefined
+): Promise<StartResult> {
+  if (!command) return { ok: false, reason: '该项目没有启动命令' }
 
   // 端口已有服务在响应：大概率项目已经手动启动了——直接接管显示，不用先杀再开（用户 2026-08-20 拍板）
-  if (project.port && (await checkPortOpen(project.port))) {
-    rt.port = project.port
-    setStatus(rt, project, 'running', project.port)
+  if (port && (await checkPortOpen(port))) {
+    rt.port = port
+    setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
-    touchLastPort(project.id, project.port)
-    return { ok: true, reason: `检测到端口 ${project.port} 已有服务在响应，已直接显示为运行中` }
+    touchLastPort(project.id, port)
+    return { ok: true, reason: `检测到端口 ${port} 已有服务在响应，已直接显示为运行中` }
   }
 
+  return spawnAndWatch(project, rt, command, project.path, port)
+}
+
+/** 起子进程（dev/python/docker 共用，Phase B 2026-08-21）：日志管道 + 退出处理 + 端口健康检查（无端口则存活即运行） */
+function spawnAndWatch(
+  project: Project,
+  rt: Runtime,
+  command: string,
+  cwd: string,
+  port: number | undefined,
+  missingHint?: string
+): StartResult {
   setStatus(rt, project, 'starting')
-  const child = spawn(project.command, {
-    cwd: project.path,
+  const child = spawn(command, {
+    cwd,
     shell: true,
     detached: true, // 独立进程组：停止时整树终止
     env: { ...process.env, PATH: buildPath() }
   })
   rt.child = child
-  rt.port = project.port
+  rt.port = port
 
   child.stdout?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
   child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
 
   child.on('error', (err) => {
-    fail(rt, project, `启动进程失败：${err.message}`)
+    // 命令不存在（python3/docker 没装）→ 用大白话提示（2026-08-21 跨平台失败翻译）
+    const enoent = (err as NodeJS.ErrnoException).code === 'ENOENT'
+    fail(rt, project, enoent && missingHint ? missingHint : `启动进程失败：${err.message}`)
   })
   child.on('exit', (code, signal) => {
     if (rt.healthTimer) clearInterval(rt.healthTimer)
@@ -228,11 +278,11 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
     }
   })
 
-  if (project.port) {
+  if (port) {
     // 端口健康检查：轮询直到就绪或超时
     rt.healthStart = Date.now()
     rt.healthTimer = setInterval(() => {
-      const checkPort = rt.port ?? project.port!
+      const checkPort = rt.port ?? port
       checkPortOpen(checkPort).then((open) => {
         if (rt.status !== 'starting') return
         if (open) {
@@ -265,9 +315,54 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
   return { ok: true }
 }
 
-async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
+/** python-static 方式（Phase B 2026-08-21）：真实跑 python3 -m http.server（静态根=成品目录），内置预览的替代 */
+async function startPythonStatic(
+  project: Project,
+  rt: Runtime,
+  mode: LaunchMode
+): Promise<StartResult> {
+  const root = mode.staticRoot ?? project.path
+  const port = mode.port ?? project.port ?? 8000 // python http.server 默认端口
+  if (await checkPortOpen(port)) {
+    // 端口被占：和成品预览同款逻辑——上面是个网站就直接接管
+    if (await probeWebPort(port)) {
+      rt.port = port
+      setStatus(rt, project, 'running', port)
+      touchStartedAt(project.id)
+      touchLastPort(project.id, port)
+      emitLog(project.id, `端口 ${port} 已有网站在运行，直接接管`)
+      return { ok: true }
+    }
+    return { ok: false, reason: `端口 ${port} 已被占用` }
+  }
+  return spawnAndWatch(
+    project,
+    rt,
+    `python3 -m http.server ${port}`,
+    root,
+    port,
+    '电脑没装 python3——换回「成品预览」方式（内置服务器零依赖），或在终端里装一下 python3'
+  )
+}
+
+/** docker 方式（Phase B 2026-08-21 拍板）：docker compose up，无端口则进程存活即运行 */
+async function startDocker(project: Project, rt: Runtime, mode: LaunchMode): Promise<StartResult> {
+  return spawnAndWatch(
+    project,
+    rt,
+    mode.command ?? 'docker compose up',
+    project.path,
+    undefined,
+    '电脑没装 Docker——装好 Docker Desktop 后再用这个方式，或换回「成品预览」'
+  )
+}
+
+async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promise<StartResult> {
+  const staticRoot = mode.staticRoot ?? project.path
+  const entryPath = mode.entryPath ?? project.entryPath
+  const modePort = mode.port ?? project.port
   // 端口稳定（2026-08-21 网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）
-  let wantPort = project.port ?? project.lastPort
+  let wantPort = modePort ?? project.lastPort
   if (wantPort && (await checkPortOpen(wantPort))) {
     // 端口被占：先探测是不是一个已经跑着的网站（用户手动起在 7100 的成品站等）——是则直接接管，不再另起炉灶（2026-08-21 实测）
     if (await probeWebPort(wantPort)) {
@@ -279,32 +374,46 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
       return { ok: true }
     }
     // 不是网站：显式填的端口报占用；沿用 lastPort 的交给系统自动分配
-    if (project.port) {
-      return { ok: false, reason: `端口 ${project.port} 已被占用` }
+    if (modePort) {
+      return { ok: false, reason: `端口 ${modePort} 已被占用` }
     }
     wantPort = undefined
   }
   setStatus(rt, project, 'starting')
   try {
-    const { server, port, entryPath } = await startWebServer(
-      project.path,
-      wantPort,
-      project.entryPath
-    )
+    const {
+      server,
+      port,
+      entryPath: servedEntry
+    } = await startWebServer(staticRoot, wantPort, entryPath)
     rt.server = server
-    rt.entryPath = entryPath
+    rt.entryPath = servedEntry
     setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
     touchLastPort(project.id, port)
-    emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${entryPath}`)
+    emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${servedEntry}`)
     if (project.openBrowser) {
-      shell.openExternal(`http://127.0.0.1:${port}${entryPath}`)
+      shell.openExternal(`http://127.0.0.1:${port}${servedEntry}`)
     }
     return { ok: true }
   } catch (err) {
     fail(rt, project, `临时服务启动失败：${err instanceof Error ? err.message : String(err)}`)
     return { ok: false }
   }
+}
+
+/** 切换启动方式（Phase B 2026-08-21 拍板）：运行中先停 → 记录新方式+同步类型 → 原来在跑则按新方式重启 */
+export async function switchLaunchMode(id: string, modeId: string): Promise<StartResult> {
+  const project = listProjects().find((p) => p.id === id)
+  if (!project) return { ok: false, reason: '项目不存在' }
+  const modes = project.launchModes ?? []
+  const mode = modes.find((m) => m.id === modeId)
+  if (!mode) return { ok: false, reason: '没有这个启动方式' }
+  const rt = runtimes.get(id)
+  const wasRunning = rt !== undefined && (rt.status === 'running' || rt.status === 'starting')
+  if (wasRunning) await stopProject(id)
+  updateProject(id, { ...project, activeMode: modeId, type: launchKindToType(mode.kind) })
+  return wasRunning ? startProject(id) : { ok: true }
 }
 
 /** 接管显示：端口有服务在响应 → 标记运行中（不启动任何东西）。
@@ -341,8 +450,16 @@ export async function autoStartAll(): Promise<void> {
     if (!project) continue
     try {
       if (project.type === 'group') {
-        for (const child of projects.filter((p) => p.parentId === id && p.type === 'web')) {
-          await startProject(child.id)
+        // 组自启只拉成品（2026-08-21 拍板）：有「成品预览」方式的子项按 preview 启动；
+        // 老数据（无 launchModes）按 type=web 兼容
+        for (const child of projects.filter((p) => {
+          if (p.parentId !== id) return false
+          return (
+            (p.launchModes ?? []).some((m) => m.kind === 'preview') ||
+            (p.launchModes === undefined && p.type === 'web')
+          )
+        })) {
+          await startProject(child.id, 'preview')
         }
       } else {
         await startProject(id)

@@ -139,9 +139,13 @@ export default function App(): React.JSX.Element {
       setProjects(ps)
       await window.api.adoptAllRunning()
       // 网站常驻（2026-08-21 拍板）：打开 Reopen 自动把网页项目拉回在线（服务类保持手动）
+      // Phase B：有「成品预览」方式的都算网页项目；老数据（无 launchModes）按 type=web 兼容
       for (const p of ps) {
-        if (p.type !== 'web') continue
-        const r = await window.api.startProject(p.id)
+        const hasPreview =
+          (p.launchModes ?? []).some((m) => m.kind === 'preview') ||
+          (p.launchModes === undefined && p.type === 'web')
+        if (!hasPreview) continue
+        const r = await window.api.startProject(p.id, 'preview')
         // adopt 已接管的会返回"已经在运行了"，静默；真失败由状态红点呈现
         if (!r.ok && r.reason && r.reason !== '已经在运行了') toast(r.reason, 'error')
       }
@@ -497,6 +501,17 @@ export default function App(): React.JSX.Element {
     else if (res.reason) toast(res.reason, 'success')
   }
 
+  /** 切换启动方式（Phase B 2026-08-21 拍板）：主进程停旧起新，成功后刷新清单（type 可能变了） */
+  const handleSwitchMode = async (p: Project, modeId: string): Promise<void> => {
+    const r = await window.api.switchLaunchMode(p.id, modeId)
+    if (!r.ok && r.reason) {
+      toast(r.reason, 'error')
+      return
+    }
+    setProjects(await window.api.listProjects())
+    toast('已切换启动方式', 'success')
+  }
+
   const handleOpenBrowser = async (p: Project): Promise<void> => {
     const res = await window.api.openProjectBrowser(p.id)
     if (!res.ok) toast(res.reason ?? '打开失败', 'error')
@@ -573,7 +588,9 @@ export default function App(): React.JSX.Element {
       note: p.note,
       tags: p.tags,
       entryPath: p.entryPath,
-      parentId: p.parentId
+      parentId: p.parentId,
+      launchModes: p.launchModes,
+      activeMode: p.activeMode
     })
     setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     toast(`已重新定位「${updated.name}」`, 'success')
@@ -616,15 +633,17 @@ export default function App(): React.JSX.Element {
         command: s.suggested.command,
         port: s.suggested.port,
         entryPath: s.suggested.entryPath,
+        launchModes: s.suggested.launchModes,
+        activeMode: s.suggested.activeMode,
         openBrowser: false,
         note: '',
         tags: [],
         parentId: group.id
       })
       added.push(child)
-      // 成品网页登记即上线（网站常驻）
-      if (child.type === 'web') {
-        const r = await window.api.startProject(child.id)
+      // 成品网页登记即上线（网站常驻；Phase B：有成品预览方式即按 preview 上线）
+      if ((child.launchModes ?? []).some((m) => m.kind === 'preview')) {
+        const r = await window.api.startProject(child.id, 'preview')
         if (!r.ok && r.reason) toast(r.reason, 'error')
       }
     }
@@ -688,7 +707,9 @@ export default function App(): React.JSX.Element {
         tags: next(p.tags),
         lastPort: p.lastPort,
         entryPath: p.entryPath,
-        parentId: p.parentId
+        parentId: p.parentId,
+        launchModes: p.launchModes,
+        activeMode: p.activeMode
       })
       setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
     }
@@ -969,6 +990,7 @@ export default function App(): React.JSX.Element {
                   ? () => setSelectedId(selectedProject.parentId as string)
                   : undefined
               }
+              onSwitchMode={(modeId) => handleSwitchMode(selectedProject, modeId)}
             />
           )}
         </div>

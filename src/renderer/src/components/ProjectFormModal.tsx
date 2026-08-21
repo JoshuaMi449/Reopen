@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
 import { pinyin } from 'pinyin-pro'
-import type { DetectSuccess, NewProjectInput, Project, ProjectType } from '../../../shared/types'
+import type {
+  DetectSuccess,
+  LaunchMode,
+  NewProjectInput,
+  Project,
+  ProjectType
+} from '../../../shared/types'
 
 interface Props {
   /** create：拖拽识别后登记；edit：编辑已有项目；manual：「+」按钮手动添加 */
@@ -25,6 +31,9 @@ interface FormValues {
   tags: string[]
   /** 识别出的网页入口路径（表单不展示，提交时静默保留，2026-08-21 S3） */
   entryPath?: string
+  /** 全部启动方式与默认方式（Phase B 2026-08-21：表单不编辑，静默保留） */
+  launchModes?: LaunchMode[]
+  activeMode?: string
 }
 
 function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Project): FormValues {
@@ -38,7 +47,9 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       openBrowser: project.openBrowser,
       note: project.note,
       tags: project.tags,
-      entryPath: project.entryPath
+      entryPath: project.entryPath,
+      launchModes: project.launchModes,
+      activeMode: project.activeMode
     }
   }
   if (mode === 'create' && detect) {
@@ -51,7 +62,9 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       openBrowser: false,
       note: '',
       tags: [],
-      entryPath: detect.suggested.entryPath
+      entryPath: detect.suggested.entryPath,
+      launchModes: detect.suggested.launchModes,
+      activeMode: detect.suggested.activeMode
     }
   }
   return {
@@ -158,6 +171,9 @@ export function ProjectFormModal({
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       // 网页类型才保留识别出的入口路径；改成服务类型就丢弃
       entryPath: type === 'web' ? init.entryPath : undefined,
+      // 启动方式清单静默保留（Phase B 2026-08-21：方式在详情抽屉切换，表单不编辑）
+      launchModes: init.launchModes,
+      activeMode: init.activeMode,
       openBrowser,
       note: note.trim(),
       tags: [
@@ -208,6 +224,15 @@ export function ProjectFormModal({
                 placeholder="项目文件夹或 html 文件的路径"
               />
             </label>
+          )}
+
+          {type !== 'group' && (init.launchModes?.length ?? 0) > 1 && (
+            <div className="form-modes">
+              <span>启动方式</span>
+              <span className="form-modes-list">
+                {init.launchModes?.map((m) => m.label).join(' · ')}
+              </span>
+            </div>
           )}
 
           {type === 'service' && (

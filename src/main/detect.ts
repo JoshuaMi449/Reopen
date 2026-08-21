@@ -3,7 +3,7 @@
 // S5 Python / S6 bun·deno / S7 启动脚本 / S9 隐藏根不跳过
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { basename, extname, join, resolve } from 'path'
-import type { DetectOutcome, DetectSuccess } from '../shared/types'
+import type { DetectOutcome, DetectSuccess, LaunchMode, ProjectType } from '../shared/types'
 import { listProjects } from './store'
 
 // 服务启动命令猜的优先级：常见开发脚本名
@@ -239,8 +239,16 @@ function findPythonEntry(dir: string, depth: number): string | null {
   return null
 }
 
+/** 探测函数的轻量返回（Phase B：只供 buildLaunchModes 取 command/port，不再是完整候选） */
+interface DetectHint {
+  ok: true
+  type: ProjectType
+  path: string
+  suggested: { name: string; command?: string; port?: number }
+}
+
 /** S5：Python 项目（requirements.txt + 入口 py）。端口读源码 app.run/uvicorn.run 的 port，读不到按框架默认 */
-function detectPython(dir: string): DetectSuccess | null {
+function detectPython(dir: string): DetectHint | null {
   if (!existsSync(join(dir, 'requirements.txt'))) return null
   const entry = findPythonEntry(dir, 0)
   if (!entry) return null
@@ -297,7 +305,7 @@ function readScriptPort(file: string): number | undefined {
 }
 
 /** S6：bun/deno 静态服务（serve.ts/js + 启动脚本或源码 Bun.serve/Deno.serve 标记） */
-function detectBunDeno(dir: string): DetectSuccess | null {
+function detectBunDeno(dir: string): DetectHint | null {
   const serve = ['serve.ts', 'serve.js'].find((f) => existsSync(join(dir, f)))
   if (!serve) return null
   const src = readFileSync(join(dir, serve), 'utf-8')
@@ -321,7 +329,7 @@ function detectBunDeno(dir: string): DetectSuccess | null {
 }
 
 /** S7：只有启动脚本（没有 package.json/serve 源码）→ bash 执行脚本 */
-function detectLaunchScript(dir: string): DetectSuccess | null {
+function detectLaunchScript(dir: string): DetectHint | null {
   const launch = LAUNCH_SCRIPTS.find((f) => existsSync(join(dir, f)))
   if (!launch) return null
   return {
@@ -336,58 +344,113 @@ function detectLaunchScript(dir: string): DetectSuccess | null {
   }
 }
 
-/** 一个目录的完整检测（S1 找到项目根后复用）：package.json → Python → bun/deno → 启动脚本 → html */
-function detectDirAsProject(dir: string): DetectSuccess | null {
+/** Phase B（2026-08-21 拍板）：一个项目的全部启动方式清单。
+ *  「成品预览」排最前为默认（用户心智：先看成品）；随后按确定性排列开发类方式 */
+function buildLaunchModes(dir: string): LaunchMode[] {
+  const modes: LaunchMode[] = []
+  const distIndex = join(dir, 'dist', 'index.html')
+  if (existsSync(distIndex)) {
+    modes.push({ id: 'preview', kind: 'preview', label: '成品预览', staticRoot: join(dir, 'dist') })
+  }
   if (existsSync(join(dir, 'package.json'))) {
     const guessed = guessCommand(dir)
-    return {
-      ok: true,
-      type: 'service',
-      path: dir,
-      suggested: { name: basename(dir), command: guessed?.command, port: readPort(dir, guessed) }
-    }
+    modes.push({
+      id: 'dev',
+      kind: 'dev',
+      label: '开发服务器',
+      command: guessed?.command,
+      port: readPort(dir, guessed)
+    })
   }
   const python = detectPython(dir)
-  if (python) return python
+  if (python) {
+    modes.push({
+      id: 'python-dev',
+      kind: 'dev',
+      label: 'Python 后端',
+      command: python.suggested.command,
+      port: python.suggested.port
+    })
+  }
   const bunDeno = detectBunDeno(dir)
-  if (bunDeno) return bunDeno
+  if (bunDeno) {
+    modes.push({
+      id: 'bun',
+      kind: 'dev',
+      label: 'bun/deno 服务',
+      command: bunDeno.suggested.command,
+      port: bunDeno.suggested.port
+    })
+  }
   const launch = detectLaunchScript(dir)
-  if (launch) return launch
-  const html = findHtml(dir)
-  if (html) {
-    return {
-      ok: true,
-      type: 'web',
-      path: dir,
-      suggested: { name: basename(dir), entryPath: toEntryPath(dir, html) }
+  if (launch) {
+    modes.push({
+      id: 'launch',
+      kind: 'dev',
+      label: '启动脚本',
+      command: launch.suggested.command,
+      port: launch.suggested.port
+    })
+  }
+  if (existsSync(join(dir, 'docker-compose.yml'))) {
+    modes.push({ id: 'docker', kind: 'docker', label: 'Docker', command: 'docker compose up' })
+  }
+  // 有成品时附赠「真实 python 静态服务器」方式（2026-08-21 拍板：内置为主+可切换真实命令，Windows 零依赖靠内置）
+  if (modes.some((m) => m.kind === 'preview')) {
+    modes.push({
+      id: 'python-static',
+      kind: 'python-static',
+      label: 'python http.server',
+      command: 'python3 -m http.server'
+    })
+  }
+  // 什么都没有但能找到 html：兜底成单文件成品预览（老行为的 html 分支）
+  if (modes.length === 0) {
+    const html = findHtml(dir)
+    if (html) {
+      modes.push({
+        id: 'preview',
+        kind: 'preview',
+        label: '成品预览',
+        staticRoot: dir,
+        entryPath: toEntryPath(dir, html)
+      })
     }
   }
-  return null
+  return modes
 }
 
-/** S2：多项目容器——每个项目根走完整检测 + 根层散装 html 候选，过滤掉已登记的 */
+/** 一个目录的完整检测（S1 找到项目根后复用）：生成启动方式清单，preview 为默认类型 */
+function detectDirAsProject(dir: string): DetectSuccess | null {
+  const modes = buildLaunchModes(dir)
+  if (modes.length === 0) return null
+  const primary = modes[0]
+  const isWeb = primary.kind === 'preview'
+  // 标题/文件数从 preview 静态根读（弹窗显示标题+默认勾最大成品，2026-08-21 拍板）
+  const preview = modes.find((m) => m.kind === 'preview')
+  const indexFile = preview?.staticRoot ? join(preview.staticRoot, 'index.html') : null
+  return {
+    ok: true,
+    type: isWeb ? 'web' : 'service',
+    path: dir,
+    suggested: {
+      name: basename(dir),
+      command: primary.command,
+      port: primary.port,
+      entryPath: primary.entryPath,
+      title: indexFile && existsSync(indexFile) ? readTitle(indexFile) : undefined,
+      fileCount: preview?.staticRoot ? countFiles(preview.staticRoot) : undefined,
+      launchModes: modes,
+      activeMode: primary.id
+    }
+  }
+}
+
+/** S2：多项目容器——每个项目根走完整检测（Phase B：合并成一条+多启动方式）+ 根层散装 html 候选，过滤掉已登记的 */
 function detectMulti(dir: string, roots: string[]): DetectOutcome {
   const projects = roots
     .map((r) => detectDirAsProject(r))
     .filter((x): x is DetectSuccess => x !== null)
-  // 成品候选（2026-08-21 实测拍板）：项目有 dist/index.html 构建产物 → 直接静态打开成品站
-  //（用户心智"我做的网站"；登记即上线，点开是官网首页，站内子页面正常导航）
-  // title/fileCount（2026-08-21 二轮拍板）：弹窗显示标题+默认只勾最大成品
-  for (const r of roots) {
-    const distIndex = join(r, 'dist', 'index.html')
-    if (existsSync(distIndex)) {
-      projects.push({
-        ok: true,
-        type: 'web',
-        path: join(r, 'dist'),
-        suggested: {
-          name: `${basename(r)}成品`,
-          title: readTitle(distIndex),
-          fileCount: countFiles(join(r, 'dist'))
-        }
-      })
-    }
-  }
   // 根层散装 html（不进子目录——子目录可能属于上面的项目）
   try {
     for (const name of readdirSync(dir)) {
@@ -402,20 +465,29 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
           name: basename(name, ext),
           entryPath: `/${name}`,
           title: readTitle(full),
-          fileCount: 1
+          fileCount: 1,
+          launchModes: [
+            {
+              id: 'preview',
+              kind: 'preview',
+              label: '成品预览',
+              staticRoot: dir,
+              entryPath: `/${name}`
+            }
+          ],
+          activeMode: 'preview'
         }
       })
     }
   } catch {
     // 读不了就算了
   }
-  // 排序：web 在前，web 内部按 fileCount 降序（最大的成品排第一行，默认勾选它；2026-08-21 拍板）
+  // 排序：含成品预览的在前，内部按 fileCount 降序（最大的成品排第一行，默认勾选它；2026-08-21 拍板）
   projects.sort((a, b) => {
-    if (a.type === b.type) {
-      if (a.type === 'web') return (b.suggested.fileCount ?? 0) - (a.suggested.fileCount ?? 0)
-      return 0
-    }
-    return a.type === 'web' ? -1 : 1
+    const ap = a.suggested.launchModes.some((m) => m.kind === 'preview')
+    const bp = b.suggested.launchModes.some((m) => m.kind === 'preview')
+    if (ap !== bp) return ap ? -1 : 1
+    return (b.suggested.fileCount ?? 0) - (a.suggested.fileCount ?? 0)
   })
   const registered = new Set(listProjects().map((proj) => resolve(proj.path)))
   const fresh = projects.filter((pr) => !registered.has(resolve(pr.path)))
@@ -459,7 +531,11 @@ export function detectPath(rawPath: string): DetectOutcome {
       ok: true,
       type: 'web',
       path: p,
-      suggested: { name: basename(p, ext) }
+      suggested: {
+        name: basename(p, ext),
+        launchModes: [{ id: 'preview', kind: 'preview', label: '成品预览' }],
+        activeMode: 'preview'
+      }
     })
   }
   return { ok: false, kind: 'no-match', reason: '不认识的文件类型（只支持文件夹和 html 文件）' }
@@ -477,7 +553,21 @@ export function parseApp(appPath: string): DetectOutcome {
         ok: true,
         type: 'service',
         path: root,
-        suggested: { name, command: guessed?.command, port: readPort(root, guessed) }
+        suggested: {
+          name,
+          command: guessed?.command,
+          port: readPort(root, guessed),
+          launchModes: [
+            {
+              id: 'dev',
+              kind: 'dev',
+              label: '开发服务器',
+              command: guessed?.command,
+              port: readPort(root, guessed)
+            }
+          ],
+          activeMode: 'dev'
+        }
       })
     }
     const html = findHtml(root)
@@ -486,7 +576,20 @@ export function parseApp(appPath: string): DetectOutcome {
         ok: true,
         type: 'web',
         path: root,
-        suggested: { name, entryPath: toEntryPath(root, html) }
+        suggested: {
+          name,
+          entryPath: toEntryPath(root, html),
+          launchModes: [
+            {
+              id: 'preview',
+              kind: 'preview',
+              label: '成品预览',
+              staticRoot: root,
+              entryPath: toEntryPath(root, html)
+            }
+          ],
+          activeMode: 'preview'
+        }
       })
     }
   }

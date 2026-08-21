@@ -7,6 +7,31 @@ export type ProjectType = 'service' | 'web' | 'group'
 export type ProjectStatus = 'stopped' | 'starting' | 'running' | 'failed'
 
 /** 项目（对应确认表单的字段） */
+/** 启动方式类别（2026-08-21 Phase B 拍板：一个项目合并一条，条目内切换启动方式） */
+export type LaunchModeKind = 'preview' | 'dev' | 'python-static' | 'docker'
+
+/** 一个启动方式（同一项目的多种启动方式之一，如"成品预览"与"开发服务器"） */
+export interface LaunchMode {
+  /** 项目内唯一：preview / dev / python-dev / bun / launch / python-static / docker */
+  id: string
+  kind: LaunchModeKind
+  /** 界面显示名（成品预览 / 开发服务器 / python http.server / Docker…） */
+  label: string
+  /** 启动命令（dev/python-static/docker 用） */
+  command?: string
+  /** 预计端口（dev/python-static 用） */
+  port?: number
+  /** 网页入口文件相对路径（preview 单文件场景） */
+  entryPath?: string
+  /** preview 的静态根目录（pkg 项目的 dist；默认=项目路径） */
+  staticRoot?: string
+}
+
+/** 启动方式类别 → 项目类型（preview=web，其余=service；图标与端口显示用） */
+export function launchKindToType(kind: LaunchModeKind): ProjectType {
+  return kind === 'preview' ? 'web' : 'service'
+}
+
 export interface Project {
   id: string
   name: string
@@ -20,6 +45,10 @@ export interface Project {
   entryPath?: string
   /** 属于哪个项目组（2026-08-21 拍板：组收纳子项，子项与独立项目同结构） */
   parentId?: string
+  /** 全部启动方式（Phase B 2026-08-21：老数据无此字段=单方式，运行时按 type 兼容） */
+  launchModes?: LaunchMode[]
+  /** 当前选中的启动方式 id（默认第一个） */
+  activeMode?: string
   /** 启动后打开默认浏览器，默认关 */
   openBrowser: boolean
   note: string
@@ -50,6 +79,10 @@ export interface DetectSuccess {
     title?: string
     /** 成品文件数（弹窗默认勾选"最大的成品"用；2026-08-21 拍板） */
     fileCount?: number
+    /** 全部启动方式（Phase B 2026-08-21：一个项目合并一条，preview 排最前为默认） */
+    launchModes: LaunchMode[]
+    /** 默认启动方式 id（= launchModes[0].id） */
+    activeMode: string
   }
 }
 
@@ -181,12 +214,14 @@ export interface ReopenApi {
   addProject(input: NewProjectInput): Promise<Project>
   updateProject(id: string, input: NewProjectInput): Promise<Project>
   deleteProject(id: string): Promise<void>
-  startProject(id: string): Promise<StartResult>
+  startProject(id: string, modeId?: string): Promise<StartResult>
   stopProject(id: string): Promise<void>
   /** 打开应用时：检测哪些项目其实已经在跑（端口有响应），直接显示运行中 */
   adoptAllRunning(): Promise<void>
   /** 在默认浏览器打开该项目（右键菜单），需项目已运行 */
   openProjectBrowser(id: string): Promise<StartResult>
+  /** 切换启动方式：运行中先停、记录新方式并按新方式重启（Phase B 2026-08-21） */
+  switchLaunchMode(id: string, modeId: string): Promise<StartResult>
   getSettings(): Promise<Settings>
   saveSettings(patch: Partial<Settings>): Promise<Settings>
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */
