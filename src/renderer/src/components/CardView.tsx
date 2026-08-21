@@ -136,7 +136,8 @@ export function CardView({
                     const color = tagColor(t)
                     return (
                       <span key={t} className="card-tag-item">
-                        <Tag size={11} fill={color} color={color ?? undefined} />
+                        {/* 无色时显式 fill="none"，避免 SVG 默认黑填充（2026-08-21 修复） */}
+                        <Tag size={11} fill={color ?? 'none'} color={color ?? undefined} />
                         {t}
                       </span>
                     )

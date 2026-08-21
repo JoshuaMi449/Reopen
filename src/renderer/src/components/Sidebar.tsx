@@ -67,10 +67,11 @@ export function Sidebar({
                 }}
               >
                 <span className="sidebar-label">{name}</span>
+                {/* 无色时显式 fill="none"：传 undefined 会被 React 移除 fill 属性，SVG 默认填充黑色（2026-08-21 修复） */}
                 <Tag
                   size={13}
                   className="sidebar-tag-icon"
-                  fill={color}
+                  fill={color ?? 'none'}
                   color={color ?? undefined}
                 />
               </button>

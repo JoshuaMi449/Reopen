@@ -96,7 +96,8 @@ export function ProjectRow({
               const color = tagColor?.(t)
               return (
                 <span key={t} className="row-tag">
-                  <Tag size={11} fill={color} color={color ?? undefined} />
+                  {/* 无色时显式 fill="none"，避免 SVG 默认黑填充（2026-08-21 修复） */}
+                  <Tag size={11} fill={color ?? 'none'} color={color ?? undefined} />
                   {t}
                 </span>
               )
