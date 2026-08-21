@@ -46,6 +46,10 @@ export interface DetectSuccess {
     port?: number
     /** 网页入口文件相对路径（2026-08-21 S3） */
     entryPath?: string
+    /** 页面标题（读 index.html 的 <title>，弹窗里显示让用户一眼认出是哪个网站；2026-08-21 拍板） */
+    title?: string
+    /** 成品文件数（弹窗默认勾选"最大的成品"用；2026-08-21 拍板） */
+    fileCount?: number
   }
 }
 

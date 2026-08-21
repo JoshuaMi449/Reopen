@@ -28,6 +28,36 @@ function successOrDuplicate(p: string, result: DetectSuccess): DetectOutcome {
   return dup ? { ok: false, kind: 'duplicate', name: dup.name } : result
 }
 
+/** 读 html 文件的 <title>（弹窗里显示，用户一眼认出是哪个网站；2026-08-21 拍板） */
+function readTitle(file: string): string | undefined {
+  try {
+    const m = readFileSync(file, 'utf-8').match(/<title>([^<]*)<\/title>/i)
+    return m?.[1]?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 递归统计目录文件数（成品"大小"判断用；上限 5000 防异常目录） */
+function countFiles(dir: string): number {
+  let count = 0
+  const walk = (d: string): void => {
+    if (count > 5000) return
+    try {
+      for (const name of readdirSync(d)) {
+        const full = join(d, name)
+        if (name === 'node_modules') continue
+        if (isDir(full)) walk(full)
+        else count++
+      }
+    } catch {
+      // 读不了就算了
+    }
+  }
+  walk(dir)
+  return count
+}
+
 /** 浅层找 html 文件（最多下钻 2 层，跳过隐藏目录和 SKIP_DIRS） */
 function findHtml(dir: string, depth = 0): string | null {
   if (depth > 2) return null
@@ -342,13 +372,19 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
     .filter((x): x is DetectSuccess => x !== null)
   // 成品候选（2026-08-21 实测拍板）：项目有 dist/index.html 构建产物 → 直接静态打开成品站
   //（用户心智"我做的网站"；登记即上线，点开是官网首页，站内子页面正常导航）
+  // title/fileCount（2026-08-21 二轮拍板）：弹窗显示标题+默认只勾最大成品
   for (const r of roots) {
-    if (existsSync(join(r, 'dist', 'index.html'))) {
+    const distIndex = join(r, 'dist', 'index.html')
+    if (existsSync(distIndex)) {
       projects.push({
         ok: true,
         type: 'web',
         path: join(r, 'dist'),
-        suggested: { name: `${basename(r)}成品` }
+        suggested: {
+          name: `${basename(r)}成品`,
+          title: readTitle(distIndex),
+          fileCount: countFiles(join(r, 'dist'))
+        }
       })
     }
   }
@@ -357,16 +393,30 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
     for (const name of readdirSync(dir)) {
       const ext = extname(name).toLowerCase()
       if (ext !== '.html' && ext !== '.htm') continue
+      const full = join(dir, name)
       projects.push({
         ok: true,
         type: 'web',
-        path: join(dir, name),
-        suggested: { name: basename(name, ext), entryPath: `/${name}` }
+        path: full,
+        suggested: {
+          name: basename(name, ext),
+          entryPath: `/${name}`,
+          title: readTitle(full),
+          fileCount: 1
+        }
       })
     }
   } catch {
     // 读不了就算了
   }
+  // 排序：web 在前，web 内部按 fileCount 降序（最大的成品排第一行，默认勾选它；2026-08-21 拍板）
+  projects.sort((a, b) => {
+    if (a.type === b.type) {
+      if (a.type === 'web') return (b.suggested.fileCount ?? 0) - (a.suggested.fileCount ?? 0)
+      return 0
+    }
+    return a.type === 'web' ? -1 : 1
+  })
   const registered = new Set(listProjects().map((proj) => resolve(proj.path)))
   const fresh = projects.filter((pr) => !registered.has(resolve(pr.path)))
   if (fresh.length === 0) {

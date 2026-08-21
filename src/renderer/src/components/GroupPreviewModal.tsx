@@ -10,17 +10,18 @@ interface Props {
 }
 
 /** 多项目容器 → 项目组预览（2026-08-21 拍板：组预览勾选式）：
- *  拖入的文件夹里有多个项目 → 弹组名输入+候选勾选（默认全勾，成品网站排最前）→ 确认登记成一个组 */
+ *  拖入的文件夹里有多个项目 → 弹组名输入+候选勾选 → 确认登记成一个组
+ *  二轮拍板：候选行显示网站标题；默认只勾「最大的成品」（fileCount 最多），多个成品不再全勾 */
 export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.JSX.Element {
   const [name, setName] = useState(multi.path.split('/').pop() || '项目组')
-  // 勾选状态：候选 path 的集合。默认只勾「成品网站」（web 且无 entryPath=整站成品）；
-  // 散装 html（单页附件）与开发项目默认不勾，要的再手动勾（2026-08-21 实测：用户只要网站首页端口）
-  const [checked, setChecked] = useState<Set<string>>(
-    () =>
-      new Set(
-        multi.projects.filter((p) => p.type === 'web' && !p.suggested.entryPath).map((p) => p.path)
-      )
-  )
+  // 勾选状态：候选 path 的集合。默认只勾「最大的成品」（整站成品里 fileCount 最多的那个）；
+  // 散装 html（单页附件）与开发项目默认不勾，要的再手动勾（2026-08-21 实测：用户只要官网首页端口）
+  const [checked, setChecked] = useState<Set<string>>(() => {
+    const finished = multi.projects.filter((p) => p.type === 'web' && !p.suggested.entryPath)
+    if (finished.length === 0) return new Set()
+    const max = Math.max(...finished.map((p) => p.suggested.fileCount ?? 0))
+    return new Set(finished.filter((p) => (p.suggested.fileCount ?? 0) === max).map((p) => p.path))
+  })
   // 成品（web 类型）排最前，开发项目在后
   const sorted = useMemo(
     () =>
@@ -81,7 +82,7 @@ export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.
                     ? [p.suggested.command, p.suggested.port ? `:${p.suggested.port}` : '']
                         .filter(Boolean)
                         .join(' · ')
-                    : '成品网页'}
+                    : (p.suggested.title ?? '成品网页')}
                 </span>
               </button>
             )
