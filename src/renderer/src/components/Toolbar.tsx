@@ -75,6 +75,13 @@ export function Toolbar({
           </button>
         </Tooltip>
 
+        {/* 添加按钮紧跟搜索（2026-08-21 用户反馈：原来在最右，极端压缩时被裁一半，往前移保证可见） */}
+        <Tooltip text="添加项目">
+          <button className="icon-btn" title="添加项目" onClick={onAdd} data-tour="add">
+            <Plus size={16} />
+          </button>
+        </Tooltip>
+
         {autoStartEnabled && (
           <Tooltip text="自启项：打开软件自动启动">
             <button
@@ -125,12 +132,6 @@ export function Toolbar({
             </button>
           </Tooltip>
         </div>
-
-        <Tooltip text="添加项目">
-          <button className="icon-btn" title="添加项目" onClick={onAdd} data-tour="add">
-            <Plus size={16} />
-          </button>
-        </Tooltip>
       </div>
     </header>
   )

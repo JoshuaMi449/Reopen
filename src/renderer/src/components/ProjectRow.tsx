@@ -1,4 +1,4 @@
-import { Check, Folder, FileCode2, Play, Square } from 'lucide-react'
+import { Check, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface Props {
@@ -12,8 +12,11 @@ interface Props {
   onContextMenu(e: React.MouseEvent): void
   /** 手动排序（访达式拖拽）：仅在手动排序模式下启用 */
   sortDraggable?: boolean
+  /** 正在被拖拽（半透明拖影，2026-08-21） */
+  dragging?: boolean
   onDragStart?(e: React.DragEvent): void
   onDragOver?(e: React.DragEvent): void
+  onDragEnd?(e: React.DragEvent): void
   onDrop?(e: React.DragEvent): void
   /** 在自启项里（PRD 3.5：打勾同步显示） */
   autoStartChecked?: boolean
@@ -42,8 +45,10 @@ export function ProjectRow({
   onStop,
   onContextMenu,
   sortDraggable,
+  dragging,
   onDragStart,
   onDragOver,
+  onDragEnd,
   onDrop,
   autoStartChecked
 }: Props): React.JSX.Element {
@@ -54,7 +59,7 @@ export function ProjectRow({
   const port = status?.port ?? project.port
 
   return (
-    <div className={`project-row ${failed ? 'row-failed' : ''}`}>
+    <div className={`project-row ${failed ? 'row-failed' : ''} ${dragging ? 'dragging' : ''}`}>
       <div
         className="row-main"
         draggable={sortDraggable}
@@ -65,6 +70,7 @@ export function ProjectRow({
         }}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
         onDrop={onDrop}
       >
         <span className={`status-dot dot-${st}`} title={STATUS_TEXT[st]} />
@@ -75,6 +81,17 @@ export function ProjectRow({
         {autoStartChecked && (
           <span className="autostart-check" title="在自启项里">
             <Check size={13} />
+          </span>
+        )}
+        {/* 标签放行中间（名称之后；2026-08-21 拍板：Tag icon+文字，无颜色无圆角） */}
+        {project.tags.length > 0 && (
+          <span className="row-tags">
+            {project.tags.map((t) => (
+              <span key={t} className="row-tag">
+                <Tag size={11} />
+                {t}
+              </span>
+            ))}
           </span>
         )}
         <span className="row-port">{port ? `:${port}` : ''}</span>

@@ -97,9 +97,9 @@ export function ProjectFormModal({
   // PRD 3.2：启动后开浏览器默认关（两种类型都是）
   const [openBrowser, setOpenBrowser] = useState(init.openBrowser)
   const [note, setNote] = useState(init.note)
-  const [selectedTags, setSelectedTags] = useState<string[]>(init.tags)
-  const [tagInput, setTagInput] = useState('')
-  /** 联想下拉是否展开（点输入框展开；点外部收起） */
+  /** 标签文本：已选标签直接显示在输入框里，逗号分隔可直接编辑（2026-08-21 拍板） */
+  const [tagText, setTagText] = useState(() => init.tags.join(', '))
+  /** 联想下拉是否展开（点输入框展开；点外部/选完收起） */
   const [open, setOpen] = useState(false)
 
   // 已有标签的拼音缓存（全拼+首字母），打开表单时算一次
@@ -116,8 +116,10 @@ export function ProjectFormModal({
     return m
   }, [existingTags])
 
-  // 联想过滤：空输入→全部；否则 中文/英文子串 或 拼音全拼/首字母前缀 匹配
-  const q = tagInput.trim().toLowerCase()
+  // 联想针对"正在输入的当前词"（最后一个逗号之后的部分）
+  const parts = tagText.split(/[,，]/)
+  const current = (parts[parts.length - 1] ?? '').trim()
+  const q = current.toLowerCase()
   const matches = q
     ? existingTags.filter((t) => {
         if (t.toLowerCase().includes(q)) return true
@@ -126,17 +128,16 @@ export function ProjectFormModal({
         return py.full.startsWith(q) || py.initials.startsWith(q)
       })
     : existingTags
-  const showNewCandidate = q !== '' && !existingTags.includes(tagInput.trim())
+  const showNewCandidate = q !== '' && !existingTags.includes(current)
 
-  const toggleTag = (tag: string): void => {
-    setSelectedTags((ts) => (ts.includes(tag) ? ts.filter((t) => t !== tag) : [...ts, tag]))
-  }
-
-  /** 把输入作为新标签加入本次已选（纯本地，提交才真正创建） */
-  const addSelected = (raw: string): void => {
-    const t = raw.trim().slice(0, TAG_MAX)
-    if (!t) return
-    setSelectedTags((ts) => (ts.includes(t) ? ts : [...ts, t]))
+  /** 点选已有标签：把当前词替换成完整标签，然后收起下拉 */
+  const pickTag = (tag: string): void => {
+    const before = parts
+      .slice(0, -1)
+      .map((p) => p.trim())
+      .filter(Boolean)
+    setTagText([...before, tag].join(', '))
+    setOpen(false)
   }
 
   const commandMissing = type === 'service' && !command.trim()
@@ -144,9 +145,7 @@ export function ProjectFormModal({
 
   const submit = (): void => {
     const portNum = Number(port.trim())
-    // 输入框里还留着没确认的内容也一并带上——新标签只在提交这一刻才真正创建（2026-08-21 拍板）
-    const typed = tagInput.trim().slice(0, TAG_MAX)
-    const merged = typed ? [...selectedTags, typed] : [...selectedTags]
+    // 新标签只在提交这一刻才真正创建（2026-08-21 拍板）：输入框文本就是最终标签列表
     onSubmit({
       name: name.trim() || init.name,
       type,
@@ -155,7 +154,15 @@ export function ProjectFormModal({
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       openBrowser,
       note: note.trim(),
-      tags: [...new Set(merged.map((t) => t.trim()).filter(Boolean))]
+      tags: [
+        ...new Set(
+          tagText
+            .split(/[,，]/)
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((t) => t.slice(0, TAG_MAX))
+        )
+      ]
     })
   }
 
@@ -230,8 +237,11 @@ export function ProjectFormModal({
             <span className="form-tags-label">标签</span>
             <div className="tag-picker">
               <input
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
+                value={tagText}
+                onChange={(e) => {
+                  setTagText(e.target.value)
+                  setOpen(true)
+                }}
                 onFocus={() => setOpen(true)}
                 onBlur={(e) => {
                   // 点下拉项时 input 不失焦（项上 preventDefault），这里只处理真失焦
@@ -240,37 +250,12 @@ export function ProjectFormModal({
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return
                   e.preventDefault()
-                  const val = tagInput.trim()
-                  if (!val) return
-                  if (matches.length > 0) {
-                    toggleTag(matches[0])
-                    setTagInput('')
-                  } else {
-                    addSelected(val)
-                    setTagInput('')
-                  }
+                  // 有联想选第一个（替换当前词），没有就把当前词留在文本里（提交时才成为新标签）
+                  if (matches.length > 0) pickTag(matches[0])
+                  else setOpen(false)
                 }}
-                placeholder="输入或选择标签（最多6字）"
+                placeholder="输入标签，用逗号分隔（最多6字）"
               />
-
-              {selectedTags.length > 0 && (
-                <div className="tag-picked">
-                  已选 {selectedTags.length}：
-                  {selectedTags.map((t) => (
-                    <span key={t}>
-                      {t}
-                      <button
-                        type="button"
-                        className="tag-picked-x"
-                        title="移除"
-                        onClick={() => toggleTag(t)}
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
 
               {open && (
                 <div className="tag-dropdown">
@@ -283,12 +268,13 @@ export function ProjectFormModal({
                           className="tag-dropdown-item"
                           onMouseDown={(e) => {
                             e.preventDefault()
-                            toggleTag(t)
-                            setTagInput('')
+                            pickTag(t)
                           }}
                         >
                           <span>{t}</span>
-                          {selectedTags.includes(t) && <Check size={12} className="tag-check" />}
+                          {parts.map((p) => p.trim()).includes(t) && (
+                            <Check size={12} className="tag-check" />
+                          )}
                         </button>
                       ))}
                     </div>
@@ -301,13 +287,13 @@ export function ProjectFormModal({
                         type="button"
                         className="tag-dropdown-new-item"
                         onMouseDown={(e) => {
+                          // 新词已在输入框文本里，点一下=确认收进列表，收起下拉；提交时才真正创建
                           e.preventDefault()
-                          addSelected(tagInput)
-                          setTagInput('')
+                          setOpen(false)
                         }}
                       >
                         <Plus size={12} />
-                        作为新标签「{tagInput.trim().slice(0, TAG_MAX)}」
+                        作为新标签「{current.slice(0, TAG_MAX)}」
                       </button>
                     </div>
                   )}

@@ -55,6 +55,8 @@ export default function App(): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
   const [dragId, setDragId] = useState<string | null>(null)
+  /** 拖拽悬停的目标项目 id：其后面显示占位空位（动态让位效果，2026-08-21） */
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
   /** 自启项面板列是否打开（2026-08-21 拍板：占一列的嵌入式列卡片） */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
   /** 新手引导是否显示（首次打开） */
@@ -325,6 +327,7 @@ export default function App(): React.JSX.Element {
     e.stopPropagation()
     const id = e.dataTransfer.getData('application/x-reopen-id') || dragId
     setDragId(null)
+    setDragOverId(null)
     if (!id || id === target.id) return
     const order =
       settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
@@ -454,7 +457,10 @@ export default function App(): React.JSX.Element {
         }
       }}
       onDragLeave={(e) => {
-        if (e.currentTarget === e.target) setDragOver(false)
+        if (e.currentTarget === e.target) {
+          setDragOver(false)
+          setDragOverId(null)
+        }
       }}
       onDrop={handleDrop}
     >
@@ -508,13 +514,23 @@ export default function App(): React.JSX.Element {
                       onStop={() => window.api.stopProject(p.id)}
                       onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
                       sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                      dragging={dragId === p.id}
                       onDragStart={(e) => handleRowDragStart(e, p)}
                       onDragOver={(e) => {
-                        if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
+                        if (!e.dataTransfer.types.includes('Files')) {
+                          e.preventDefault()
+                          setDragOverId(p.id)
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null)
+                        setDragOverId(null)
                       }}
                       onDrop={(e) => handleRowDrop(e, p)}
                       autoStartChecked={settings.autoStartIds.includes(p.id)}
                     />
+                    {/* 拖拽悬停占位：目标后面张开空位，下面的行让位（2026-08-21） */}
+                    {dragOverId === p.id && <div className="drop-slot drop-slot-row" />}
                   </Fragment>
                 ))
               ) : (
@@ -522,10 +538,19 @@ export default function App(): React.JSX.Element {
                   items={listItems}
                   statuses={statuses}
                   autoStartIds={settings.autoStartIds}
+                  dragId={dragId}
+                  dragOverId={dragOverId}
                   sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
                   onDragStart={(e, p) => handleRowDragStart(e, p)}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes('Files')) e.preventDefault()
+                  onDragOver={(e, p) => {
+                    if (!e.dataTransfer.types.includes('Files')) {
+                      e.preventDefault()
+                      setDragOverId(p.id)
+                    }
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null)
+                    setDragOverId(null)
                   }}
                   onDrop={(e, p) => handleRowDrop(e, p)}
                   onOpen={(p) => setSelectedId(p.id)}

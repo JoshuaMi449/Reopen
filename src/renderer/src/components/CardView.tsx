@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { Check, FileCode2, Folder, Play, Square } from 'lucide-react'
+import { Check, FileCode2, Folder, Play, Square, Tag } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface ListItem {
@@ -13,10 +13,15 @@ interface Props {
   statuses: Record<string, ProjectStatusEvent>
   /** 自启项内的项目 id（打勾同步显示） */
   autoStartIds: string[]
+  /** 正在被拖拽的项目 id（半透明拖影） */
+  dragId: string | null
+  /** 拖拽悬停的目标 id：其后面显示占位空位（动态让位） */
+  dragOverId: string | null
   /** 是否可拖拽（无排序时拖拽排序 / 自启总开关开时拖入面板，与列表行同规则） */
   sortDraggable: boolean
   onDragStart(e: React.DragEvent, p: Project): void
-  onDragOver(e: React.DragEvent): void
+  onDragOver(e: React.DragEvent, p: Project): void
+  onDragEnd(e: React.DragEvent): void
   onDrop(e: React.DragEvent, p: Project): void
   /** 点击卡片：打开右侧详情抽屉 */
   onOpen(p: Project): void
@@ -39,9 +44,12 @@ export function CardView({
   items,
   statuses,
   autoStartIds,
+  dragId,
+  dragOverId,
   sortDraggable,
   onDragStart,
   onDragOver,
+  onDragEnd,
   onDrop,
   onOpen,
   onStart,
@@ -59,10 +67,11 @@ export function CardView({
           <Fragment key={p.id}>
             {header && <div className="list-group-header card-grid-full">{header.label}</div>}
             <div
-              className={`card ${failed ? 'card-failed' : ''}`}
+              className={`card ${failed ? 'card-failed' : ''} ${dragId === p.id ? 'dragging' : ''}`}
               draggable={sortDraggable}
               onDragStart={(e) => onDragStart(e, p)}
-              onDragOver={onDragOver}
+              onDragOver={(e) => onDragOver(e, p)}
+              onDragEnd={onDragEnd}
               onDrop={(e) => onDrop(e, p)}
               onClick={() => onOpen(p)}
               onContextMenu={(e) => {
@@ -115,7 +124,20 @@ export function CardView({
                   <div className="card-fail-reason">{statuses[p.id].reason}</div>
                 )}
               </div>
+              {/* 右下角标签（2026-08-21 拍板）：绝对定位不撑高卡片，Tag icon+文字，无三角无颜色 */}
+              {p.tags.length > 0 && (
+                <div className="card-tags">
+                  {p.tags.map((t) => (
+                    <span key={t} className="card-tag-item">
+                      <Tag size={11} />
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+            {/* 拖拽悬停占位：目标卡片后面张开空位格子（2026-08-21） */}
+            {dragOverId === p.id && <div className="drop-slot drop-slot-card" />}
           </Fragment>
         )
       })}
