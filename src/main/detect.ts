@@ -396,12 +396,15 @@ function buildLaunchModes(dir: string): LaunchMode[] {
     modes.push({ id: 'docker', kind: 'docker', label: 'Docker', command: 'docker compose up' })
   }
   // 有成品时附赠「真实 python 静态服务器」方式（2026-08-21 拍板：内置为主+可切换真实命令，Windows 零依赖靠内置）
-  if (modes.some((m) => m.kind === 'preview')) {
+  // 必须带上 preview 的 staticRoot——不带则 python 去服务项目根（源码目录），打开「有动效没图片」（2026-08-21 实测破案）
+  const preview = modes.find((m) => m.kind === 'preview')
+  if (preview) {
     modes.push({
       id: 'python-static',
       kind: 'python-static',
       label: 'python http.server',
-      command: 'python3 -m http.server'
+      command: 'python3 -m http.server',
+      staticRoot: preview.staticRoot
     })
   }
   // 什么都没有但能找到 html：兜底成单文件成品预览（老行为的 html 分支）

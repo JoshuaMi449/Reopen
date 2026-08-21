@@ -321,7 +321,11 @@ async function startPythonStatic(
   rt: Runtime,
   mode: LaunchMode
 ): Promise<StartResult> {
-  const root = mode.staticRoot ?? project.path
+  // 老数据（Phase B 前登记）python-static 没存 staticRoot：兜底到 preview 方式的静态根（同一份成品），而不是项目根源码目录
+  const root =
+    mode.staticRoot ??
+    project.launchModes?.find((m) => m.kind === 'preview')?.staticRoot ??
+    project.path
   const port = mode.port ?? project.port ?? 8000 // python http.server 默认端口
   if (await checkPortOpen(port)) {
     // 端口被占：和成品预览同款逻辑——上面是个网站就直接接管
