@@ -893,6 +893,54 @@ html.dark .sidebar-logo-word,
   white-space: pre-line;
 }
 
+/* 标签重命名输入框（2026-08-21） */
+.rename-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.rename-input:focus {
+  outline: none;
+  border-color: var(--primary-strong);
+}
+
+/* 标签染色色板（2026-08-21：8 色 + 无色格子） */
+.tag-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.tag-color-cell {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: var(--bg);
+}
+
+.tag-color-cell:hover {
+  border-color: var(--border);
+}
+
+.tag-color-cell-on {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 2px var(--card);
+}
+
 /* ---------- 表单 ---------- */
 
 .form-body {

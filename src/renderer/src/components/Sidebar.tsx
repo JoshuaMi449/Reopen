@@ -6,10 +6,14 @@ export type Category = 'all' | 'service' | 'web' | `tag:${string}`
 
 interface Props {
   category: Category
-  /** 已有标签名（2026-08-21 拍板：标签无颜色，只用于筛选） */
+  /** 已有标签名（标签染色后右侧 icon 填色；2026-08-21 拍板） */
   tags: string[]
+  /** 标签 → 染色（无颜色返回 undefined，默认无色） */
+  tagColor(tag: string): string | undefined
   counts: { all: number; service: number; web: number }
   onSelect(c: Category): void
+  /** 标签右键：重命名/删除/染色菜单（2026-08-21） */
+  onTagContextMenu(tag: string, e: React.MouseEvent): void
   /** 检查更新发现新版本时，设置 icon 右上角显示红点（M4 接入更新检查后由 App 传入） */
   showUpdateDot?: boolean
 }
@@ -18,8 +22,10 @@ interface Props {
 export function Sidebar({
   category,
   tags,
+  tagColor,
   counts,
   onSelect,
+  onTagContextMenu,
   showUpdateDot
 }: Props): React.JSX.Element {
   const items: { key: Category; label: string; icon: React.ReactNode; count: number }[] = [
@@ -49,14 +55,24 @@ export function Sidebar({
           <div className="sidebar-tags-title">标签</div>
           {tags.map((name) => {
             const key = `tag:${name}` as Category
+            const color = tagColor(name)
             return (
               <button
                 key={name}
                 className={`sidebar-item ${category === key ? 'sidebar-item-active' : ''}`}
                 onClick={() => onSelect(key)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  onTagContextMenu(name, e)
+                }}
               >
                 <span className="sidebar-label">{name}</span>
-                <Tag size={13} className="sidebar-tag-icon" />
+                <Tag
+                  size={13}
+                  className="sidebar-tag-icon"
+                  fill={color}
+                  color={color ?? undefined}
+                />
               </button>
             )
           })}

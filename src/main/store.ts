@@ -94,8 +94,6 @@ export function getSettings(): Settings {
   if (!settings) settings = { ...DEFAULT_SETTINGS }
   // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（2026-08-20）
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
-  // 旧数据迁移：标签颜色体系整体删除（2026-08-21），残留字段读入即丢弃，下次保存自然不再写入
-  delete (settings as { tagColors?: unknown }).tagColors
   return settings
 }
 

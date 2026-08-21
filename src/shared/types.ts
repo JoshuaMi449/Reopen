@@ -98,6 +98,8 @@ export interface Settings {
   view: 'list' | 'card'
   /** 当前排序方式（2026-08-20 拍板：名称/最近打开/添加日期/标签/无） */
   sortMode: 'name' | 'recent' | 'created' | 'tag' | 'none'
+  /** 标签染色：标签 → 颜色（2026-08-21 拍板：侧栏标签右键染色，默认无色，颜色填进标签 icon） */
+  tagColors: Record<string, string>
   /** 自启项总开关（默认开，PRD 3.5；关=顶部图标不显示，2026-08-20 验收整改） */
   autoStartEnabled: boolean
   /** 自启项内的项目 id */
@@ -130,6 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   manualOrder: [],
   view: 'list',
   sortMode: 'recent',
+  tagColors: {},
   autoStartEnabled: true,
   autoStartIds: [],
   theme: 'morandi',

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, FolderSearch, Pencil, Play, Square, Trash2 } from 'lucide-react'
+import { ExternalLink, FolderSearch, Palette, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type {
   DetectNeedParseApp,
   DetectOutcome,
@@ -20,6 +20,8 @@ import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
 import { Sidebar, Category } from './components/Sidebar'
+import { TagColorModal } from './components/TagColorModal'
+import { TagRenameDialog } from './components/TagRenameDialog'
 import { Toast, ToastData } from './components/Toast'
 import { Toolbar } from './components/Toolbar'
 import { applyTheme } from './theme'
@@ -36,6 +38,25 @@ interface MenuState {
   project: Project
 }
 
+/** 标签右键菜单的定位与目标标签 */
+interface TagMenuState {
+  x: number
+  y: number
+  tag: string
+}
+
+// 标签染色色板（2026-08-21 拍板：侧栏标签右键染色；默认无色）
+const TAG_COLORS = [
+  '#e74c3c',
+  '#e67e22',
+  '#f1c40f',
+  '#2ecc71',
+  '#3498db',
+  '#9b59b6',
+  '#e84393',
+  '#16a085'
+]
+
 export default function App(): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([])
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
@@ -51,6 +72,14 @@ export default function App(): React.JSX.Element {
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
+  /** 侧栏标签右键菜单（重命名/删除/染色，2026-08-21） */
+  const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null)
+  /** 正在重命名的标签名 */
+  const [tagRename, setTagRename] = useState<string | null>(null)
+  /** 待删除确认的标签名 */
+  const [tagDelete, setTagDelete] = useState<string | null>(null)
+  /** 正在染色的标签名 */
+  const [tagColorPick, setTagColorPick] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastData[]>([])
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
@@ -484,6 +513,99 @@ export default function App(): React.JSX.Element {
     setDeleteTarget(null)
   }
 
+  // ---------- 标签管理（2026-08-21 拍板：侧栏标签右键 重命名/删除/染色，颜色填进标签 icon） ----------
+
+  /** 标签 → 染色（默认无色） */
+  const tagColor = (tag: string): string | undefined => settings.tagColors[tag]
+
+  /** 把含某标签的项目批量改名/移除（渲染层逐个 updateProject，全字段传入保留 lastPort） */
+  const updateTagInProjects = async (
+    oldTag: string,
+    next: (tags: string[]) => string[]
+  ): Promise<void> => {
+    for (const p of projects.filter((x) => x.tags.includes(oldTag))) {
+      const updated = await window.api.updateProject(p.id, {
+        name: p.name,
+        type: p.type,
+        path: p.path,
+        command: p.command,
+        port: p.port,
+        openBrowser: p.openBrowser,
+        note: p.note,
+        tags: next(p.tags),
+        lastPort: p.lastPort
+      })
+      setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
+    }
+  }
+
+  /** 重命名标签：项目里的标签名、染色键、当前筛选分类一起改名 */
+  const handleTagRename = async (newName: string): Promise<void> => {
+    const old = tagRename
+    setTagRename(null)
+    if (!old) return
+    const trimmed = newName.trim().slice(0, 6)
+    if (!trimmed || trimmed === old) return
+    if (allTags.includes(trimmed)) {
+      toast(`已经有「${trimmed}」这个标签了`, 'error')
+      return
+    }
+    await updateTagInProjects(old, (tags) => tags.map((t) => (t === old ? trimmed : t)))
+    const color = settings.tagColors[old]
+    if (color) {
+      const next = { ...settings.tagColors }
+      delete next[old]
+      next[trimmed] = color
+      await updateSettings({ tagColors: next })
+    }
+    if (category === `tag:${old}`) setCategory(`tag:${trimmed}` as Category)
+    toast(`标签已重命名为「${trimmed}」`, 'success')
+  }
+
+  /** 删除标签：从所有项目移除 + 清染色 + 筛选分类回到全部 */
+  const handleTagDelete = async (): Promise<void> => {
+    const tag = tagDelete
+    setTagDelete(null)
+    if (!tag) return
+    await updateTagInProjects(tag, (tags) => tags.filter((t) => t !== tag))
+    const next = { ...settings.tagColors }
+    delete next[tag]
+    await updateSettings({ tagColors: next })
+    if (category === `tag:${tag}`) setCategory('all')
+    toast(`标签「${tag}」已删除`, 'success')
+  }
+
+  /** 标签染色（null=清除） */
+  const handleTagPickColor = async (color: string | null): Promise<void> => {
+    const tag = tagColorPick
+    setTagColorPick(null)
+    if (!tag) return
+    const next = { ...settings.tagColors }
+    if (color) next[tag] = color
+    else delete next[tag]
+    await updateSettings({ tagColors: next })
+  }
+
+  /** 标签右键菜单项 */
+  const tagMenuItems = (tag: string): MenuItem[] => [
+    {
+      label: '重命名…',
+      icon: <Pencil size={14} />,
+      onClick: () => setTagRename(tag)
+    },
+    {
+      label: '染色…',
+      icon: <Palette size={14} />,
+      onClick: () => setTagColorPick(tag)
+    },
+    {
+      label: '删除标签',
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: () => setTagDelete(tag)
+    }
+  ]
+
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null
 
   return (
@@ -510,7 +632,14 @@ export default function App(): React.JSX.Element {
         </div>
       )}
 
-      <Sidebar category={category} tags={allTags} counts={counts} onSelect={setCategory} />
+      <Sidebar
+        category={category}
+        tags={allTags}
+        tagColor={tagColor}
+        counts={counts}
+        onSelect={setCategory}
+        onTagContextMenu={(tag, e) => setTagMenu({ x: e.clientX, y: e.clientY, tag })}
+      />
 
       <div className="app-right">
         <div className="app-body">
@@ -642,6 +771,43 @@ export default function App(): React.JSX.Element {
           y={menu.y}
           items={menuItems(menu.project)}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {tagMenu && (
+        <ContextMenu
+          x={tagMenu.x}
+          y={tagMenu.y}
+          items={tagMenuItems(tagMenu.tag)}
+          onClose={() => setTagMenu(null)}
+        />
+      )}
+
+      {tagRename && (
+        <TagRenameDialog
+          initial={tagRename}
+          onConfirm={handleTagRename}
+          onCancel={() => setTagRename(null)}
+        />
+      )}
+
+      {tagDelete && (
+        <ConfirmDialog
+          title="删除标签"
+          message={`确定删除标签「${tagDelete}」吗？所有项目上的这个标签都会被去掉（项目本身不受影响）。`}
+          confirmText="删除"
+          onConfirm={handleTagDelete}
+          onCancel={() => setTagDelete(null)}
+        />
+      )}
+
+      {tagColorPick && (
+        <TagColorModal
+          tag={tagColorPick}
+          colors={TAG_COLORS}
+          current={settings.tagColors[tagColorPick]}
+          onPick={handleTagPickColor}
+          onCancel={() => setTagColorPick(null)}
         />
       )}
 
