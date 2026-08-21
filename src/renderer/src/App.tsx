@@ -963,6 +963,7 @@ export default function App(): React.JSX.Element {
               onChildStart={handleStart}
               onChildStop={(c) => window.api.stopProject(c.id)}
               onChildOpenBrowser={handleOpenBrowser}
+              onChildOpen={(c) => setSelectedId(c.id)}
             />
           )}
         </div>

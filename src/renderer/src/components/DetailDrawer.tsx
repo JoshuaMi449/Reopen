@@ -29,6 +29,8 @@ interface Props {
   onChildStart?(p: Project): void
   onChildStop?(p: Project): void
   onChildOpenBrowser?(p: Project): void
+  /** 点子项行：打开该子项自己的详情抽屉（看日志等，2026-08-21 实测补） */
+  onChildOpen?(p: Project): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -60,7 +62,8 @@ export function DetailDrawer({
   statuses,
   onChildStart,
   onChildStop,
-  onChildOpenBrowser
+  onChildOpenBrowser,
+  onChildOpen
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -108,7 +111,12 @@ export function DetailDrawer({
                 const cActive = cst === 'running' || cst === 'starting'
                 const cPort = statuses?.[c.id]?.port ?? c.port
                 return (
-                  <div key={c.id} className="drawer-child">
+                  <div
+                    key={c.id}
+                    className="drawer-child"
+                    onClick={() => onChildOpen?.(c)}
+                    title="打开子项详情（日志）"
+                  >
                     <span className={`status-dot dot-${cst}`} title={STATUS_TEXT[cst]} />
                     <span className="row-icon">
                       {c.type === 'service' ? <Folder size={15} /> : <FileCode2 size={15} />}
@@ -118,7 +126,10 @@ export function DetailDrawer({
                       <a
                         className="port-link"
                         title="在浏览器打开"
-                        onClick={() => onChildOpenBrowser?.(c)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onChildOpenBrowser?.(c)
+                        }}
                       >
                         :{cPort}
                         <ExternalLink size={11} />
@@ -127,11 +138,25 @@ export function DetailDrawer({
                       <span className="drawer-child-port">{cPort ? `:${cPort}` : ''}</span>
                     )}
                     {cActive ? (
-                      <button className="icon-btn" title="停止" onClick={() => onChildStop?.(c)}>
+                      <button
+                        className="icon-btn"
+                        title="停止"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onChildStop?.(c)
+                        }}
+                      >
                         <Square size={14} />
                       </button>
                     ) : (
-                      <button className="icon-btn" title="启动" onClick={() => onChildStart?.(c)}>
+                      <button
+                        className="icon-btn"
+                        title="启动"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onChildStart?.(c)
+                        }}
+                      >
                         <Play size={14} />
                       </button>
                     )}

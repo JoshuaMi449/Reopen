@@ -1046,6 +1046,7 @@ html.dark .sidebar-logo-word,
   padding: 7px 10px;
   border-radius: 8px;
   font-size: 13px;
+  cursor: pointer;
 }
 
 .drawer-child:hover {
