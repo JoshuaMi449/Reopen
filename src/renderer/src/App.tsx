@@ -309,12 +309,13 @@ export default function App(): React.JSX.Element {
         last = t
       }
       items.push({ p, header })
-      if (p.type === 'group' && expandedGroups.has(p.id)) {
+      // 只在列表视图展开插子项；卡片视图子项收纳在组卡/组抽屉里（2026-08-21 实测重做）
+      if (settings.view === 'list' && p.type === 'group' && expandedGroups.has(p.id)) {
         for (const c of childrenOf(p.id)) items.push({ p: c, header: null })
       }
     }
     return items
-  }, [visibleProjects, settings.sortMode, expandedGroups, childrenOf])
+  }, [visibleProjects, settings.sortMode, expandedGroups, childrenOf, settings.view])
 
   // 2026-08-21 项目组：条目数按顶层算（组算 1 个）；组按子项内容计入分类
   const counts = useMemo(
@@ -929,9 +930,7 @@ export default function App(): React.JSX.Element {
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
                   onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
-                  expandedGroups={expandedGroups}
                   childrenOf={childrenOf}
-                  onToggleGroup={toggleGroup}
                 />
               )}
             </main>

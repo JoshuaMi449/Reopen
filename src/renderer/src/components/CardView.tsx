@@ -1,16 +1,5 @@
 import { Fragment } from 'react'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  FileCode2,
-  Folder,
-  Layers,
-  Play,
-  Square,
-  Tag
-} from 'lucide-react'
+import { Check, ExternalLink, FileCode2, Folder, Layers, Play, Square, Tag } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
 
 interface ListItem {
@@ -43,10 +32,8 @@ interface Props {
   onStart(p: Project): void
   onStop(p: Project): void
   onContextMenu(e: React.MouseEvent, p: Project): void
-  /** 展开的组 id（2026-08-21 项目组：组头卡点击切换，子卡跟在后面） */
-  expandedGroups: Set<string>
+  /** 组 → 子项（2026-08-21 项目组：组卡显示子项汇总+成品端口） */
   childrenOf(id: string): Project[]
-  onToggleGroup(id: string): void
 }
 
 function formatTime(ts?: number): string {
@@ -76,27 +63,25 @@ export function CardView({
   onStart,
   onStop,
   onContextMenu,
-  expandedGroups,
-  childrenOf,
-  onToggleGroup
+  childrenOf
 }: Props): React.JSX.Element {
   return (
     <div className="card-grid">
       {items.map(({ p, header }) => {
-        // 组头卡（2026-08-21 项目组）：全宽一条，点击展开/收起，子卡跟在后面
+        // 组卡（2026-08-21 项目组，2026-08-21 实测重做）：与普通卡片同样大小；
+        // 卡内=组名+子项汇总+成品网站端口可点；点卡=打开组抽屉（子项列表）；子卡不铺开
         if (p.type === 'group') {
           const children = childrenOf(p.id)
-          const online = children.filter((c) => statuses[c.id]?.status === 'running').length
-          const expanded = expandedGroups.has(p.id)
+          const online = children.filter((c) => statuses[c.id]?.status === 'running')
+          const webOnline = online.find((c) => c.type === 'web')
+          const webPort = webOnline ? statuses[webOnline.id]?.port : undefined
           return (
             <Fragment key={p.id}>
               {header && <div className="list-group-header card-grid-full">{header.label}</div>}
               <div
-                className={`group-card card-grid-full ${expanded ? '' : 'group-card-collapsed'} ${
-                  dragOverId === p.id ? 'drop-target' : ''
-                }`}
+                className={`card ${dragOverId === p.id ? 'drop-target' : ''}`}
                 draggable={sortDraggable}
-                onClick={() => onToggleGroup(p.id)}
+                onClick={() => onOpen(p)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   onContextMenu(e, p)
@@ -106,19 +91,49 @@ export function CardView({
                 onDragEnd={onDragEnd}
                 onDrop={(e) => onDrop(e, p)}
               >
-                <span className="group-arrow">
-                  {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                </span>
-                <Layers size={15} />
-                <span className="group-card-name">{p.name}</span>
-                {autoStartIds.includes(p.id) && (
-                  <span className="autostart-check" title="在自启项里（开机只拉组内成品网站）">
-                    <Check size={13} />
+                <div className="card-head">
+                  <span className="row-icon">
+                    <Layers size={15} />
                   </span>
+                  <span className="card-name">{p.name}</span>
+                  {autoStartIds.includes(p.id) && (
+                    <span className="autostart-check" title="在自启项里（开机只拉组内成品网站）">
+                      <Check size={13} />
+                    </span>
+                  )}
+                </div>
+                <div className="card-body">
+                  <div className="card-port">
+                    {children.length} 个子项 · {online.length} 个在线
+                  </div>
+                  {webOnline && webPort && (
+                    <a
+                      className="port-link"
+                      title="在浏览器打开（组内成品网站）"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenBrowser(webOnline)
+                      }}
+                    >
+                      localhost:{webPort}
+                      <ExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
+                {p.tags.length > 0 && (
+                  <div className="card-tags">
+                    {p.tags.map((t) => {
+                      const color = tagColor(t)
+                      return (
+                        <span key={t} className="card-tag-item">
+                          {/* 无色时显式 fill="none"，避免 SVG 默认黑填充（2026-08-21 修复） */}
+                          <Tag size={11} fill={color ?? 'none'} color={color ?? undefined} />
+                          {t}
+                        </span>
+                      )
+                    })}
+                  </div>
                 )}
-                <span className="group-summary">
-                  {children.length} 个子项 · {online} 个在线
-                </span>
               </div>
             </Fragment>
           )

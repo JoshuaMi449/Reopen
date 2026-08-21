@@ -340,6 +340,18 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
   const projects = roots
     .map((r) => detectDirAsProject(r))
     .filter((x): x is DetectSuccess => x !== null)
+  // 成品候选（2026-08-21 实测拍板）：项目有 dist/index.html 构建产物 → 直接静态打开成品站
+  //（用户心智"我做的网站"；登记即上线，点开是官网首页，站内子页面正常导航）
+  for (const r of roots) {
+    if (existsSync(join(r, 'dist', 'index.html'))) {
+      projects.push({
+        ok: true,
+        type: 'web',
+        path: join(r, 'dist'),
+        suggested: { name: `${basename(r)}成品` }
+      })
+    }
+  }
   // 根层散装 html（不进子目录——子目录可能属于上面的项目）
   try {
     for (const name of readdirSync(dir)) {

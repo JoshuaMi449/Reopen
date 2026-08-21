@@ -991,32 +991,6 @@ html.dark .sidebar-logo-word,
   padding-left: 30px;
 }
 
-/* 卡片模式的组头卡（全宽一条，点击展开/收起） */
-.group-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  background: var(--card);
-  cursor: pointer;
-  position: relative;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.group-card:hover {
-  background: var(--hover);
-}
-
-.group-card-collapsed {
-  margin-bottom: 0;
-}
-
-.group-card .group-summary {
-  margin-left: auto;
-}
-
 /* 组预览弹窗（GroupPreviewModal） */
 .group-name-row {
   display: flex;
