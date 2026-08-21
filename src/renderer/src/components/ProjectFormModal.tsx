@@ -23,6 +23,8 @@ interface FormValues {
   openBrowser: boolean
   note: string
   tags: string[]
+  /** 识别出的网页入口路径（表单不展示，提交时静默保留，2026-08-21 S3） */
+  entryPath?: string
 }
 
 function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Project): FormValues {
@@ -35,7 +37,8 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       port: project.port?.toString() ?? '',
       openBrowser: project.openBrowser,
       note: project.note,
-      tags: project.tags
+      tags: project.tags,
+      entryPath: project.entryPath
     }
   }
   if (mode === 'create' && detect) {
@@ -47,7 +50,8 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       port: detect.suggested.port?.toString() ?? '',
       openBrowser: false,
       note: '',
-      tags: []
+      tags: [],
+      entryPath: detect.suggested.entryPath
     }
   }
   return {
@@ -152,6 +156,8 @@ export function ProjectFormModal({
       path: path.trim(),
       command: type === 'service' ? command.trim() || undefined : undefined,
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
+      // 网页类型才保留识别出的入口路径；改成服务类型就丢弃
+      entryPath: type === 'web' ? init.entryPath : undefined,
       openBrowser,
       note: note.trim(),
       tags: [

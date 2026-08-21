@@ -16,6 +16,8 @@ export interface Project {
   command?: string
   /** 端口：service 用于健康检查；web 自动分配 */
   port?: number
+  /** 网页入口文件相对路径（如 /supos-case-anjia.html；2026-08-21 S3：启动打开该文件而非目录根） */
+  entryPath?: string
   /** 启动后打开默认浏览器，默认关 */
   openBrowser: boolean
   note: string
@@ -40,7 +42,19 @@ export interface DetectSuccess {
     name: string
     command?: string
     port?: number
+    /** 网页入口文件相对路径（2026-08-21 S3） */
+    entryPath?: string
   }
+}
+
+/** 拖拽识别：文件夹里有多个独立项目（2026-08-21 S2 多项目容器，UI 逐个确认登记） */
+export interface DetectMulti {
+  ok: true
+  kind: 'multi'
+  /** 拖入的文件夹路径 */
+  path: string
+  /** 候选项目（每个都带全自动猜的预填） */
+  projects: DetectSuccess[]
 }
 
 /** 拖到 .app：第一版不支持，需询问用户是否解析（PRD 3.2 兜底流程） */
@@ -65,7 +79,8 @@ export interface DetectDuplicate {
   name: string
 }
 
-export type DetectOutcome = DetectSuccess | DetectNeedParseApp | DetectFailed | DetectDuplicate
+export type DetectOutcome =
+  DetectSuccess | DetectMulti | DetectNeedParseApp | DetectFailed | DetectDuplicate
 
 /** 项目状态变化事件（主进程推送 → 渲染层更新圆点/标红） */
 export interface ProjectStatusEvent {

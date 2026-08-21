@@ -893,6 +893,65 @@ html.dark .sidebar-logo-word,
   white-space: pre-line;
 }
 
+/* 多项目容器候选清单（2026-08-21 S2 逐个确认式：点一个 → 表单 → 回清单打勾） */
+.modal-multi {
+  width: 400px;
+}
+
+.multi-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.multi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0 -8px;
+}
+
+.multi-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  font-size: 13px;
+}
+
+.multi-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.multi-item-done {
+  opacity: 0.55;
+}
+
+.multi-check {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.multi-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-summary {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 /* 标签重命名输入框（2026-08-21） */
 .rename-input {
   width: 100%;

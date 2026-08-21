@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink, FolderSearch, Palette, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type {
+  DetectMulti,
   DetectNeedParseApp,
   DetectOutcome,
   DetectSuccess,
@@ -16,6 +17,7 @@ import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { DetailDrawer } from './components/DetailDrawer'
+import { MultiProjectModal } from './components/MultiProjectModal'
 import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
@@ -69,6 +71,8 @@ export default function App(): React.JSX.Element {
   /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起，2026-08-20 拍板） */
   const [searchOpen, setSearchOpen] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
+  /** 多项目容器候选清单（2026-08-21 S2）：打开表单时隐藏，表单提交/取消后重现继续挑 */
+  const [multi, setMulti] = useState<DetectMulti | null>(null)
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -265,10 +269,11 @@ export default function App(): React.JSX.Element {
     [projects]
   )
 
-  // 识别结果的统一处理：成功→确认表单；.app→询问解析；识别不了→提示；重复→提示
+  // 识别结果的统一处理：成功→确认表单；多项目→候选清单；.app→询问解析；识别不了→提示；重复→提示
   const handleDetectOutcome = (outcome: DetectOutcome): void => {
     if (outcome.ok) {
-      setForm({ mode: 'create', detect: outcome })
+      if ('kind' in outcome && outcome.kind === 'multi') setMulti(outcome)
+      else setForm({ mode: 'create', detect: outcome })
     } else if (outcome.kind === 'unsupported-app') {
       setAppPrompt(outcome)
     } else if (outcome.kind === 'no-match') {
@@ -495,13 +500,8 @@ export default function App(): React.JSX.Element {
     if (!appPrompt) return
     const outcome = await window.api.parseApp(appPrompt.path)
     setAppPrompt(null)
-    if (outcome.ok) {
-      setForm({ mode: 'create', detect: outcome })
-    } else if (outcome.kind === 'no-match') {
-      toast(outcome.reason, 'error')
-    } else if (outcome.kind === 'duplicate') {
-      toast(`「${outcome.name}」已经登记过了，不用重复添加`)
-    }
+    // 与拖入识别同一套处理（成功/多项目/识别不了/重复）
+    handleDetectOutcome(outcome)
   }
 
   const handleDelete = async (): Promise<void> => {
@@ -771,6 +771,16 @@ export default function App(): React.JSX.Element {
           existingTags={allTags}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
+        />
+      )}
+
+      {/* 多项目容器候选清单（2026-08-21 S2 逐个确认式）：表单打开时让位，关闭后重现；已登记的候选打勾 */}
+      {multi && !form && (
+        <MultiProjectModal
+          multi={multi}
+          projects={projects}
+          onPick={(detect) => setForm({ mode: 'create', detect })}
+          onDone={() => setMulti(null)}
         />
       )}
 

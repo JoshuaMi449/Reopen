@@ -108,6 +108,15 @@ function pipeLog(id: string, chunk: string): void {
   for (const line of lines) emitLog(id, line)
 }
 
+/** S8：从最近日志里找框架打印的实际端口（vite/next 端口被占自动 +1 时日志会打新的 localhost 地址） */
+function parseLogPort(id: string): number | undefined {
+  for (const line of recentLogs.get(id) ?? []) {
+    const m = line.match(/localhost:(\d{2,5})/)
+    if (m) return Number(m[1])
+  }
+  return undefined
+}
+
 /** 端口是否已被占用（能连上 = 占用） */
 function checkPortOpen(port: number): Promise<boolean> {
   return new Promise((resolvePromise) => {
@@ -187,19 +196,27 @@ async function startService(project: Project, rt: Runtime): Promise<StartResult>
     // 端口健康检查：轮询直到就绪或超时
     rt.healthStart = Date.now()
     rt.healthTimer = setInterval(() => {
-      checkPortOpen(project.port!).then((open) => {
+      const checkPort = rt.port ?? project.port!
+      checkPortOpen(checkPort).then((open) => {
         if (rt.status !== 'starting') return
         if (open) {
           clearInterval(rt.healthTimer)
-          setStatus(rt, project, 'running', project.port)
+          setStatus(rt, project, 'running', checkPort)
           touchStartedAt(project.id)
-          if (project.port) touchLastPort(project.id, project.port)
+          touchLastPort(project.id, checkPort)
           if (project.openBrowser) {
-            shell.openExternal(`http://localhost:${project.port}`)
+            shell.openExternal(`http://localhost:${checkPort}`)
           }
-        } else if (Date.now() - rt.healthStart > HEALTH_TIMEOUT_MS) {
-          clearInterval(rt.healthTimer)
-          failWithLogHint(rt, project, `30 秒内端口 ${project.port} 没有就绪（日志面板有完整输出）`)
+        } else {
+          // S8：端口漂移（vite 端口被占自动 +1）——日志里出现实际端口就切换检查目标
+          const drifted = parseLogPort(project.id)
+          if (drifted && drifted !== rt.port) {
+            rt.port = drifted
+            setStatus(rt, project, 'starting', drifted)
+          } else if (Date.now() - rt.healthStart > HEALTH_TIMEOUT_MS) {
+            clearInterval(rt.healthTimer)
+            failWithLogHint(rt, project, `30 秒内端口 ${checkPort} 没有就绪（日志面板有完整输出）`)
+          }
         }
       })
     }, HEALTH_INTERVAL_MS)
@@ -219,7 +236,11 @@ async function startWeb(project: Project, rt: Runtime): Promise<StartResult> {
   }
   setStatus(rt, project, 'starting')
   try {
-    const { server, port, entryPath } = await startWebServer(project.path, project.port)
+    const { server, port, entryPath } = await startWebServer(
+      project.path,
+      project.port,
+      project.entryPath
+    )
     rt.server = server
     rt.entryPath = entryPath
     setStatus(rt, project, 'running', port)

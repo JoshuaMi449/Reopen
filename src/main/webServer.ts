@@ -28,16 +28,21 @@ export interface WebServeResult {
   entryPath: string
 }
 
-/** 起临时 http 服务：path 是文件则 serve 所在目录并默认打开该文件；是文件夹则 serve 该目录 */
-export function startWebServer(projectPath: string, port?: number): Promise<WebServeResult> {
+/** 起临时 http 服务：path 是文件则 serve 所在目录并默认打开该文件；是文件夹则 serve 该目录。
+ *  entryPath（S3）：识别时找到的入口文件相对路径（如 /supos-case-anjia.html），请求 / 时优先返回它 */
+export function startWebServer(
+  projectPath: string,
+  port?: number,
+  entryPath?: string
+): Promise<WebServeResult> {
   const isFile = existsSync(projectPath) && statSync(projectPath).isFile()
   const rootDir = isFile ? dirname(projectPath) : projectPath
-  const entryName = isFile ? basename(projectPath) : ''
+  // 入口优先级：识别出的 entryPath > 单个文件登记时用文件名 > 文件夹默认 index.html
+  const entryName = entryPath?.replace(/^\//, '') ?? (isFile ? basename(projectPath) : 'index.html')
 
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0])
-    const target =
-      urlPath === '/' && entryName ? entryName : urlPath === '/' ? 'index.html' : urlPath
+    const target = urlPath === '/' ? entryName : urlPath
     const filePath = resolve(rootDir, `.${target}`)
     // 防目录穿越：解析后的路径必须在服务根目录内
     if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
@@ -68,7 +73,7 @@ export function startWebServer(projectPath: string, port?: number): Promise<WebS
       resolvePromise({
         server,
         port: addr.port,
-        entryPath: entryName ? `/${encodeURIComponent(entryName)}` : '/'
+        entryPath: entryPath ? encodeURI(entryPath) : `/${encodeURIComponent(entryName)}`
       })
     })
   })
