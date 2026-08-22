@@ -1,7 +1,7 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { BrowserWindow, Notification, shell } from 'electron'
-import { existsSync } from 'fs'
+import { chmodSync, existsSync, lstatSync, readdirSync } from 'fs'
 import { get } from 'http'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -101,19 +101,67 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
     return
   }
-  // 跨平台拷贝的依赖（2026-08-21 实测：Windows 项目整个拷到 Mac，node_modules 里是 Windows 二进制）
+  // 跨平台拷贝的依赖（2026-08-21/22 实测：Windows 项目整个拷到 Mac——二进制不兼容 / 缺 Mac 平台组件 / 权限自动修复后仍有权限问题）
   if (
     /Permission denied/.test(text) ||
-    /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text)
+    /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text) ||
+    /Cannot find module @rollup\/rollup-darwin|npm has a bug related to optional dependencies/i.test(
+      text
+    )
   ) {
     fail(
       rt,
       project,
-      '这个项目的依赖可能是从 Windows 电脑拷贝过来的，Mac 上跑不了——删掉项目里的 node_modules 重新 npm install 就行'
+      '这个项目的依赖没装好（从 Windows 电脑拷贝过来的常见问题）——删掉项目里的 node_modules 和 package-lock.json，重新 npm install 就行'
     )
     return
   }
   fail(rt, project, fallback)
+}
+
+/** 最近日志里是否出现过 Permission denied（npm 调无执行位脚本的典型输出） */
+function hasPermissionDenied(id: string): boolean {
+  return /Permission denied/i.test((recentLogs.get(id) ?? []).join('\n'))
+}
+
+/** 给 node_modules/.bin 下没有执行位的脚本补执行位（Windows/网盘拷贝项目的通病），返回修复个数 */
+function fixBinPermissions(cwd: string): number {
+  try {
+    const names = readdirSync(join(cwd, 'node_modules', '.bin'))
+    let fixed = 0
+    for (const name of names) {
+      const p = join(cwd, 'node_modules', '.bin', name)
+      const st = lstatSync(p)
+      if (st.isFile() && (st.mode & 0o111) === 0) {
+        chmodSync(p, st.mode | 0o111)
+        fixed++
+      }
+    }
+    return fixed
+  } catch {
+    return 0
+  }
+}
+
+/** 权限病自动修复（2026-08-22 用户拍板）：补上执行位后自动重试一次，日志透明记录发生了什么 */
+function tryFixAndRetry(
+  project: Project,
+  rt: Runtime,
+  command: string,
+  cwd: string,
+  port: number | undefined,
+  missingHint: string | undefined,
+  isRetry: boolean | undefined
+): boolean {
+  if (isRetry) return false
+  const fixed = fixBinPermissions(cwd)
+  if (fixed === 0) return false
+  emitLog(
+    project.id,
+    `检测到依赖脚本没有执行权限（从 Windows/网盘拷贝项目的通病）——已自动补上 ${fixed} 个脚本的执行权限，重试启动`
+  )
+  spawnAndWatch(project, rt, command, cwd, port, missingHint, true)
+  return true
 }
 
 /** 日志按行拆完再推给界面 */
@@ -247,7 +295,8 @@ function spawnAndWatch(
   command: string,
   cwd: string,
   port: number | undefined,
-  missingHint?: string
+  missingHint?: string,
+  isRetry?: boolean
 ): StartResult {
   setStatus(rt, project, 'starting')
   const child = spawn(command, {
@@ -264,13 +313,28 @@ function spawnAndWatch(
 
   child.on('error', (err) => {
     // 命令不存在（python3/docker 没装）→ 用大白话提示（2026-08-21 跨平台失败翻译）
-    const enoent = (err as NodeJS.ErrnoException).code === 'ENOENT'
+    const code = (err as NodeJS.ErrnoException).code
+    const enoent = code === 'ENOENT'
+    // 直接执行无权限的可执行文件（罕见，一般走 exit 分支的 npm 路径）
+    if (
+      code === 'EACCES' &&
+      tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+    ) {
+      return
+    }
     fail(rt, project, enoent && missingHint ? missingHint : `启动进程失败：${err.message}`)
   })
   child.on('exit', (code, signal) => {
     if (rt.healthTimer) clearInterval(rt.healthTimer)
     rt.child = undefined
     if (rt.status === 'starting') {
+      // 权限病自动修复（2026-08-22 用户拍板）：日志出现 Permission denied → 补执行位自动重试一次
+      if (
+        hasPermissionDenied(project.id) &&
+        tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+      ) {
+        return
+      }
       // 健康检查没过就退了 = 启动失败（不重试，PRD 3.4）
       failWithLogHint(rt, project, `进程提前退出（退出码 ${code ?? signal}）`)
     } else if (rt.status === 'running') {
