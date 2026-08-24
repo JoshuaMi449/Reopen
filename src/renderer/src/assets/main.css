@@ -2,113 +2,135 @@
    六套主题（PRD 3.8）：莫兰迪（默认）/海洋/石墨 × 亮暗，CSS 变量驱动；
    风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
-/* ---- 浅色三套（2026-08-24 拍板：底色体系与 Proma 一致——纯白背景/白卡片/浅灰边框 #e5e5e5/近黑文字；
-   三套只保留主色差异，同深色的对称处理） ---- */
+/* ---- 六套主题全量配色（2026-08-24 用户指正：不止背景，所有颜色搭配对齐 Proma 0.9.10 打包 CSS） ----
+   映射：莫兰迪浅←Proma slate-light（晨雾暖沙）/ 海洋浅←ocean-light / 石墨浅←默认 light（黑白灰）；
+         莫兰迪深←slate-dark（莫兰迪夜）/ 海洋深←ocean-dark / 石墨深←默认 dark。
+   变量语义：--primary 主色（底+字都由 --primary-foreground 配对）；
+             --primary-strong 主色的深/亮变体（hover、彩色文字）；
+             --accent 强调色（浅色=主色同值；深色=主色的亮版，小按钮描边/彩色文字可读）；
+             --accent-foreground 强调色底上的文字色。 */
+
+/* ---- 浅色三套 ---- */
 :root,
 :root[data-theme='morandi'] {
-  /* 晨雾暖沙 */
-  --bg: #ffffff;
-  --card: #ffffff;
-  --primary: #c0a29a;
-  --primary-strong: #a8877d;
-  --accent: #b58a3e; /* 辅助强调色（角标等小元素），与主题色搭配（2026-08-20 验收整改） */
-  --text: #0a0a0a;
-  --text-dim: #737373;
-  --border: #e5e5e5;
-  --hover: #f5f5f5;
-  --input-bg: #f5f5f5;
-  --danger-bg: #fdf3f2;
+  /* 晨雾暖沙 ← Proma slate-light：暖米灰底，暖棕主色，全变量带暖色调 */
+  --bg: #e2e1df;
+  --card: #f6f5f4;
+  --primary: #bca49a;
+  --primary-strong: #a7897b;
+  --primary-foreground: #ffffff;
+  --accent: #bca49a;
+  --accent-foreground: #ffffff;
+  --text: #322f2a;
+  --text-dim: #78756d;
+  --border: #cfcdc9;
+  --hover: #dbdad6;
+  --input-bg: #e7e6e4;
+  --danger-bg: hsla(0, 60%, 50%, 0.12);
   --ok: #7ca982;
   --warn: #d9b45b;
-  --danger: #c65f5f;
+  --danger: #d22d2d;
 }
 
 :root[data-theme='ocean'] {
-  /* 晴空 */
-  --bg: #ffffff;
-  --card: #ffffff;
+  /* 晴空 ← Proma ocean-light：淡蓝底，天蓝主色 */
+  --bg: #deeaf2;
+  --card: #f4f8fa;
   --primary: #408abf;
-  --primary-strong: #34739f;
-  --accent: #b58a3e;
-  --text: #0a0a0a;
-  --text-dim: #737373;
-  --border: #e5e5e5;
-  --hover: #f5f5f5;
-  --input-bg: #f5f5f5;
-  --danger-bg: #fdf4f3;
+  --primary-strong: #336f99;
+  --primary-foreground: #ffffff;
+  --accent: #408abf;
+  --accent-foreground: #ffffff;
+  --text: #1b2632;
+  --text-dim: #576675;
+  --border: #b3cadb;
+  --hover: #c9dbe8;
+  --input-bg: #d4e2ed;
+  --danger-bg: hsla(0, 80%, 60%, 0.12);
   --ok: #5f9d7c;
   --warn: #d9a24b;
-  --danger: #c65f5f;
+  --danger: #ef4444;
 }
 
 :root[data-theme='slate'] {
-  /* 晨雾 */
+  /* 晨雾 ← Proma 默认 light：纯白底，黑色主色（Proma 浅色默认款） */
   --bg: #ffffff;
   --card: #ffffff;
-  --primary: #4a4a45;
-  --primary-strong: #5c5c55;
-  --accent: #b58a3e;
+  --primary: #171717;
+  --primary-strong: #474747;
+  --primary-foreground: #fafafa;
+  --accent: #171717;
+  --accent-foreground: #fafafa;
   --text: #0a0a0a;
   --text-dim: #737373;
   --border: #e5e5e5;
   --hover: #f5f5f5;
   --input-bg: #f5f5f5;
-  --danger-bg: #fdf3f2;
+  --danger-bg: hsla(0, 80%, 60%, 0.12);
   --ok: #6f9478;
   --warn: #b98a4a; /* 强调琥珀 */
-  --danger: #c65f5f;
+  --danger: #ef4444;
 }
 
-/* ---- 深色三套（2026-08-24 拍板：黑色与 Proma 一致——背景 #121212 / 卡片 #1f1f1f / 边框 #262626；三套只保留主色差异） ---- */
+/* ---- 深色三套 ---- */
 :root[data-theme='morandi'].dark {
-  /* 莫兰迪夜 */
-  --bg: #121212;
-  --card: #1f1f1f;
-  --primary: #c9a89e;
-  --primary-strong: #b08f85;
-  --text: #fafafa;
-  --text-dim: #a3a3a3;
-  --border: #262626;
-  --hover: #262626;
-  --input-bg: #1c1c1c;
-  --danger-bg: #33242a;
+  /* 莫兰迪夜 ← Proma slate-dark：紫灰黑底，暖粉主色 */
+  --bg: #1e1d20;
+  --card: #201f23;
+  --primary: #c2a399;
+  --primary-strong: #d5c0b9;
+  --primary-foreground: #171519;
+  --accent: #afc5cf;
+  --accent-foreground: #1e1d20;
+  --text: #e8e6e3;
+  --text-dim: #a19991;
+  --border: #322f37;
+  --hover: #28262b;
+  --input-bg: #28262b;
+  --danger-bg: hsl(0, 25%, 20%);
   --ok: #7fa883;
   --warn: #d9b45b;
-  --danger: #d0736f;
+  --danger: #b94646;
 }
 
 :root[data-theme='ocean'].dark {
-  /* 深海 */
-  --bg: #121212;
-  --card: #1f1f1f;
-  --primary: #5c85a8;
-  --primary-strong: #6f9bbc;
-  --text: #fafafa;
-  --text-dim: #a3a3a3;
-  --border: #262626;
-  --hover: #262626;
-  --input-bg: #1c1c1c;
-  --danger-bg: #2e2227;
+  /* 深海 ← Proma ocean-dark：深蓝黑底，深蓝主色，亮蓝强调 */
+  --bg: #16212d;
+  --card: #121c26;
+  --primary: #084672;
+  --primary-strong: #0b63a2;
+  --primary-foreground: #ffffff;
+  --accent: #85bae0;
+  --accent-foreground: #16212d;
+  --text: #e7ebef;
+  --text-dim: #7b8c9d;
+  --border: #202e3c;
+  --hover: #19242e;
+  --input-bg: #19242e;
+  --danger-bg: hsl(0, 35%, 18%);
   --ok: #6ba181;
   --warn: #d9a24b;
-  --danger: #d0736f;
+  --danger: #b23434;
 }
 
 :root[data-theme='slate'].dark {
-  /* 石墨夜 */
+  /* 石墨夜 ← Proma 默认 dark：纯黑底，白色主色（Proma 深色默认款：按钮白底黑字） */
   --bg: #121212;
-  --card: #1f1f1f;
-  --primary: #8a8a82;
-  --primary-strong: #a0a097;
+  --card: #121212;
+  --primary: #fafafa;
+  --primary-strong: #dbdbdb;
+  --primary-foreground: #171717;
+  --accent: #fafafa;
+  --accent-foreground: #121212;
   --text: #fafafa;
   --text-dim: #a3a3a3;
   --border: #262626;
   --hover: #262626;
-  --input-bg: #1c1c1c;
-  --danger-bg: #2e2422;
+  --input-bg: #262626;
+  --danger-bg: hsl(0, 40%, 18%);
   --ok: #6f9478;
   --warn: #d9a45b; /* 强调琥珀 */
-  --danger: #d0736f;
+  --danger: #b23434;
 }
 
 * {
@@ -232,12 +254,13 @@ select {
 }
 
 .sidebar-item-active {
-  background: var(--primary);
-  color: #fff;
+  /* 淡色底+主色字（2026-08-24 用户指正：不用主色纯色底，Proma 风格淡一点） */
+  background: var(--hover);
+  color: var(--primary-strong);
 }
 
 .sidebar-item-active:hover {
-  background: var(--primary-strong);
+  background: var(--border);
 }
 
 .sidebar-icon {
@@ -590,7 +613,7 @@ html.dark .sidebar-logo-word,
   bottom: 0;
   height: 2px;
   border-radius: 1px;
-  background: var(--primary);
+  background: var(--accent);
 }
 
 .card.drop-target::after {
@@ -601,7 +624,7 @@ html.dark .sidebar-logo-word,
   right: -7px; /* 落在卡片间隙中间 */
   width: 2px;
   border-radius: 1px;
-  background: var(--primary);
+  background: var(--accent);
 }
 
 /* ---------- 极端压缩自适应（2026-08-21 拍板：日志+自启都开=中间栏只剩1列时自动简化） ---------- */
@@ -710,7 +733,7 @@ html.dark .sidebar-logo-word,
 
 .btn-primary {
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-foreground);
   border: none;
   border-radius: 6px;
   padding: 7px 16px;
@@ -872,6 +895,16 @@ html.dark .sidebar-logo-word,
   gap: 4px;
 }
 
+/* 登记弹窗网站标题小字（2026-08-24 用户追问：单 html 拖入英文名难认，显示 <title> 帮辨认） */
+.form-title-hint {
+  margin-top: -10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 表单里的规格摘要区（只读展示，2026-08-24 拍板：拖入时就标明里面有什么） */
 .form-modes {
   display: flex;
@@ -906,8 +939,8 @@ html.dark .sidebar-logo-word,
 .form-entry-main {
   flex: none;
   font-size: 10px;
-  color: var(--primary);
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 4px;
   padding: 0 4px;
 }
@@ -951,7 +984,7 @@ html.dark .sidebar-logo-word,
 }
 .drawer-entry-main {
   font-size: 9px;
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .drawer-log {
@@ -1027,6 +1060,83 @@ html.dark .sidebar-logo-word,
 
 .confirm-message {
   white-space: pre-line;
+}
+
+/* 发现新版本弹窗（2026-08-24 用户拍板：与 Proma 一模一样——desc/中间 git 更新内容/官网下载页链接/双按钮） */
+.modal-update {
+  width: 480px;
+}
+
+.update-desc {
+  font-size: 13px;
+}
+
+.update-body {
+  max-height: 256px; /* Proma max-h-64 */
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.update-body p,
+.update-body li {
+  margin: 6px 0;
+}
+
+.update-body h1,
+.update-body h2,
+.update-body h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.update-body code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: var(--input-bg);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.update-body a {
+  color: var(--accent);
+}
+
+.update-body-empty {
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.update-fallback {
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.update-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.update-link:hover {
+  text-decoration: underline;
+}
+
+.update-check-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.update-check-link:hover {
+  text-decoration: underline;
 }
 
 /* 多项目容器候选清单（2026-08-21 S2 逐个确认式：点一个 → 表单 → 回清单打勾） */
@@ -1364,7 +1474,7 @@ html.dark .sidebar-logo-word,
 .toast {
   background: var(--card);
   border: 1px solid var(--border);
-  border-left: 4px solid var(--primary);
+  border-left: 4px solid var(--accent);
   border-radius: 8px;
   padding: 10px 14px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
@@ -1682,6 +1792,11 @@ html.dark .sidebar-logo-word,
 
 .card-fail-reason {
   color: var(--danger);
+  /* 最多两行省略（2026-08-24 用户反馈）：报错文案很长会把同网格行 4 张卡全撑高，截断保持整齐 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-tag {
@@ -1698,7 +1813,7 @@ html.dark .sidebar-logo-word,
   top: -4px;
   right: -4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-foreground);
   font-size: 9px;
   border-radius: 999px;
   padding: 1px 4px;
@@ -1854,7 +1969,7 @@ html.dark .sidebar-logo-word,
 }
 
 .theme-style-on {
-  border-color: var(--primary);
+  border-color: var(--accent);
   background: var(--hover);
 }
 
@@ -1888,7 +2003,7 @@ html.dark .sidebar-logo-word,
 }
 
 .theme-dark-on {
-  border-color: var(--primary);
+  border-color: var(--accent);
   background: var(--hover);
 }
 
@@ -2130,12 +2245,13 @@ body.tray-window #root {
 }
 
 .settings-side-active {
-  background: var(--primary);
-  color: #fff;
+  /* 淡色底+主色字（2026-08-24 用户指正：设置左边不用主色纯色，应该是淡一点的） */
+  background: var(--hover);
+  color: var(--primary-strong);
 }
 
 .settings-side-active:hover {
-  background: var(--primary-strong);
+  background: var(--border);
 }
 
 .settings-content {
@@ -2255,7 +2371,7 @@ html.dark .settings-card {
 }
 
 .settings-select:focus {
-  border-color: var(--primary);
+  border-color: var(--accent);
 }
 
 .settings-kbd {
@@ -2282,8 +2398,8 @@ html.dark .settings-card {
 }
 
 .settings-switch-on {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .settings-switch-knob {
@@ -2293,7 +2409,7 @@ html.dark .settings-card {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--accent-foreground);
   transition: left 0.15s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
@@ -2328,7 +2444,7 @@ html.dark .settings-card {
 }
 
 .settings-dark-on {
-  border-color: var(--primary);
+  border-color: var(--accent);
   background: var(--hover);
 }
 
@@ -2351,7 +2467,7 @@ html.dark .settings-card {
 
 .settings-seg-on {
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-foreground);
 }
 
 /* 快捷键组 */
@@ -2389,6 +2505,16 @@ html.dark .settings-card {
   border-radius: 7px;
   padding: 6px 10px;
   font-size: 12px;
+  /* 点击在访达中显示（2026-08-24 用户拍板） */
+  cursor: pointer;
+}
+
+.settings-path-item:hover {
+  border-color: var(--accent);
+}
+
+.settings-path-item:hover code {
+  color: var(--accent);
 }
 
 .settings-path-item code {
@@ -2443,7 +2569,7 @@ html.dark .settings-card {
 
 .settings-kbd-ready {
   animation: none;
-  border-color: var(--primary);
+  border-color: var(--accent);
   background: var(--hover);
 }
 
@@ -2453,7 +2579,7 @@ html.dark .settings-card {
     border-color: var(--border);
   }
   50% {
-    border-color: var(--primary);
+    border-color: var(--accent);
   }
 }
 
@@ -2483,7 +2609,7 @@ html.dark .settings-card {
   height: 84px;
   border-radius: 22px;
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2631,7 +2757,9 @@ html.dark .settings-card {
   --card: #f6f5f4;
   --primary: #bca49a;
   --primary-strong: #a88f84;
-  --accent: #dddcd9;
+  --accent: #bca49a;
+  --primary-foreground: #ffffff;
+  --accent-foreground: #ffffff;
   --text: #322f2a;
   --text-dim: #78756d;
   --border: #cfcdc9;
@@ -2649,7 +2777,9 @@ html.dark .settings-card {
   --card: #f4f8fa;
   --primary: #408abf;
   --primary-strong: #34739f;
-  --accent: #aecbe0;
+  --accent: #408abf;
+  --primary-foreground: #ffffff;
+  --accent-foreground: #ffffff;
   --text: #1b2632;
   --text-dim: #576675;
   --border: #b3cadb;
@@ -2667,7 +2797,9 @@ html.dark .settings-card {
   --card: #f6f9f7;
   --primary: #3f8361;
   --primary-strong: #346e52;
-  --accent: #dae7df;
+  --accent: #3f8361;
+  --primary-foreground: #ffffff;
+  --accent-foreground: #ffffff;
   --text: #1d3026;
   --text-dim: #677e71;
   --border: #cad8cf;
@@ -2685,7 +2817,9 @@ html.dark .settings-card {
   --card: #121c26;
   --primary: #084672;
   --primary-strong: #0a5689;
-  --accent: #22384f;
+  --accent: #85bae0;
+  --primary-foreground: #ffffff;
+  --accent-foreground: #16212d;
   --text: #e7ebef;
   --text-dim: #7b8c9d;
   --border: #202e3c;
@@ -2703,7 +2837,9 @@ html.dark .settings-card {
   --card: #17211c;
   --primary: #185337;
   --primary-strong: #1f6b47;
-  --accent: #223930;
+  --accent: #7fb89a;
+  --primary-foreground: #ffffff;
+  --accent-foreground: #17211c;
   --text: #e3e8e5;
   --text-dim: #819888;
   --border: #24332b;
@@ -2721,7 +2857,9 @@ html.dark .settings-card {
   --card: #201f23;
   --primary: #c2a399;
   --primary-strong: #d0b5ac;
-  --accent: #313a3f;
+  --accent: #afc5cf;
+  --primary-foreground: #171519;
+  --accent-foreground: #1e1d20;
   --text: #e8e6e3;
   --text-dim: #a19991;
   --border: #322f37;
@@ -2828,8 +2966,8 @@ html.dark .settings-card {
 .special-on {
   background: var(--card);
   box-shadow:
-    0 10px 15px -3px color-mix(in srgb, var(--primary) 20%, transparent),
-    0 4px 6px -4px color-mix(in srgb, var(--primary) 20%, transparent);
+    0 10px 15px -3px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 4px 6px -4px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .special-check {
@@ -2840,7 +2978,7 @@ html.dark .settings-card {
   height: 16px;
   border-radius: 50%;
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2862,8 +3000,8 @@ html.dark .settings-card {
 /* 框选矩形：主题色虚线框 + 8% 填充 */
 .marquee-rect {
   position: absolute;
-  border: 1px dashed var(--primary);
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   border-radius: 4px;
   z-index: 40;
   pointer-events: none;
@@ -2872,8 +3010,8 @@ html.dark .settings-card {
 /* 选中高亮：主题色描边（行/卡片/组行统一） */
 .project-row.selected,
 .card.selected {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* 批量加标签弹窗 */
@@ -2904,7 +3042,7 @@ html.dark .settings-card {
 }
 
 .bulk-tag-chip:hover {
-  border-color: var(--primary);
+  border-color: var(--accent);
 }
 
 
@@ -2961,7 +3099,7 @@ html.dark .settings-card {
 }
 
 .lan-link:hover {
-  color: var(--primary);
+  color: var(--accent);
   text-decoration: underline;
 }
 
@@ -2970,4 +3108,9 @@ html.dark .settings-card {
   font-weight: 400;
   color: var(--text-dim);
   margin-left: 8px;
+  cursor: pointer;
+}
+
+.drawer-lan:hover {
+  color: var(--accent);
 }

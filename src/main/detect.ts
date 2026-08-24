@@ -570,6 +570,8 @@ export function detectPath(rawPath: string): DetectOutcome {
       path: p,
       suggested: {
         name: basename(p, ext),
+        // 网站标题小字（2026-08-24 用户追问：单 html 拖入英文文件名难认，读 <title> 帮辨认）
+        title: readTitle(p),
         launchModes: [{ id: 'preview', kind: 'preview', label: '成品预览' }],
         activeMode: 'preview'
       }

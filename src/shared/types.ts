@@ -138,9 +138,9 @@ export interface DetectDuplicate {
 export type DetectOutcome =
   DetectSuccess | DetectMulti | DetectNeedParseApp | DetectFailed | DetectDuplicate
 
-/** 失败后界面可提供的自动修复动作（2026-08-24 拍板：小白一键装依赖） */
+/** 失败后界面可提供的自动修复动作（2026-08-24 拍板：小白一键装依赖；同目录残留进程一键终止重启） */
 export interface ProjectFix {
-  kind: 'npm-install'
+  kind: 'npm-install' | 'kill-residue'
   /** 界面按钮文字（如"帮我装依赖"） */
   label: string
 }
@@ -262,6 +262,22 @@ export interface EnvCheckItem {
   installCommand?: string
 }
 
+/** 更新检查结果（2026-08-24 拍板：发现新版本弹窗 Proma 式——git 更新内容+git 链接+按钮） */
+export interface UpdateInfo {
+  /** 有没有新版本 */
+  hasUpdate: boolean
+  /** 当前版本（如 0.1.0） */
+  currentVersion: string
+  /** 最新版本号（tag 去 v 前缀） */
+  latestVersion?: string
+  /** 更新内容（GitHub Release 正文，markdown） */
+  body?: string
+  /** 最新版发布页链接（弹窗「前往下载」与「官网下载页」用） */
+  htmlUrl?: string
+  /** 检查失败原因（hasUpdate=false 且 error 有值=网络错误等） */
+  error?: string
+}
+
 /** 渲染层可用的全部 API（preload 通过 contextBridge 暴露为 window.api） */
 export interface ReopenApi {
   /** 拖拽的 File 对象 → 磁盘路径（Electron 32+ 需 webUtils） */
@@ -282,6 +298,8 @@ export interface ReopenApi {
   stopProject(id: string): Promise<void>
   /** 一键安装依赖：在项目目录跑 npm install，日志实时推项目日志面板（2026-08-24 拍板） */
   installProjectDeps(id: string): Promise<void>
+  /** 终止同目录残留 dev 进程并重新启动（2026-08-24 拍板：残留检测的「终止残留并启动」按钮） */
+  killResidual(id: string): Promise<StartResult>
   /** 打开应用时：检测哪些项目其实已经在跑（端口有响应），直接显示运行中 */
   adoptAllRunning(): Promise<void>
   /** 在默认浏览器打开该项目（右键菜单），需项目已运行；entry=入口文件相对路径（多入口列表用，2026-08-24 拍板） */
@@ -314,6 +332,10 @@ export interface ReopenApi {
   importData(): Promise<void>
   /** 在默认浏览器打开链接（关于组） */
   openExternal(url: string): Promise<void>
+  /** 在访达中显示路径（右键「访问项目原目录」、资料库路径跳转；2026-08-24 拍板） */
+  revealInFolder(path: string): Promise<void>
+  /** 检查更新：GitHub Releases 拿最新版（2026-08-24 拍板：发现新版本弹窗 Proma 式） */
+  checkUpdate(): Promise<UpdateInfo>
   /** 订阅左上角应用菜单的动作，返回取消订阅函数 */
   onMenuAction(cb: (action: string) => void): () => void
   /** 订阅设置变化（设置窗口改了之后主窗口同步），返回取消订阅函数 */

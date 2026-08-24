@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import {
   ExternalLink,
   Eye,
@@ -94,6 +94,8 @@ export function CardView({
   onSelectToggle,
   lanIp
 }: Props): React.JSX.Element {
+  // 局域网地址复制反馈（2026-08-24 拍板：点击=复制不再跳转；记录是哪张卡在显示「已复制」）
+  const [lanCopiedId, setLanCopiedId] = useState<string | null>(null)
   return (
     <div className="card-grid">
       {items.map(({ p, header }) => {
@@ -262,13 +264,15 @@ export function CardView({
                       {lanIp && (
                         <a
                           className="lan-link"
-                          title="局域网地址（同一 Wi-Fi 的设备用这个）"
+                          title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
                           onClick={(e) => {
                             e.stopPropagation()
-                            window.api.openExternal(`http://${lanIp}:${port}`)
+                            void navigator.clipboard.writeText(`http://${lanIp}:${port}`)
+                            setLanCopiedId(p.id)
+                            setTimeout(() => setLanCopiedId(null), 1500)
                           }}
                         >
-                          {lanIp}:{port}
+                          {lanCopiedId === p.id ? '已复制 ✓' : `${lanIp}:${port}`}
                         </a>
                       )}
                     </>

@@ -4,12 +4,13 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { networkInterfaces } from 'os'
 import { join } from 'path'
-import type { EnvCheckItem, NewProjectInput, Project, Settings } from '../shared/types'
+import type { EnvCheckItem, NewProjectInput, Project, Settings, UpdateInfo } from '../shared/types'
 import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
   adoptRunning,
   installProjectDeps,
+  killResidualAndStart,
   openProjectBrowser,
   startProject,
   stopProject
@@ -247,6 +248,53 @@ function cancelEnvInstall(key: string): void {
   broadcastEnvInstall({ key, ok: false, error: '已取消' })
 }
 
+/** 版本比较：1.2.3 式逐段比（tag 的 v 前缀去掉；2026-08-24 更新检查用） */
+function compareVersions(a: string, b: string): number {
+  const pa = a
+    .replace(/^v/, '')
+    .split('.')
+    .map((n) => Number(n) || 0)
+  const pb = b
+    .replace(/^v/, '')
+    .split('.')
+    .map((n) => Number(n) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d !== 0) return d
+  }
+  return 0
+}
+
+/** 检查更新：GitHub Releases 拿最新正式版（2026-08-24 拍板：发现新版本弹窗 Proma 式，
+ *  弹窗里渲染 Release 正文=git 更新内容，链接与按钮跳发布页） */
+async function checkUpdate(): Promise<UpdateInfo> {
+  const currentVersion = app.getVersion()
+  try {
+    const res = await fetch('https://api.github.com/repos/JoshuaMi449/Reopen/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Reopen' }
+    })
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`)
+    const data = (await res.json()) as {
+      tag_name: string
+      body?: string
+      html_url: string
+    }
+    const latestVersion = data.tag_name.replace(/^v/, '')
+    if (compareVersions(latestVersion, currentVersion) <= 0) {
+      return { hasUpdate: false, currentVersion }
+    }
+    return {
+      hasUpdate: true,
+      currentVersion,
+      latestVersion,
+      body: data.body,
+      htmlUrl: data.html_url
+    }
+  } catch (err) {
+    return { hasUpdate: false, currentVersion, error: (err as Error).message }
+  }
+}
+
 /** 已有项目 → 更新用的完整输入（手动成组/解散组时改 parentId 用，2026-08-24） */
 function toProjectInput(p: Project): NewProjectInput {
   return {
@@ -320,6 +368,7 @@ export function registerIpc(): void {
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
+  ipcMain.handle('project:kill-residual', (_e, id: string) => killResidualAndStart(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
   ipcMain.handle('project:open-browser', (_e, id: string, entry?: string) =>
     openProjectBrowser(id, entry)
@@ -345,11 +394,14 @@ export function registerIpc(): void {
   ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))
   ipcMain.handle('system:env-install-cancel', (_e, key: string) => cancelEnvInstall(key))
   ipcMain.handle('system:get-lan-ip', () => getLanIp())
+  ipcMain.handle('update:check', () => checkUpdate())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })
   })
   ipcMain.handle('shell:open-external', (_e, url: string) => shell.openExternal(url))
+  // 在访达中显示（右键「访问项目原目录」、资料库路径跳转；2026-08-24 用户拍板）
+  ipcMain.handle('shell:reveal-in-folder', (_e, path: string) => shell.showItemInFolder(path))
 
   // 资料库：导出/导入 JSON
   ipcMain.handle('data:export', async () => {

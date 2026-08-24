@@ -8,6 +8,7 @@ import {
   Tag,
   Zap
 } from 'lucide-react'
+import { useState } from 'react'
 import {
   hasPreviewFallback,
   isPureWeb,
@@ -97,6 +98,8 @@ export function ProjectRow({
   const running = st === 'running'
   const starting = st === 'starting'
   const port = status?.port ?? project.port
+  // 局域网地址复制反馈（2026-08-24 拍板：点击=复制，不再跳转）
+  const [lanCopied, setLanCopied] = useState(false)
 
   return (
     <div
@@ -161,13 +164,15 @@ export function ProjectRow({
               {lanIp && (
                 <a
                   className="lan-link"
-                  title="局域网地址（同一 Wi-Fi 的设备用这个）"
+                  title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
                   onClick={(e) => {
                     e.stopPropagation()
-                    window.api.openExternal(`http://${lanIp}:${port}`)
+                    void navigator.clipboard.writeText(`http://${lanIp}:${port}`)
+                    setLanCopied(true)
+                    setTimeout(() => setLanCopied(false), 1500)
                   }}
                 >
-                  {lanIp}:{port}
+                  {lanCopied ? '已复制 ✓' : `${lanIp}:${port}`}
                 </a>
               )}
             </>

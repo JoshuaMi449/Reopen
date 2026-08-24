@@ -253,6 +253,21 @@ export function ProjectFormModal({
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </label>
 
+          {/* 辨认小字（2026-08-24 用户拍板：拖进来的项目名称下都有小字——
+              网页类显示读到的 <title>（英文文件名也能认出是哪个网站）；
+              开发类没有标题，显示文件夹完整路径；标题与名称重复就不显示） */}
+          {mode === 'create' &&
+            detect &&
+            (detect.suggested.title && detect.suggested.title !== name ? (
+              <div className="form-title-hint" title={detect.suggested.title}>
+                网站标题：{detect.suggested.title}
+              </div>
+            ) : (
+              <div className="form-title-hint" title={detect.path}>
+                位置：{detect.path}
+              </div>
+            ))}
+
           {type !== 'group' && (
             <label>
               <span>路径</span>

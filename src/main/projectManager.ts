@@ -4,7 +4,7 @@ import { app, BrowserWindow, Notification, shell } from 'electron'
 import { chmodSync, existsSync, lstatSync, readdirSync } from 'fs'
 import { get } from 'http'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { connect } from 'net'
 import type {
   LaunchMode,
@@ -33,6 +33,8 @@ interface Runtime {
   entryPath?: string
   healthTimer?: NodeJS.Timeout
   healthStart: number
+  /** 启动前检测到的同目录残留进程组（2026-08-24 用户拍板：「终止残留并启动」按钮用） */
+  residualPids?: number[]
 }
 
 const runtimes = new Map<string, Runtime>()
@@ -438,7 +440,62 @@ async function startService(
     return { ok: true, reason: `检测到端口 ${port} 已有服务在响应，已直接显示为运行中` }
   }
 
+  // 同目录残留检测（2026-08-24 用户拍板）：目录里已有 dev 进程在跑（比如改端口前旧实例没停），
+  // 直接提示而不是再开一个——两个 dev 共享 .next 缓存会互相踩脚，CPU/内存被打爆（52GB 事故）
+  const residual = findResidualDev(project.path)
+  if (residual.length > 0) {
+    rt.residualPids = residual.map((r) => r.pgid)
+    emitLog(
+      project.id,
+      `检测到同目录残留进程：${residual.map((r) => `PID ${r.pid}`).join('、')}——不重复启动`
+    )
+    fail(
+      rt,
+      project,
+      '这个项目已经在跑了（目录里有残留的开发进程）。再开一个会让两个开发服务器互相踩脚，CPU 和内存会被打爆——先终止残留，再启动',
+      { kind: 'kill-residue', label: '终止残留并启动' }
+    )
+    return { ok: false, reason: '项目已经在跑了' }
+  }
+
   return spawnAndWatch(project, rt, command, project.path, port)
+}
+
+/** 项目目录下的残留 dev 进程（2026-08-24 用户拍板：启动前检测，防同目录双开 dev 共享 .next 缓存互相踩脚——next-server 52GB 事故）。
+ *  一次 lsof 拿全量进程 cwd 对比项目目录；只认 dev 相关命令（node/next/vite/python 等），
+ *  排除 shell 本身（用户 cd 进目录的终端不算）与 Reopen 自己管理的进程组（detached 子进程 pgid=child.pid） */
+function findResidualDev(cwd: string): { pid: number; pgid: number }[] {
+  try {
+    const target = resolve(cwd)
+    const out = execSync('lsof -a -d cwd -Fn', { encoding: 'utf-8', timeout: 8000 })
+    const managed = new Set<number>()
+    for (const rt of runtimes.values()) if (rt.child?.pid) managed.add(rt.child.pid)
+    const found: { pid: number; pgid: number }[] = []
+    let pid = 0
+    for (const line of out.split('\n')) {
+      if (line.startsWith('p')) {
+        pid = Number(line.slice(1))
+      } else if (pid && line.startsWith('n') && resolve(line.slice(1)) === target) {
+        let pgid = 0
+        let cmd = ''
+        try {
+          const ps = execSync(`ps -o pgid=,command= -p ${pid}`, { encoding: 'utf-8' }).trim()
+          const m = ps.match(/^\s*(\d+)\s+(.*)$/)
+          pgid = Number(m?.[1] ?? 0)
+          cmd = m?.[2] ?? ''
+        } catch {
+          continue
+        }
+        if (!pgid || managed.has(pgid)) continue
+        if (/(node|next|vite|tsx|bun|deno|python|uvicorn|flask|docker|npm|yarn|pnpm)/i.test(cmd)) {
+          found.push({ pid, pgid })
+        }
+      }
+    }
+    return found
+  } catch {
+    return []
+  }
 }
 
 /** 常见启动命令 → 依赖检查目标与安装指引（2026-08-24：启动前预检，缺运行时直接人话提示，不用等进程报错） */
@@ -513,6 +570,9 @@ function spawnAndWatch(
     env: {
       ...process.env,
       PATH: buildPath(),
+      // 表单端口真正生效（2026-08-24 用户拍板）：注入 PORT，Next.js 等认这个变量的框架就真绑表单端口；
+      // vite 等不认的框架忽略，无害
+      ...(port ? { PORT: String(port) } : {}),
       // 局域网访问开 → 塞 HOST 让 vite 等框架也对外接待（不认这个变量的框架需要项目里自己配，2026-08-24）
       ...(getSettings().lanAccess ? { HOST: '0.0.0.0' } : {})
     }
@@ -874,6 +934,35 @@ function killTree(rt: Runtime): void {
       // 进程已退出
     }
   }, KILL_GRACE_MS)
+}
+
+/** 「终止残留并启动」（2026-08-24 用户拍板）：杀掉启动前检测到的同目录残留进程组，稍等后重新启动项目 */
+export async function killResidualAndStart(id: string): Promise<StartResult> {
+  const rt = getRuntime(id)
+  const groups = rt.residualPids ?? []
+  rt.residualPids = undefined
+  for (const pgid of groups) {
+    try {
+      process.kill(-pgid, 'SIGTERM')
+    } catch {
+      try {
+        process.kill(pgid, 'SIGTERM')
+      } catch {
+        // 已退出
+      }
+    }
+  }
+  await new Promise((r) => setTimeout(r, 1500))
+  for (const pgid of groups) {
+    try {
+      process.kill(-pgid, 'SIGKILL')
+    } catch {
+      // 已退出
+    }
+  }
+  const project = listProjects().find((p) => p.id === id)
+  if (project) emitLog(id, `已终止 ${groups.length} 个残留进程，重新启动`)
+  return startProject(id)
 }
 
 export async function stopProject(id: string): Promise<void> {

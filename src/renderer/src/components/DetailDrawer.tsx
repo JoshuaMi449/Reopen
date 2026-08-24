@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChevronLeft,
   ExternalLink,
@@ -46,6 +46,8 @@ interface Props {
   onViewPreview?(): void
   /** 失败提示区的一键修复按钮（如"帮我装依赖"，2026-08-24 拍板） */
   onInstallDeps?(): void
+  /** 同目录残留 dev 进程的「终止残留并启动」按钮（2026-08-24 拍板） */
+  onKillResidual?(): void
   /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址，2026-08-24） */
   lanIp?: string
 }
@@ -84,9 +86,12 @@ export function DetailDrawer({
   onBack,
   onViewPreview,
   onInstallDeps,
+  onKillResidual,
   lanIp
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
+  // 局域网地址复制反馈（2026-08-24 拍板：点击=复制不再跳转）
+  const [lanCopied, setLanCopied] = useState(false)
 
   // 日志自动滚到底
   useEffect(() => {
@@ -230,8 +235,18 @@ export function DetailDrawer({
             <b>
               {status?.port ?? project.port ?? '—'}
               {lanIp && (status?.port ?? project.port) && (
-                <span className="drawer-lan">
-                  局域网 {lanIp}:{status?.port ?? project.port}
+                <span
+                  className="drawer-lan"
+                  title="局域网地址（点击复制）"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `http://${lanIp}:${status?.port ?? project.port}`
+                    )
+                    setLanCopied(true)
+                    setTimeout(() => setLanCopied(false), 1500)
+                  }}
+                >
+                  {lanCopied ? '已复制 ✓' : `局域网 ${lanIp}:${status?.port ?? project.port}`}
                 </span>
               )}
             </b>
@@ -276,6 +291,11 @@ export function DetailDrawer({
               )}
               {status.fix?.kind === 'npm-install' && (
                 <button className="btn-mini" onClick={onInstallDeps}>
+                  <Wrench size={12} /> {status.fix.label}
+                </button>
+              )}
+              {status.fix?.kind === 'kill-residue' && (
+                <button className="btn-mini" onClick={onKillResidual}>
                   <Wrench size={12} /> {status.fix.label}
                 </button>
               )}

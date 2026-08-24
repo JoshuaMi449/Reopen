@@ -26,6 +26,7 @@ const api: ReopenApi = {
   startProject: (id, modeId) => ipcRenderer.invoke('project:start', id, modeId),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
   installProjectDeps: (id) => ipcRenderer.invoke('project:install-deps', id),
+  killResidual: (id) => ipcRenderer.invoke('project:kill-residual', id),
   adoptAllRunning: () => ipcRenderer.invoke('project:adopt-all'),
   openProjectBrowser: (id, entry) => ipcRenderer.invoke('project:open-browser', id, entry),
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -48,6 +49,8 @@ const api: ReopenApi = {
   exportData: () => ipcRenderer.invoke('data:export'),
   importData: () => ipcRenderer.invoke('data:import'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  revealInFolder: (path) => ipcRenderer.invoke('shell:reveal-in-folder', path),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
   onMenuAction: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, action: string): void => cb(action)
     ipcRenderer.on('app:menu-action', listener)

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
-import type { EnvCheckItem, Project, Settings } from '../../../shared/types'
+import type { EnvCheckItem, Project, Settings, UpdateInfo } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
+import { UpdateModal } from './UpdateModal'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
 
@@ -32,6 +33,9 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const [projects, setProjects] = useState<Project[]>([])
   /** 环境监测结果（关于组下方，2026-08-24 拍板） */
   const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
+  /** 更新检查结果与弹窗（2026-08-24 拍板：关于组「检查更新」，有新版弹 Proma 式弹窗） */
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [showUpdate, setShowUpdate] = useState(false)
   /** 正在一键安装的运行时 key（按钮转"取消"；再点=取消安装，2026-08-24 拍板） */
   const [installingKey, setInstallingKey] = useState<string | null>(null)
   /** 安装实时日志行（最近 60 行，2026-08-24 拍板：Cakebrew 式流水日志） */
@@ -63,6 +67,13 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     const saved = await window.api.saveSettings(patch)
     setSettings(saved)
   }, [])
+
+  /** 检查更新（2026-08-24 拍板：GitHub Release；有新版弹 Proma 式弹窗，失败静默显示已是最新） */
+  const checkUpdate = async (): Promise<void> => {
+    const info = await window.api.checkUpdate()
+    setUpdateInfo(info)
+    if (info.hasUpdate) setShowUpdate(true)
+  }
 
   /** 一键安装运行时（2026-08-24 拍板：brew 自动装+实时日志；再点=取消） */
   const handleInstallEnv = (item: EnvCheckItem): void => {
@@ -349,7 +360,12 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           <div className="settings-static">还没有登记项目</div>
         ) : (
           projects.map((p) => (
-            <div key={p.id} className="settings-path-item" title={p.path}>
+            <div
+              key={p.id}
+              className="settings-path-item"
+              title={`${p.path}（点击在访达中显示）`}
+              onClick={() => window.api.revealInFolder(p.path)}
+            >
               <span>{p.name}</span>
               <code>{p.path}</code>
             </div>
@@ -379,6 +395,24 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
       <div className="settings-about-app">Reopen</div>
       <div className="settings-about-line">版本 0.1.0（VC复活点）</div>
       <div className="settings-about-line">Restart your Mac without losing your projects</div>
+      <div className="settings-about-line">
+        <a
+          href="#"
+          className="update-check-link"
+          onClick={(e) => {
+            e.preventDefault()
+            // 已查到新版 → 直接弹详情弹窗；否则重新检查
+            if (updateInfo?.hasUpdate) setShowUpdate(true)
+            else void checkUpdate()
+          }}
+        >
+          {updateInfo
+            ? updateInfo.hasUpdate
+              ? `新版本 v${updateInfo.latestVersion} 可用`
+              : '已是最新版本'
+            : '检查更新'}
+        </a>
+      </div>
       <div className="settings-subtitle">链接</div>
       <div className="settings-about-links">
         <a
@@ -518,6 +552,9 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           {groups[group]}
         </main>
       </div>
+      {showUpdate && updateInfo && (
+        <UpdateModal info={updateInfo} onClose={() => setShowUpdate(false)} />
+      )}
     </div>
   )
 }

@@ -24,7 +24,8 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "lucide-react": "^1.32.0",
-    "pinyin-pro": "^3.29.3"
+    "pinyin-pro": "^3.29.3",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

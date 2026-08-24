@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ExternalLink,
+  FolderOpen,
   FolderSearch,
   Group,
   MonitorPause,
@@ -21,7 +22,8 @@ import type {
   Project,
   ProjectLogEvent,
   ProjectStatusEvent,
-  Settings
+  Settings,
+  UpdateInfo
 } from '../../shared/types'
 import { DEFAULT_SETTINGS, isPureWeb } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
@@ -41,6 +43,7 @@ import { TagColorSlider } from './components/TagColorSlider'
 import { TagRenameDialog } from './components/TagRenameDialog'
 import { Toast, ToastData } from './components/Toast'
 import { Toolbar } from './components/Toolbar'
+import { UpdateModal } from './components/UpdateModal'
 import { applyTheme } from './theme'
 
 interface FormState {
@@ -92,6 +95,8 @@ export default function App(): React.JSX.Element {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
+  /** 更新检查结果（2026-08-24 拍板：启动时自动查 GitHub Release，有新版本弹 Proma 式弹窗） */
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** 侧栏标签右键菜单（重命名/删除/染色，2026-08-21） */
   const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null)
@@ -161,6 +166,13 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
   }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
+
+  // 启动时自动检查更新（2026-08-24 拍板：有新版弹 Proma 式「发现新版本」弹窗；失败静默不打扰）
+  useEffect(() => {
+    void window.api.checkUpdate().then((info) => {
+      if (info.hasUpdate) setUpdateInfo(info)
+    })
+  }, [])
 
   // 订阅回调里要拿到最新项目名（用于失败通知），用 ref 镜像
   const projectsRef = useRef<Project[]>([])
@@ -879,6 +891,11 @@ export default function App(): React.JSX.Element {
       onClick: () => handleRelocate(p)
     })
     items.push({
+      label: '访问项目原目录',
+      icon: <FolderOpen size={14} />,
+      onClick: () => window.api.revealInFolder(p.path)
+    })
+    items.push({
       label: '删除',
       icon: <Trash2 size={14} />,
       danger: true,
@@ -1329,6 +1346,10 @@ export default function App(): React.JSX.Element {
                 void window.api.installProjectDeps(selectedProject.id)
                 toast('开始安装依赖，看日志面板的进度，装完再点启动', 'info')
               }}
+              onKillResidual={() => {
+                void window.api.killResidual(selectedProject.id)
+                toast('正在终止残留进程并重新启动', 'info')
+              }}
               onClose={() => setSelectedId(null)}
               // 组视图（2026-08-21 项目组）：子项列表，可逐个启停/点端口
               groupChildren={
@@ -1434,6 +1455,8 @@ export default function App(): React.JSX.Element {
           onCancel={() => setTagDelete(null)}
         />
       )}
+
+      {updateInfo && <UpdateModal info={updateInfo} onClose={() => setUpdateInfo(null)} />}
 
       {appPrompt && (
         <div className="modal-backdrop">
