@@ -233,6 +233,18 @@ export const DEFAULT_SETTINGS: Settings = {
   lanAccess: false
 }
 
+/** 环境一键安装事件（2026-08-24 拍板：实时日志行 / 结束结果） */
+export interface EnvInstallEvent {
+  /** 哪个运行时（node/python/docker/bun） */
+  key: string
+  /** 有=一行实时日志 */
+  line?: string
+  /** 有=安装结束，ok=true 装成功 */
+  ok?: boolean
+  /** 结束且失败时的原因 */
+  error?: string
+}
+
 /** 环境监测项（设置-关于组下方；2026-08-24 拍板：检测电脑装了哪些运行时） */
 export interface EnvCheckItem {
   key: string
@@ -287,8 +299,12 @@ export interface ReopenApi {
   listBrowsers(): Promise<string[]>
   /** 环境监测：检测 Node.js/Python/Docker/Bun 装没装（设置-关于组下方） */
   checkEnvironment(): Promise<EnvCheckItem[]>
-  /** 一键安装环境运行时（Mac brew install；装没装成以结果为准，2026-08-24 拍板） */
-  installEnvTool(key: string): Promise<{ ok: boolean; error?: string }>
+  /** 一键安装环境运行时（Mac brew；触发即返回，进度与结果走 onEnvInstallEvent 事件流，2026-08-24 拍板：进度+取消） */
+  installEnvTool(key: string): Promise<void>
+  /** 取消正在进行的安装 */
+  cancelEnvInstall(key: string): Promise<void>
+  /** 订阅安装实时日志与结束事件，返回取消订阅函数 */
+  onEnvInstallEvent(cb: (e: EnvInstallEvent) => void): () => void
   /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
   getLanIp(): Promise<string>
   /** 开机自启（Mac 登录项）开关 */

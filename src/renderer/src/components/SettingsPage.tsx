@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
 import type { EnvCheckItem, Project, Settings } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
@@ -32,8 +32,12 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const [projects, setProjects] = useState<Project[]>([])
   /** 环境监测结果（关于组下方，2026-08-24 拍板） */
   const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
-  /** 正在一键安装的运行时 key（按钮转"安装中…"，2026-08-24 拍板） */
+  /** 正在一键安装的运行时 key（按钮转"取消"；再点=取消安装，2026-08-24 拍板） */
   const [installingKey, setInstallingKey] = useState<string | null>(null)
+  /** 安装实时日志行（最近 60 行，2026-08-24 拍板：Cakebrew 式流水日志） */
+  const [installLines, setInstallLines] = useState<string[]>([])
+  const installingKeyRef = useRef<string | null>(null)
+  const installLogRef = useRef<HTMLDivElement>(null)
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
@@ -60,24 +64,43 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     setSettings(saved)
   }, [])
 
-  /** 一键安装运行时（2026-08-24 拍板：brew 自动装，装完重新检测） */
-  const handleInstallEnv = async (item: EnvCheckItem): Promise<void> => {
-    setInstallingKey(item.key)
-    const res = await window.api.installEnvTool(item.key)
-    setInstallingKey(null)
-    if (!res.ok) {
-      setEnvItems((items) =>
-        items.map((x) =>
-          x.key === item.key
-            ? { ...x, hint: `自动安装没成功（${res.error ?? '未知原因'}）——去官网手动装` }
-            : x
-        )
-      )
+  /** 一键安装运行时（2026-08-24 拍板：brew 自动装+实时日志；再点=取消） */
+  const handleInstallEnv = (item: EnvCheckItem): void => {
+    if (installingKeyRef.current === item.key) {
+      // 再点 = 取消（主进程掐进程，结束事件会收尾）
+      void window.api.cancelEnvInstall(item.key)
       return
     }
-    const fresh = await window.api.checkEnvironment()
-    setEnvItems(fresh)
+    setInstallingKey(item.key)
+    installingKeyRef.current = item.key
+    setInstallLines([])
+    void window.api.installEnvTool(item.key)
   }
+
+  // 订阅安装事件：实时日志追加 + 结束收尾（装完重新检测）
+  useEffect(() => {
+    return window.api.onEnvInstallEvent((e) => {
+      if (e.key !== installingKeyRef.current) return
+      if (e.line !== undefined) {
+        setInstallLines((ls) => [...ls, e.line as string].slice(-60))
+      } else if (e.ok !== undefined) {
+        setInstallingKey(null)
+        installingKeyRef.current = null
+        setInstallLines((ls) =>
+          [
+            ...ls,
+            e.ok ? '安装完成，已重新检测' : `${e.error ?? '安装没成功'}（也可以点「去官网」手动装）`
+          ].slice(-60)
+        )
+        void window.api.checkEnvironment().then(setEnvItems)
+      }
+    })
+  }, [])
+
+  // 日志自动滚到底
+  useEffect(() => {
+    if (installLogRef.current) installLogRef.current.scrollTop = installLogRef.current.scrollHeight
+  }, [installLines])
 
   // 通用组
   const general = (
@@ -411,12 +434,8 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
                 ) : (
                   <>
                     {item.installCommand && (
-                      <button
-                        className="btn-secondary"
-                        disabled={installingKey === item.key}
-                        onClick={() => void handleInstallEnv(item)}
-                      >
-                        {installingKey === item.key ? '安装中…' : '一键安装'}
+                      <button className="btn-secondary" onClick={() => handleInstallEnv(item)}>
+                        {installingKey === item.key ? '取消安装' : '一键安装'}
                       </button>
                     )}
                     {item.link && (
@@ -432,6 +451,16 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
               </div>
             </div>
           ))
+        )}
+        {/* 安装实时日志（2026-08-24 拍板：Cakebrew 式流水，看得到进度、再点取消） */}
+        {installingKey && (
+          <div className="env-log" ref={installLogRef}>
+            {installLines.map((line, i) => (
+              <div key={i} className="env-log-line">
+                {line}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
-import { exec, execSync } from 'child_process'
+import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { networkInterfaces } from 'os'
@@ -165,8 +165,23 @@ function checkEnvironment(): EnvCheckItem[] {
   return items
 }
 
-/** 一键安装环境运行时（Mac brew；装完以再次检测为准，2026-08-24 拍板） */
-async function installEnvTool(key: string): Promise<{ ok: boolean; error?: string }> {
+/** 正在安装的进程（key → child；取消与防重复，2026-08-24 拍板：进度+取消） */
+const envInstallChildren = new Map<string, ChildProcess>()
+
+function broadcastEnvInstall(e: {
+  key: string
+  line?: string
+  ok?: boolean
+  error?: string
+}): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('system:env-install-event', e)
+  }
+}
+
+/** 一键安装环境运行时（2026-08-24 拍板：Cakebrew 式流式输出——spawn 实时推日志，
+ *  取消=掐进程；HOMEBREW_NO_AUTO_UPDATE 跳过 brew 自更新刷屏/拖时间） */
+function installEnvTool(key: string): void {
   const cmd =
     key === 'node'
       ? 'brew install node'
@@ -177,13 +192,59 @@ async function installEnvTool(key: string): Promise<{ ok: boolean; error?: strin
           : key === 'bun'
             ? 'brew install oven-sh/bun/bun'
             : null
-  if (!cmd) return { ok: false, error: '不认识这个运行时' }
-  return await new Promise((resolvePromise) => {
-    exec(cmd, { timeout: 10 * 60_000, maxBuffer: 8 * 1024 * 1024 }, (err) => {
-      if (err) resolvePromise({ ok: false, error: `安装没成功（${err.message}）` })
-      else resolvePromise({ ok: true })
+  if (!cmd || envInstallChildren.has(key)) return
+  const child = spawn(cmd, {
+    shell: true,
+    detached: true,
+    env: { ...process.env, HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' }
+  })
+  envInstallChildren.set(key, child)
+  broadcastEnvInstall({ key, line: `> ${cmd}` })
+  const pipe = (d: Buffer): void => {
+    for (const line of d.toString().split('\n')) {
+      if (line.trim()) broadcastEnvInstall({ key, line })
+    }
+  }
+  child.stdout?.on('data', pipe)
+  child.stderr?.on('data', pipe)
+  child.on('exit', (code) => {
+    envInstallChildren.delete(key)
+    broadcastEnvInstall({
+      key,
+      ok: code === 0,
+      error: code === 0 ? undefined : `安装退出（代码 ${code}）——看上面的日志，或去官网手动装`
     })
   })
+  child.on('error', (err) => {
+    envInstallChildren.delete(key)
+    broadcastEnvInstall({ key, ok: false, error: err.message })
+  })
+}
+
+/** 取消安装：掐整个进程组（2026-08-24 拍板：再点一次=取消） */
+function cancelEnvInstall(key: string): void {
+  const child = envInstallChildren.get(key)
+  if (!child?.pid) return
+  envInstallChildren.delete(key)
+  try {
+    process.kill(-child.pid, 'SIGTERM')
+  } catch {
+    try {
+      child.kill('SIGTERM')
+    } catch {
+      // 已退出
+    }
+  }
+  const pid = child.pid
+  setTimeout(() => {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {
+      // 已退出
+    }
+  }, 3000)
+  broadcastEnvInstall({ key, line: '已取消安装' })
+  broadcastEnvInstall({ key, ok: false, error: '已取消' })
 }
 
 /** 已有项目 → 更新用的完整输入（手动成组/解散组时改 parentId 用，2026-08-24） */
@@ -282,6 +343,7 @@ export function registerIpc(): void {
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())
   ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))
+  ipcMain.handle('system:env-install-cancel', (_e, key: string) => cancelEnvInstall(key))
   ipcMain.handle('system:get-lan-ip', () => getLanIp())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {

@@ -2932,6 +2932,24 @@ html.dark .settings-card {
   color: #fff;
 }
 
+/* 环境安装实时日志框（2026-08-24 拍板：Cakebrew 式流水日志，看得到进度） */
+.env-log {
+  max-height: 140px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.env-log-line {
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
 
 /* 局域网地址（2026-08-24 拍板：局域网访问开时端口旁显示，供同一 Wi-Fi 设备使用） */
 .lan-link {

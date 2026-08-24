@@ -14,6 +14,7 @@ import type {
   ProjectStatusEvent,
   StartResult
 } from '../shared/types'
+import { isPureWeb } from '../shared/types'
 import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
 import { startWebServer } from './webServer'
 
@@ -509,10 +510,33 @@ function spawnAndWatch(
       checkPortOpen(checkPort).then((open) => {
         if (rt.status !== 'starting') return
         if (open) {
+          // 项目日志打了另一个端口（框架端口被占自动漂移，2026-08-24 open suposs 撞车破案）：
+          // 配置端口通 ≠ 项目通（占着的可能是别人）——信日志端口，切过去等它确认
+          const drifted = parseLogPort(project.id)
+          if (drifted && drifted !== checkPort) {
+            rt.port = drifted
+            setStatus(rt, project, 'starting', drifted)
+            return
+          }
           clearInterval(rt.healthTimer)
           setStatus(rt, project, 'running', checkPort)
           touchStartedAt(project.id)
           touchLastPort(project.id, checkPort)
+          // 保险：3 秒后日志若打出另一个端口且开放 → 纠正显示（vite 日志晚于健康检查判定的场景）
+          const myPort = checkPort
+          setTimeout(() => {
+            if (rt.status !== 'running' || rt.port !== myPort) return
+            const d = parseLogPort(project.id)
+            if (d && d !== myPort) {
+              checkPortOpen(d).then((openDrifted) => {
+                if (openDrifted && rt.status === 'running' && rt.port === myPort) {
+                  rt.port = d
+                  setStatus(rt, project, 'running', d)
+                  touchLastPort(project.id, d)
+                }
+              })
+            }
+          }, 3000)
           if (project.openBrowser) {
             openUrl(`http://localhost:${checkPort}`)
           }
@@ -724,15 +748,43 @@ function openUrl(url: string): void {
   }
 }
 
+/** 等一个项目跑到 running（最多 ms 毫秒，150ms 一问） */
+async function waitRunning(id: string, ms: number): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < ms) {
+    const rt = runtimes.get(id)
+    if (rt?.status === 'running') return true
+    await new Promise((r) => setTimeout(r, 150))
+  }
+  return false
+}
+
 /** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单）
- *  entry=入口文件相对路径（多入口列表点哪个开哪个，2026-08-24 拍板） */
+ *  entry=入口文件相对路径（多入口列表点哪个开哪个，2026-08-24 拍板）
+ *  纯网页（登记即在线）：没运行/启动中 → 自动拉起等就绪再开（2026-08-24 用户实测"打开是空的"） */
 export async function openProjectBrowser(id: string, entry?: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
-  const rt = runtimes.get(id)
+  let rt = runtimes.get(id)
   if (!rt || rt.status !== 'running') {
-    return { ok: false, reason: '项目还没启动，先点启动' }
+    if (isPureWeb(project)) {
+      if (rt?.status === 'starting') {
+        // 正在自动上线中：等它就好
+        if (!(await waitRunning(id, 8000))) {
+          return { ok: false, reason: '网页服务还没起来，稍等几秒再点' }
+        }
+      } else {
+        await startProject(id, 'preview')
+        if (!(await waitRunning(id, 8000))) {
+          return { ok: false, reason: '网页服务还没起来，稍等几秒再点' }
+        }
+      }
+      rt = runtimes.get(id)
+    } else {
+      return { ok: false, reason: '项目还没启动，先点启动' }
+    }
   }
+  if (!rt) return { ok: false, reason: '网页服务还没起来，稍等几秒再点' }
   if (project.type === 'web') {
     openUrl(`http://localhost:${rt.port}${entry ?? rt.entryPath ?? '/'}`)
   } else {

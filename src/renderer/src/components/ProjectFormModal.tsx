@@ -190,18 +190,27 @@ export function ProjectFormModal({
 
   const submit = (): void => {
     const portNum = Number(port.trim())
+    const finalPort = port.trim() && !Number.isNaN(portNum) ? portNum : undefined
+    // 改了端口 → 同步进默认启动方式（启动时实际读 mode.port；2026-08-24 破案"拖入时设置别的端口没反应"）
+    const launchModes = init.launchModes
+      ? init.launchModes.map((m) =>
+          m.id === init.activeMode && finalPort !== undefined && m.port !== finalPort
+            ? { ...m, port: finalPort }
+            : m
+        )
+      : init.launchModes
     // 新标签只在提交这一刻才真正创建（2026-08-21 拍板）：输入框文本就是最终标签列表
     onSubmit({
       name: name.trim() || init.name,
       type,
       path: path.trim(),
       command: type === 'service' ? command.trim() || undefined : undefined,
-      port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
+      port: finalPort,
       // 网页类型才保留识别出的入口路径；改成服务类型就丢弃
       entryPath: type === 'web' ? init.entryPath : undefined,
       entryPaths: type === 'web' ? init.entryPaths : undefined,
       // 启动方式清单静默保留（Phase B 2026-08-21：方式在详情抽屉切换，表单不编辑）
-      launchModes: init.launchModes,
+      launchModes,
       activeMode: init.activeMode,
       openBrowser,
       note: note.trim(),

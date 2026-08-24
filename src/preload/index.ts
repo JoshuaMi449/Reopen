@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  EnvInstallEvent,
   NewProjectInput,
   ProjectLogEvent,
   ProjectStatusEvent,
@@ -36,6 +37,12 @@ const api: ReopenApi = {
   listBrowsers: () => ipcRenderer.invoke('system:list-browsers'),
   checkEnvironment: () => ipcRenderer.invoke('system:check-env'),
   installEnvTool: (key) => ipcRenderer.invoke('system:install-env', key),
+  cancelEnvInstall: (key) => ipcRenderer.invoke('system:env-install-cancel', key),
+  onEnvInstallEvent: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, ev: EnvInstallEvent): void => cb(ev)
+    ipcRenderer.on('system:env-install-event', listener)
+    return () => ipcRenderer.removeListener('system:env-install-event', listener)
+  },
   getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),
   exportData: () => ipcRenderer.invoke('data:export'),
