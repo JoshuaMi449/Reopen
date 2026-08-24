@@ -722,6 +722,26 @@ html.dark .sidebar-logo-word,
   color: #fff;
 }
 
+/* 行内小按钮（2026-08-24 拍板：失败提示旁的「看成品」兜底） */
+.btn-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.btn-mini:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 /* ---------- 右侧详情抽屉（2026-08-20 拍板：点击项目从右侧滑出预览） ---------- */
 
 .drawer {
@@ -812,49 +832,22 @@ html.dark .sidebar-logo-word,
   gap: 4px;
 }
 
-/* 启动方式切换（Phase B 2026-08-21 拍板：详情抽屉分段选择） */
-.mode-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 0;
-}
-
-.mode-switch-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.mode-chip {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-dim);
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mode-chip-on {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-/* 表单里的启动方式清单（只读展示） */
+/* 表单里的规格摘要区（只读展示，2026-08-24 拍板：拖入时就标明里面有什么） */
 .form-modes {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 4px 0;
 }
 
 .form-modes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 12px;
   color: var(--text-dim);
+  text-align: right;
 }
 
 .drawer-actions {

@@ -13,8 +13,7 @@ import type {
   ProjectStatusEvent,
   StartResult
 } from '../shared/types'
-import { launchKindToType } from '../shared/types'
-import { getSettings, listProjects, touchLastPort, touchStartedAt, updateProject } from './store'
+import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
 import { startWebServer } from './webServer'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
@@ -468,20 +467,6 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
     fail(rt, project, `临时服务启动失败：${err instanceof Error ? err.message : String(err)}`)
     return { ok: false }
   }
-}
-
-/** 切换启动方式（Phase B 2026-08-21 拍板）：运行中先停 → 记录新方式+同步类型 → 原来在跑则按新方式重启 */
-export async function switchLaunchMode(id: string, modeId: string): Promise<StartResult> {
-  const project = listProjects().find((p) => p.id === id)
-  if (!project) return { ok: false, reason: '项目不存在' }
-  const modes = project.launchModes ?? []
-  const mode = modes.find((m) => m.id === modeId)
-  if (!mode) return { ok: false, reason: '没有这个启动方式' }
-  const rt = runtimes.get(id)
-  const wasRunning = rt !== undefined && (rt.status === 'running' || rt.status === 'starting')
-  if (wasRunning) await stopProject(id)
-  updateProject(id, { ...project, activeMode: modeId, type: launchKindToType(mode.kind) })
-  return wasRunning ? startProject(id) : { ok: true }
 }
 
 /** 接管显示：端口有服务在响应 → 标记运行中（不启动任何东西）。

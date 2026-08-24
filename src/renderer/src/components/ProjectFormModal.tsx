@@ -36,6 +36,30 @@ interface FormValues {
   activeMode?: string
 }
 
+/** 规格摘要行（2026-08-24 用户拍板：拖入登记时就标明里面有什么，大白话事实陈述，不出现「启动方式」这个词） */
+function modeSummary(m: LaunchMode): string {
+  switch (m.id) {
+    case 'preview':
+      return m.entryPath
+        ? '✓ 网页文件——登记后立刻在线，无需启动'
+        : '✓ 成品网页——登记后立刻在线，浏览器直接打开'
+    case 'dev':
+      return `✓ 需要激活：${m.command ?? '开发依赖'}`
+    case 'python-dev':
+      return '✓ 需要激活：python 程序'
+    case 'python-static':
+      return '✓ 可用 python 打开成品'
+    case 'docker':
+      return '✓ 支持 Docker 启动'
+    case 'bun':
+      return '✓ 需要激活：bun/deno 服务'
+    case 'launch':
+      return '✓ 需要激活：启动脚本'
+    default:
+      return `✓ ${m.label}`
+  }
+}
+
 function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Project): FormValues {
   if (mode === 'edit' && project) {
     return {
@@ -226,12 +250,17 @@ export function ProjectFormModal({
             </label>
           )}
 
-          {type !== 'group' && (init.launchModes?.length ?? 0) > 1 && (
+          {/* 规格摘要区（2026-08-24 用户拍板：拖入时就标明里面有什么；只读事实陈述） */}
+          {type !== 'group' && (init.launchModes?.length ?? 0) > 0 && (
             <div className="form-modes">
-              <span>启动方式</span>
-              <span className="form-modes-list">
-                {init.launchModes?.map((m) => m.label).join(' · ')}
-              </span>
+              <span>发现</span>
+              <div className="form-modes-list">
+                {init.launchModes?.map((m) => (
+                  <div key={m.id} className="form-mode-line">
+                    {modeSummary(m)}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

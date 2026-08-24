@@ -1,5 +1,10 @@
-import { Check, ExternalLink, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
-import type { Project, ProjectStatusEvent } from '../../../shared/types'
+import { Check, ExternalLink, Eye, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
+import {
+  hasPreviewFallback,
+  isPureWeb,
+  type Project,
+  type ProjectStatusEvent
+} from '../../../shared/types'
 
 interface Props {
   project: Project
@@ -24,6 +29,8 @@ interface Props {
   autoStartChecked?: boolean
   /** 点端口在浏览器打开（运行中时端口可点，2026-08-21 网站常驻） */
   onOpenBrowser?(): void
+  /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
+  onViewPreview?(): void
   /** 是组内子项（缩进显示，2026-08-21 项目组） */
   isChild?: boolean
   /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
@@ -62,6 +69,7 @@ export function ProjectRow({
   autoStartChecked,
   tagColor,
   onOpenBrowser,
+  onViewPreview,
   isChild
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
@@ -139,11 +147,34 @@ export function ProjectRow({
         {failed && status?.reason && (
           <span className="row-fail-reason" title={status.reason}>
             {status.reason}
+            {hasPreviewFallback(project) && (
+              <button
+                className="btn-mini"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onViewPreview?.()
+                }}
+              >
+                <Eye size={12} /> 看成品
+              </button>
+            )}
           </span>
         )}
         <span className="row-actions">
-          {/* failed 时进程可能还活着（端口没起来但进程在跑），给停止按钮 */}
-          {running || starting || failed ? (
+          {/* 纯网页（2026-08-24 拍板）：无需激活、永远在线——没有启动/停止，只有「在浏览器打开」 */}
+          {isPureWeb(project) ? (
+            <button
+              className="icon-btn"
+              title="在浏览器打开"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenBrowser?.()
+              }}
+            >
+              <ExternalLink size={16} />
+            </button>
+          ) : running || starting || failed ? (
+            // failed 时进程可能还活着（端口没起来但进程在跑），给停止按钮
             <button
               className="icon-btn"
               title="停止"

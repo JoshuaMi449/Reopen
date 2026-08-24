@@ -11,7 +11,7 @@ import type {
   ProjectStatusEvent,
   Settings
 } from '../../shared/types'
-import { DEFAULT_SETTINGS } from '../../shared/types'
+import { DEFAULT_SETTINGS, isPureWeb } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -501,20 +501,15 @@ export default function App(): React.JSX.Element {
     else if (res.reason) toast(res.reason, 'success')
   }
 
-  /** 切换启动方式（Phase B 2026-08-21 拍板）：主进程停旧起新，成功后刷新清单（type 可能变了） */
-  const handleSwitchMode = async (p: Project, modeId: string): Promise<void> => {
-    const r = await window.api.switchLaunchMode(p.id, modeId)
-    if (!r.ok && r.reason) {
-      toast(r.reason, 'error')
-      return
-    }
-    setProjects(await window.api.listProjects())
-    toast('已切换启动方式', 'success')
-  }
-
   const handleOpenBrowser = async (p: Project): Promise<void> => {
     const res = await window.api.openProjectBrowser(p.id)
     if (!res.ok) toast(res.reason ?? '打开失败', 'error')
+  }
+
+  /** 启动失败后的「看成品」兜底（2026-08-24 拍板）：以成品预览方式打开 */
+  const handleViewPreview = async (p: Project): Promise<void> => {
+    const res = await window.api.startProject(p.id, 'preview')
+    if (!res.ok) toast(res.reason ?? '打开成品失败', 'error')
   }
 
   // 右键菜单项（随运行状态变化；PRD 3.3）
@@ -537,18 +532,21 @@ export default function App(): React.JSX.Element {
     }
     const st = statuses[p.id]?.status ?? 'stopped'
     const items: MenuItem[] = []
-    if (st === 'running' || st === 'starting') {
-      items.push({
-        label: '停止',
-        icon: <Square size={14} />,
-        onClick: () => window.api.stopProject(p.id)
-      })
-    } else {
-      items.push({
-        label: '启动',
-        icon: <Play size={14} />,
-        onClick: () => handleStart(p)
-      })
+    // 纯网页（2026-08-24 拍板）：无需激活——右键菜单没有启动/停止
+    if (!isPureWeb(p)) {
+      if (st === 'running' || st === 'starting') {
+        items.push({
+          label: '停止',
+          icon: <Square size={14} />,
+          onClick: () => window.api.stopProject(p.id)
+        })
+      } else {
+        items.push({
+          label: '启动',
+          icon: <Play size={14} />,
+          onClick: () => handleStart(p)
+        })
+      }
     }
     items.push({
       label: '在浏览器打开',
@@ -920,6 +918,7 @@ export default function App(): React.JSX.Element {
                         autoStartChecked={settings.autoStartIds.includes(p.id)}
                         tagColor={tagColor}
                         onOpenBrowser={() => handleOpenBrowser(p)}
+                        onViewPreview={() => handleViewPreview(p)}
                         isChild={Boolean(p.parentId)}
                       />
                     </Fragment>
@@ -950,6 +949,7 @@ export default function App(): React.JSX.Element {
                   onOpenBrowser={(p) => handleOpenBrowser(p)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
+                  onViewPreview={(p) => handleViewPreview(p)}
                   onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
                   childrenOf={childrenOf}
                 />
@@ -975,6 +975,7 @@ export default function App(): React.JSX.Element {
               onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
               onDelete={() => setDeleteTarget(selectedProject)}
               onOpenBrowser={() => handleOpenBrowser(selectedProject)}
+              onViewPreview={() => handleViewPreview(selectedProject)}
               onClose={() => setSelectedId(null)}
               // 组视图（2026-08-21 项目组）：子项列表，可逐个启停/点端口
               groupChildren={
@@ -990,7 +991,6 @@ export default function App(): React.JSX.Element {
                   ? () => setSelectedId(selectedProject.parentId as string)
                   : undefined
               }
-              onSwitchMode={(modeId) => handleSwitchMode(selectedProject, modeId)}
             />
           )}
         </div>

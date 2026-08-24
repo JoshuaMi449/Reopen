@@ -24,7 +24,6 @@ const api: ReopenApi = {
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
   adoptAllRunning: () => ipcRenderer.invoke('project:adopt-all'),
   openProjectBrowser: (id) => ipcRenderer.invoke('project:open-browser', id),
-  switchLaunchMode: (id, modeId) => ipcRenderer.invoke('project:switch-mode', id, modeId),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   showMainWindow: (action) => ipcRenderer.invoke('window:show-main', action),

@@ -32,6 +32,19 @@ export function launchKindToType(kind: LaunchModeKind): ProjectType {
   return kind === 'preview' ? 'web' : 'service'
 }
 
+/** 纯网页项目（2026-08-24 用户拍板）：无需依赖激活、永远在线——界面不显示启动/停止按钮，只有「在浏览器打开」。
+ *  判定：方式清单非空且全是成品预览；老数据（无 launchModes）按 type=web 兼容 */
+export function isPureWeb(p: Pick<Project, 'type' | 'launchModes'>): boolean {
+  const modes = p.launchModes
+  if (modes && modes.length > 0) return modes.every((m) => m.kind === 'preview')
+  return p.type === 'web'
+}
+
+/** 启动失败时的「看成品」兜底（2026-08-24 用户拍板）：项目有成品预览方式且当前跑的不是它 → 失败界面给「看成品」按钮 */
+export function hasPreviewFallback(p: Pick<Project, 'launchModes' | 'activeMode'>): boolean {
+  return (p.launchModes ?? []).some((m) => m.kind === 'preview') && p.activeMode !== 'preview'
+}
+
 export interface Project {
   id: string
   name: string
@@ -220,8 +233,6 @@ export interface ReopenApi {
   adoptAllRunning(): Promise<void>
   /** 在默认浏览器打开该项目（右键菜单），需项目已运行 */
   openProjectBrowser(id: string): Promise<StartResult>
-  /** 切换启动方式：运行中先停、记录新方式并按新方式重启（Phase B 2026-08-21） */
-  switchLaunchMode(id: string, modeId: string): Promise<StartResult>
   getSettings(): Promise<Settings>
   saveSettings(patch: Partial<Settings>): Promise<Settings>
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */

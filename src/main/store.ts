@@ -24,8 +24,31 @@ export function listProjects(): Project[] {
     console.error('读取 projects.json 失败，按空列表继续：', err)
     projects = []
   }
+  // 旧数据惰性迁移（2026-08-24 用户拍板"顺手刷一遍"）：老项目没有 launchModes → 按 type 生成单方式+activeMode，一次性写回
+  if (migrateLaunchModes(projects)) persist()
   loaded = true
   return projects
+}
+
+/** 老项目补 launchModes/activeMode（Phase B 前的数据；返回是否有改动） */
+function migrateLaunchModes(list: Project[]): boolean {
+  let changed = false
+  for (const p of list) {
+    if (p.type === 'group' || (p.launchModes && p.launchModes.length > 0)) continue
+    if (p.type === 'web') {
+      p.launchModes = [
+        { id: 'preview', kind: 'preview', label: '成品预览', entryPath: p.entryPath }
+      ]
+      p.activeMode = 'preview'
+    } else {
+      p.launchModes = [
+        { id: 'dev', kind: 'dev', label: '开发服务器', command: p.command, port: p.port }
+      ]
+      p.activeMode = 'dev'
+    }
+    changed = true
+  }
+  return changed
 }
 
 function persist(): void {

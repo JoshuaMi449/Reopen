@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import {
   ChevronLeft,
   ExternalLink,
+  Eye,
   FileCode2,
   Folder,
   Layers,
@@ -12,7 +13,12 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import type { Project, ProjectStatusEvent } from '../../../shared/types'
+import {
+  hasPreviewFallback,
+  isPureWeb,
+  type Project,
+  type ProjectStatusEvent
+} from '../../../shared/types'
 
 interface Props {
   project: Project
@@ -34,8 +40,8 @@ interface Props {
   onChildOpen?(p: Project): void
   /** 左上角返回（组内子项的详情里返回组视图，2026-08-21 实测补） */
   onBack?(): void
-  /** 切换启动方式（Phase B 2026-08-21 拍板：运行中先停、按新方式重启） */
-  onSwitchMode?(modeId: string): void
+  /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
+  onViewPreview?(): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -70,7 +76,7 @@ export function DetailDrawer({
   onChildOpenBrowser,
   onChildOpen,
   onBack,
-  onSwitchMode
+  onViewPreview
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -81,11 +87,6 @@ export function DetailDrawer({
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
-
-  // 启动方式切换（Phase B 2026-08-21 拍板）：多种方式时显示分段选择
-  const modes = project.launchModes ?? []
-  const activeModeId = project.activeMode ?? modes[0]?.id
-
   // 组视图（2026-08-21 项目组）：子项列表，无日志区
   if (project.type === 'group' && groupChildren) {
     return (
@@ -229,7 +230,14 @@ export function DetailDrawer({
             </div>
           )}
           {st === 'failed' && status?.reason && (
-            <div className="drawer-fail-reason">{status.reason}</div>
+            <div className="drawer-fail-reason">
+              {status.reason}
+              {hasPreviewFallback(project) && (
+                <button className="btn-mini" onClick={onViewPreview}>
+                  <Eye size={12} /> 看成品
+                </button>
+              )}
+            </div>
           )}
           {project.tags.length > 0 && (
             <div className="drawer-tags">
@@ -242,38 +250,24 @@ export function DetailDrawer({
           )}
         </div>
 
-        {modes.length > 1 && (
-          <div className="mode-switch">
-            <span className="drawer-meta-label">启动方式</span>
-            <div className="mode-switch-row">
-              {modes.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`mode-chip ${m.id === activeModeId ? 'mode-chip-on' : ''}`}
-                  title={m.command ? `${m.label}：${m.command}` : m.label}
-                  onClick={() => onSwitchMode?.(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="drawer-actions">
-          {active ? (
-            <button className="btn-secondary" onClick={onStop}>
-              <Square size={14} /> 停止
-            </button>
-          ) : (
-            <button className="btn-primary" onClick={onStart}>
-              <Play size={14} /> 启动
-            </button>
+          {/* 纯网页（2026-08-24 拍板）：无需激活、永远在线——没有启动/停止/重启，只有「在浏览器打开」 */}
+          {!isPureWeb(project) && (
+            <>
+              {active ? (
+                <button className="btn-secondary" onClick={onStop}>
+                  <Square size={14} /> 停止
+                </button>
+              ) : (
+                <button className="btn-primary" onClick={onStart}>
+                  <Play size={14} /> 启动
+                </button>
+              )}
+              <button className="btn-secondary" onClick={onStart} disabled={active}>
+                <RotateCcw size={14} /> 重启
+              </button>
+            </>
           )}
-          <button className="btn-secondary" onClick={onStart} disabled={active}>
-            <RotateCcw size={14} /> 重启
-          </button>
           <button className="btn-secondary" onClick={onOpenBrowser}>
             <ExternalLink size={14} /> 在浏览器打开
           </button>

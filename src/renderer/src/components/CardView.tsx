@@ -1,6 +1,21 @@
 import { Fragment } from 'react'
-import { Check, ExternalLink, FileCode2, Folder, Layers, Play, Square, Tag } from 'lucide-react'
-import type { Project, ProjectStatusEvent } from '../../../shared/types'
+import {
+  Check,
+  ExternalLink,
+  Eye,
+  FileCode2,
+  Folder,
+  Layers,
+  Play,
+  Square,
+  Tag
+} from 'lucide-react'
+import {
+  hasPreviewFallback,
+  isPureWeb,
+  type Project,
+  type ProjectStatusEvent
+} from '../../../shared/types'
 
 interface ListItem {
   p: Project
@@ -31,6 +46,8 @@ interface Props {
   onOpenBrowser(p: Project): void
   onStart(p: Project): void
   onStop(p: Project): void
+  /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
+  onViewPreview(p: Project): void
   onContextMenu(e: React.MouseEvent, p: Project): void
   /** 组 → 子项（2026-08-21 项目组：组卡显示子项汇总+成品端口） */
   childrenOf(id: string): Project[]
@@ -62,6 +79,7 @@ export function CardView({
   onOpenBrowser,
   onStart,
   onStop,
+  onViewPreview,
   onContextMenu,
   childrenOf
 }: Props): React.JSX.Element {
@@ -173,7 +191,19 @@ export function CardView({
                   </span>
                 )}
                 <span className="row-actions">
-                  {active ? (
+                  {/* 纯网页（2026-08-24 拍板）：无需激活、永远在线——没有启动/停止，只有「在浏览器打开」 */}
+                  {isPureWeb(p) ? (
+                    <button
+                      className="icon-btn"
+                      title="在浏览器打开"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenBrowser(p)
+                      }}
+                    >
+                      <ExternalLink size={15} />
+                    </button>
+                  ) : active ? (
                     <button
                       className="icon-btn"
                       title="停止"
@@ -222,7 +252,20 @@ export function CardView({
                 <div className="card-last">上次启动：{formatTime(p.lastStartedAt)}</div>
                 {p.note && <div className="card-note">{p.note}</div>}
                 {failed && statuses[p.id]?.reason && (
-                  <div className="card-fail-reason">{statuses[p.id].reason}</div>
+                  <div className="card-fail-reason">
+                    {statuses[p.id].reason}
+                    {hasPreviewFallback(p) && (
+                      <button
+                        className="btn-mini"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onViewPreview(p)
+                        }}
+                      >
+                        <Eye size={12} /> 看成品
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {/* 右下角标签（2026-08-21 拍板）：绝对定位不撑高卡片，Tag icon+文字，染了色则 icon 填色 */}
