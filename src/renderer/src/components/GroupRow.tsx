@@ -1,10 +1,10 @@
-import { ChevronDown, ChevronRight, Layers, Tag, Zap } from 'lucide-react'
+import { Layers, Tag, Zap } from 'lucide-react'
 import type { Project } from '../../../shared/types'
 
 interface Props {
   group: Project
-  expanded: boolean
-  onToggle(): void
+  /** 点击组 = 跳侧栏「组」页面显示组内项目（2026-08-24 拍板：不再展开/弹抽屉） */
+  onOpen(): void
   /** 子项总数 / 在线子项数（组行摘要：N 个子项 · M 个在线） */
   childrenCount: number
   onlineCount: number
@@ -28,11 +28,10 @@ interface Props {
   onSelectToggle?(): void
 }
 
-/** 项目组行（2026-08-21 拍板）：展开箭头 + 组名 + 标签 + 子项摘要；点击=展开/收起，不启动 */
+/** 项目组行（2026-08-24 拍板重做）：组名 + 标签 + 子项摘要；点击=跳侧栏「组」页面显示组内项目 */
 export function GroupRow({
   group,
-  expanded,
-  onToggle,
+  onOpen,
   childrenCount,
   onlineCount,
   tagColor,
@@ -57,7 +56,7 @@ export function GroupRow({
       <div
         className={`row-main ${dropTarget ? 'drop-target' : ''}`}
         draggable={sortDraggable}
-        onClick={selectMode ? onSelectToggle : onToggle}
+        onClick={selectMode ? onSelectToggle : onOpen}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)
@@ -67,9 +66,6 @@ export function GroupRow({
         onDragEnd={onDragEnd}
         onDrop={onDrop}
       >
-        <span className="group-arrow">
-          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        </span>
         <span className="row-icon">
           <Layers size={16} />
         </span>

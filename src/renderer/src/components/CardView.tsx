@@ -99,8 +99,7 @@ export function CardView({
   return (
     <div className="card-grid">
       {items.map(({ p, header }) => {
-        // 组卡（2026-08-21 项目组，2026-08-21 实测重做）：与普通卡片同样大小；
-        // 卡内=组名+子项汇总+成品网站端口可点；点卡=打开组抽屉（子项列表）；子卡不铺开
+        // 组卡（2026-08-24 拍板重做）：卡内=组名+子项汇总+成品网站端口可点；点卡=跳组页面看子项
         if (p.type === 'group') {
           const children = childrenOf(p.id)
           const online = children.filter((c) => statuses[c.id]?.status === 'running')
@@ -246,9 +245,25 @@ export function CardView({
                 </span>
               </div>
               <div className="card-body">
-                {/* 运行中端口可点开浏览器（2026-08-21 网站常驻；局域网访问开时副链显示局域网地址） */}
+                {/* 运行中端口可点开浏览器（2026-08-21 网站常驻；局域网访问开时副链显示局域网地址）
+                    失败时并排显示红字「启动失败」（2026-08-24 用户反馈：失败文字单独占行会把同网格行 4 张卡全撑高） */}
                 <div className="card-port">
-                  {active && port ? (
+                  {failed ? (
+                    <span className="card-fail-inline" title={statuses[p.id]?.reason}>
+                      启动失败 · 点击查看
+                      {hasPreviewFallback(p) && (
+                        <button
+                          className="btn-mini"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onViewPreview(p)
+                          }}
+                        >
+                          <Eye size={12} /> 看成品
+                        </button>
+                      )}
+                    </span>
+                  ) : active && port ? (
                     <>
                       <a
                         className="port-link"
@@ -263,7 +278,7 @@ export function CardView({
                       </a>
                       {lanIp && (
                         <a
-                          className="lan-link"
+                          className={`lan-link ${lanCopiedId === p.id ? 'lan-copied' : ''}`}
                           title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -272,7 +287,8 @@ export function CardView({
                             setTimeout(() => setLanCopiedId(null), 1500)
                           }}
                         >
-                          {lanCopiedId === p.id ? '已复制 ✓' : `${lanIp}:${port}`}
+                          {lanIp}:{port}
+                          {lanCopiedId === p.id && <span className="lan-copied-tag">已复制 ✓</span>}
                         </a>
                       )}
                     </>
@@ -284,22 +300,6 @@ export function CardView({
                 </div>
                 <div className="card-last">上次启动：{formatTime(p.lastStartedAt)}</div>
                 {p.note && <div className="card-note">{p.note}</div>}
-                {failed && statuses[p.id]?.reason && (
-                  <div className="card-fail-reason">
-                    {statuses[p.id].reason}
-                    {hasPreviewFallback(p) && (
-                      <button
-                        className="btn-mini"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onViewPreview(p)
-                        }}
-                      >
-                        <Eye size={12} /> 看成品
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
               {/* 右下角标签（2026-08-21 拍板）：绝对定位不撑高卡片，Tag icon+文字，染了色则 icon 填色 */}
               {p.tags.length > 0 && (

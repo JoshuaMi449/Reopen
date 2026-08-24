@@ -104,7 +104,14 @@ function findHtmlEntries(dir: string): string[] {
     }
   }
   walk(dir, 0)
-  out.sort((a, b) => b.size - a.size)
+  // 根层 index.html 优先当主入口（2026-08-24 用户反馈：supOS-Free 主页是「请选择您的身份」，
+  // 但最大文件 factory/index.html 排了第一，打开就跳过选择页；其余仍按大小排）
+  out.sort((a, b) => {
+    const ai = a.rel === '/index.html' ? 1 : 0
+    const bi = b.rel === '/index.html' ? 1 : 0
+    if (ai !== bi) return bi - ai
+    return b.size - a.size
+  })
   return out.map((x) => x.rel)
 }
 

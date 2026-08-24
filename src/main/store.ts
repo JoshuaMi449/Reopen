@@ -26,6 +26,8 @@ export function listProjects(): Project[] {
   }
   // 旧数据惰性迁移（2026-08-24 用户拍板"顺手刷一遍"）：老项目没有 launchModes → 按 type 生成单方式+activeMode，一次性写回
   if (migrateLaunchModes(projects)) persist()
+  // 主入口修正（2026-08-24 用户反馈）：根层 index.html 才是主页，一次性写回
+  if (migrateRootEntry(projects)) persist()
   loaded = true
   return projects
 }
@@ -47,6 +49,24 @@ function migrateLaunchModes(list: Project[]): boolean {
       p.activeMode = 'dev'
     }
     changed = true
+  }
+  return changed
+}
+
+/** 主入口修正：入口清单里有根层 index.html 时它就是主页（2026-08-24 用户反馈：
+ *  supOS-Free 的「请选择您的身份」首页被最大的 factory/index.html 挤掉；返回是否有改动） */
+function migrateRootEntry(list: Project[]): boolean {
+  let changed = false
+  for (const p of list) {
+    if (p.type !== 'web') continue
+    const has = p.entryPaths?.includes('/index.html') ?? false
+    if (has && p.entryPath !== '/index.html') {
+      p.entryPath = '/index.html'
+      // 同步进 preview 方式（运行时读 mode.entryPath）
+      const mode = p.launchModes?.find((m) => m.kind === 'preview')
+      if (mode) mode.entryPath = '/index.html'
+      changed = true
+    }
   }
   return changed
 }

@@ -905,7 +905,10 @@ export async function openProjectBrowser(id: string, entry?: string): Promise<St
   }
   if (!rt) return { ok: false, reason: '网页服务还没起来，稍等几秒再点' }
   if (project.type === 'web') {
-    openUrl(`http://localhost:${rt.port}${entry ?? rt.entryPath ?? '/'}`)
+    // /index.html 归一为 /（2026-08-24 用户反馈：Vite 单页应用的路由只认 /，
+    // 带 /index.html 打开显示不对；静态多页项目的主页同理）
+    const target = entry ?? rt.entryPath ?? '/'
+    openUrl(`http://localhost:${rt.port}${target === '/index.html' ? '/' : target}`)
   } else {
     const port = rt.port ?? project.port
     if (!port) return { ok: false, reason: '该项目没有端口，不知道打开哪个地址' }

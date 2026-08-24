@@ -163,7 +163,7 @@ export function ProjectRow({
               </a>
               {lanIp && (
                 <a
-                  className="lan-link"
+                  className={`lan-link ${lanCopied ? 'lan-copied' : ''}`}
                   title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -172,7 +172,8 @@ export function ProjectRow({
                     setTimeout(() => setLanCopied(false), 1500)
                   }}
                 >
-                  {lanCopied ? '已复制 ✓' : `${lanIp}:${port}`}
+                  {lanIp}:{port}
+                  {lanCopied && <span className="lan-copied-tag">已复制 ✓</span>}
                 </a>
               )}
             </>
@@ -186,7 +187,7 @@ export function ProjectRow({
         {project.note && <span className="row-note">{project.note}</span>}
         {failed && status?.reason && (
           <span className="row-fail-reason" title={status.reason}>
-            {status.reason}
+            启动失败 · 点击查看
             {hasPreviewFallback(project) && (
               <button
                 className="btn-mini"

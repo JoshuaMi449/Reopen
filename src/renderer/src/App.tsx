@@ -91,8 +91,6 @@ export default function App(): React.JSX.Element {
   const [form, setForm] = useState<FormState | null>(null)
   /** 多项目容器候选（2026-08-21 S2，组预览勾选式）：确认后登记成组 */
   const [multi, setMulti] = useState<DetectMulti | null>(null)
-  /** 展开的组 id（2026-08-21 项目组；新登记的组默认展开） */
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   /** 更新检查结果（2026-08-24 拍板：启动时自动查 GitHub Release，有新版本弹 Proma 式弹窗） */
@@ -284,13 +282,14 @@ export default function App(): React.JSX.Element {
     [childrenMap]
   )
 
-  const toggleGroup = (id: string): void => {
-    setExpandedGroups((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  /** 点开项目：组 → 跳侧栏「组」页面（2026-08-24 拍板：组不再弹右侧抽屉，页面里显示全部子项）；普通项目 → 详情抽屉 */
+  const handleOpen = (p: Project): void => {
+    if (p.type === 'group') {
+      setCategory(`group:${p.id}` as Category)
+      setSelectedId(null)
+    } else {
+      setSelectedId(p.id)
+    }
   }
 
   // 分类 + 搜索 + 排序（PRD 3.3；排序体系 2026-08-20 重做：名称/最近打开/添加日期/标签/无）
@@ -306,9 +305,9 @@ export default function App(): React.JSX.Element {
     } else if (category === 'web') {
       list = list.filter((p) => p.type === 'web' || (p.type === 'group' && groupHas(p, 'web')))
     } else if (category.startsWith('group:')) {
-      // 组筛选（2026-08-24 拍板：侧栏组区块）：只看这个组
+      // 组页面（2026-08-24 拍板：点组跳到这里，平铺显示组内全部子项）
       const gid = category.slice(6)
-      list = list.filter((p) => p.id === gid)
+      list = projects.filter((p) => p.parentId === gid)
     } else if (category.startsWith('tag:')) {
       const tag = category.slice(4)
       list = list.filter(
@@ -376,13 +375,9 @@ export default function App(): React.JSX.Element {
         last = t
       }
       items.push({ p, header })
-      // 只在列表视图展开插子项；卡片视图子项收纳在组卡/组抽屉里（2026-08-21 实测重做）
-      if (settings.view === 'list' && p.type === 'group' && expandedGroups.has(p.id)) {
-        for (const c of childrenOf(p.id)) items.push({ p: c, header: null })
-      }
     }
     return items
-  }, [visibleProjects, settings.sortMode, expandedGroups, childrenOf, settings.view])
+  }, [visibleProjects, settings.sortMode])
 
   // 2026-08-21 项目组：条目数按顶层算（组算 1 个）；组按子项内容计入分类
   const counts = useMemo(
@@ -981,8 +976,8 @@ export default function App(): React.JSX.Element {
     }
     setProjects((ps) => [...ps, ...added])
     setMulti(null)
-    // 新组默认展开，登记完立刻能看到子项
-    setExpandedGroups((s) => new Set(s).add(group.id))
+    // 新组登记完直接跳组页面（2026-08-24 拍板重做：点组=跳侧栏「组」页面看子项）
+    setCategory(`group:${group.id}` as Category)
     toast(`已登记项目组「${name}」（${selected.length} 个子项）`, 'success')
   }
 
@@ -1216,8 +1211,7 @@ export default function App(): React.JSX.Element {
                       {header && <div className="list-group-header">{header.label}</div>}
                       <GroupRow
                         group={p}
-                        expanded={expandedGroups.has(p.id)}
-                        onToggle={() => toggleGroup(p.id)}
+                        onOpen={() => handleOpen(p)}
                         childrenCount={childrenOf(p.id).length}
                         onlineCount={
                           childrenOf(p.id).filter((c) => statuses[c.id]?.status === 'running')
@@ -1307,7 +1301,7 @@ export default function App(): React.JSX.Element {
                   }}
                   onDrop={(e, p) => handleRowDrop(e, p)}
                   tagColor={tagColor}
-                  onOpen={(p) => setSelectedId(p.id)}
+                  onOpen={(p) => handleOpen(p)}
                   onOpenBrowser={(p) => handleOpenBrowser(p)}
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
@@ -1351,18 +1345,10 @@ export default function App(): React.JSX.Element {
                 toast('正在终止残留进程并重新启动', 'info')
               }}
               onClose={() => setSelectedId(null)}
-              // 组视图（2026-08-21 项目组）：子项列表，可逐个启停/点端口
-              groupChildren={
-                selectedProject.type === 'group' ? childrenOf(selectedProject.id) : undefined
-              }
-              statuses={statuses}
-              onChildStart={handleStart}
-              onChildStop={(c) => window.api.stopProject(c.id)}
-              onChildOpenBrowser={handleOpenBrowser}
-              onChildOpen={(c) => setSelectedId(c.id)}
               onBack={
                 selectedProject.parentId
-                  ? () => setSelectedId(selectedProject.parentId as string)
+                  ? () =>
+                      handleOpen(projects.find((x) => x.id === selectedProject.parentId) as Project)
                   : undefined
               }
               lanIp={settings.lanAccess ? lanIp : ''}
