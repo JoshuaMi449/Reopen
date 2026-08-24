@@ -1,5 +1,5 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
-import { execSync } from 'child_process'
+import { exec, execSync } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { networkInterfaces } from 'os'
@@ -9,6 +9,7 @@ import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
   adoptRunning,
+  installProjectDeps,
   openProjectBrowser,
   startProject,
   stopProject
@@ -106,7 +107,7 @@ function runVersion(cmd: string): string | null {
   }
 }
 
-/** 环境监测（2026-08-24 拍板：设置-关于组下方；项目要什么运行时一目了然，没装给安装官网） */
+/** 环境监测（2026-08-24 拍板：设置-关于组下方；项目要什么运行时一目了然，没装给安装官网+一键安装） */
 function checkEnvironment(): EnvCheckItem[] {
   const items: EnvCheckItem[] = []
   const node = runVersion('node')
@@ -118,7 +119,8 @@ function checkEnvironment(): EnvCheckItem[] {
           name: 'Node.js',
           ok: false,
           hint: '跑 npm 项目的运行时',
-          link: 'https://nodejs.org'
+          link: 'https://nodejs.org',
+          installCommand: 'brew install node'
         }
   )
   const python = runVersion('python3') ?? runVersion('python')
@@ -130,7 +132,8 @@ function checkEnvironment(): EnvCheckItem[] {
           name: 'Python',
           ok: false,
           hint: '跑 python 程序的运行时',
-          link: 'https://python.org'
+          link: 'https://python.org',
+          installCommand: 'brew install python@3.12'
         }
   )
   const docker = runVersion('docker')
@@ -142,7 +145,8 @@ function checkEnvironment(): EnvCheckItem[] {
           name: 'Docker',
           ok: false,
           hint: '跑 Docker 项目的运行时',
-          link: 'https://docker.com'
+          link: 'https://docker.com',
+          installCommand: 'brew install --cask docker'
         }
   )
   const bun = runVersion('bun')
@@ -154,10 +158,51 @@ function checkEnvironment(): EnvCheckItem[] {
           name: 'Bun',
           ok: false,
           hint: '跑 bun 项目的运行时',
-          link: 'https://bun.sh'
+          link: 'https://bun.sh',
+          installCommand: 'brew install oven-sh/bun/bun'
         }
   )
   return items
+}
+
+/** 一键安装环境运行时（Mac brew；装完以再次检测为准，2026-08-24 拍板） */
+async function installEnvTool(key: string): Promise<{ ok: boolean; error?: string }> {
+  const cmd =
+    key === 'node'
+      ? 'brew install node'
+      : key === 'python'
+        ? 'brew install python@3.12'
+        : key === 'docker'
+          ? 'brew install --cask docker'
+          : key === 'bun'
+            ? 'brew install oven-sh/bun/bun'
+            : null
+  if (!cmd) return { ok: false, error: '不认识这个运行时' }
+  return await new Promise((resolvePromise) => {
+    exec(cmd, { timeout: 10 * 60_000, maxBuffer: 8 * 1024 * 1024 }, (err) => {
+      if (err) resolvePromise({ ok: false, error: `安装没成功（${err.message}）` })
+      else resolvePromise({ ok: true })
+    })
+  })
+}
+
+/** 已有项目 → 更新用的完整输入（手动成组/解散组时改 parentId 用，2026-08-24） */
+function toProjectInput(p: Project): NewProjectInput {
+  return {
+    name: p.name,
+    type: p.type,
+    path: p.path,
+    command: p.command,
+    port: p.port,
+    entryPath: p.entryPath,
+    parentId: p.parentId,
+    launchModes: p.launchModes,
+    activeMode: p.activeMode,
+    openBrowser: p.openBrowser,
+    note: p.note,
+    tags: p.tags,
+    lastPort: p.lastPort
+  }
 }
 
 export function registerIpc(): void {
@@ -183,10 +228,41 @@ export function registerIpc(): void {
     updateProject(id, input)
   )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+
+  // 手动成组 / 解散组（2026-08-24 拍板：框选右键"添加成组"；组右键"解散组"）
+  ipcMain.handle('project:create-group', (_e, ids: string[]) => {
+    const items = listProjects().filter(
+      (p) => ids.includes(p.id) && !p.parentId && p.type !== 'group'
+    )
+    if (items.length < 2) throw new Error('成组至少需要两个顶层项目（组和组内子项不算）')
+    const group = addProject({
+      name: '新建项目组',
+      type: 'group',
+      path: items[0].path,
+      openBrowser: false,
+      note: '',
+      tags: []
+    })
+    for (const p of items) {
+      updateProject(p.id, { ...toProjectInput(p), parentId: group.id })
+    }
+    return group
+  })
+  ipcMain.handle('project:ungroup', (_e, id: string) => {
+    const group = listProjects().find((p) => p.id === id)
+    if (!group || group.type !== 'group') return
+    for (const c of listProjects().filter((p) => p.parentId === id)) {
+      updateProject(c.id, { ...toProjectInput(c), parentId: undefined })
+    }
+    deleteProject(id)
+  })
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
+  ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
-  ipcMain.handle('project:open-browser', (_e, id: string) => openProjectBrowser(id))
+  ipcMain.handle('project:open-browser', (_e, id: string, entry?: string) =>
+    openProjectBrowser(id, entry)
+  )
 
   // 设置
   ipcMain.handle('settings:get', () => getSettings())
@@ -205,6 +281,7 @@ export function registerIpc(): void {
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())
+  ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))
   ipcMain.handle('system:get-lan-ip', () => getLanIp())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {

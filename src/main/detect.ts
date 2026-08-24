@@ -77,6 +77,37 @@ function findHtml(dir: string, depth = 0): string | null {
   return null
 }
 
+/** 收集文件夹里的全部网页入口（2026-08-24 拍板：多入口清单，登记后都能打开；
+ *  最多下钻 2 层，跳隐藏目录和 SKIP_DIRS；按文件大小从大到小排——最大的最可能是主页，排第一当主入口） */
+function findHtmlEntries(dir: string): string[] {
+  const out: { rel: string; size: number }[] = []
+  const walk = (d: string, depth: number): void => {
+    if (depth > 2) return
+    try {
+      for (const name of readdirSync(d)) {
+        const full = join(d, name)
+        if (isDir(full)) {
+          if (name.startsWith('.') || SKIP_DIRS.has(name)) continue
+          walk(full, depth + 1)
+        } else if (/\.html?$/i.test(name)) {
+          let size = 0
+          try {
+            size = statSync(full).size
+          } catch {
+            // 读不了大小按 0 排后面
+          }
+          out.push({ rel: toEntryPath(dir, full), size })
+        }
+      }
+    } catch {
+      // 读不了的目录忽略
+    }
+  }
+  walk(dir, 0)
+  out.sort((a, b) => b.size - a.size)
+  return out.map((x) => x.rel)
+}
+
 /** 绝对路径 → 相对文件夹的入口路径（如 /supos-case-anjia.html；S3 entryPath） */
 function toEntryPath(dir: string, full: string): string {
   return full.slice(dir.length)
@@ -409,14 +440,14 @@ function buildLaunchModes(dir: string): LaunchMode[] {
   }
   // 什么都没有但能找到 html：兜底成单文件成品预览（老行为的 html 分支）
   if (modes.length === 0) {
-    const html = findHtml(dir)
-    if (html) {
+    const entries = findHtmlEntries(dir)
+    if (entries.length > 0) {
       modes.push({
         id: 'preview',
         kind: 'preview',
         label: '成品预览',
         staticRoot: dir,
-        entryPath: toEntryPath(dir, html)
+        entryPath: entries[0]
       })
     }
   }
@@ -432,6 +463,8 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
   // 标题/文件数从 preview 静态根读（弹窗显示标题+默认勾最大成品，2026-08-21 拍板）
   const preview = modes.find((m) => m.kind === 'preview')
   const indexFile = preview?.staticRoot ? join(preview.staticRoot, 'index.html') : null
+  // 全部网页入口清单（2026-08-24 拍板：多页面项目登记时展示、登记后都能打开）
+  const entries = preview?.staticRoot ? findHtmlEntries(preview.staticRoot) : []
   return {
     ok: true,
     type: isWeb ? 'web' : 'service',
@@ -440,7 +473,8 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
       name: basename(dir),
       command: primary.command,
       port: primary.port,
-      entryPath: primary.entryPath,
+      entryPath: primary.entryPath ?? entries[0],
+      entryPaths: entries.length > 1 ? entries : undefined,
       title: indexFile && existsSync(indexFile) ? readTitle(indexFile) : undefined,
       fileCount: preview?.staticRoot ? countFiles(preview.staticRoot) : undefined,
       launchModes: modes,

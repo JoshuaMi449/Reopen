@@ -1,8 +1,8 @@
 import { FileCode2, Folder, LayoutGrid, Settings as SettingsIcon, Tag } from 'lucide-react'
 import wordmark from '../assets/wordmark.png'
 
-/** 侧边栏分类：全部/服务/网页 + tag:xxx（2026-08-20 拍板：删"最近使用"） */
-export type Category = 'all' | 'service' | 'web' | `tag:${string}`
+/** 侧边栏分类：全部/服务/网页 + group:xxx + tag:xxx（2026-08-20 拍板：删"最近使用"；2026-08-24 拍板：加组区块） */
+export type Category = 'all' | 'service' | 'web' | `group:${string}` | `tag:${string}`
 
 interface Props {
   category: Category
@@ -11,6 +11,8 @@ interface Props {
   /** 标签 → 染色（无颜色返回 undefined，默认无色） */
   tagColor(tag: string): string | undefined
   counts: { all: number; service: number; web: number }
+  /** 项目组列表（组名+子项数；无组时整个区块不显示，2026-08-24 拍板） */
+  groups: { id: string; name: string; childCount: number }[]
   /** 实时运行中的项目数量（底部状态行，2026-08-24 拍板，Proma 左下角排版） */
   runningCount: number
   onSelect(c: Category): void
@@ -20,12 +22,13 @@ interface Props {
   showUpdateDot?: boolean
 }
 
-/** 侧边栏（PRD 3.3：按类型和标签浏览你的项目；底部 logo + 设置入口，2026-08-20 拍板） */
+/** 侧边栏（PRD 3.3：按类型/组/标签浏览你的项目；底部 logo + 设置入口，2026-08-20 拍板） */
 export function Sidebar({
   category,
   tags,
   tagColor,
   counts,
+  groups,
   runningCount,
   onSelect,
   onTagContextMenu,
@@ -53,9 +56,29 @@ export function Sidebar({
         ))}
       </nav>
 
+      {/* 组区块（2026-08-24 拍板）：标题字后跟细灰虚线；没有组整个区块不显示 */}
+      {groups.length > 0 && (
+        <div className="sidebar-tags sidebar-groups">
+          <div className="sidebar-section-title">组</div>
+          {groups.map((g) => {
+            const key = `group:${g.id}` as Category
+            return (
+              <button
+                key={g.id}
+                className={`sidebar-item ${category === key ? 'sidebar-item-active' : ''}`}
+                onClick={() => onSelect(key)}
+              >
+                <span className="sidebar-label">{g.name}</span>
+                <span className="sidebar-count">{g.childCount}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {tags.length > 0 && (
         <div className="sidebar-tags">
-          <div className="sidebar-tags-title">标签</div>
+          <div className="sidebar-section-title">标签</div>
           {tags.map((name) => {
             const key = `tag:${name}` as Category
             const color = tagColor(name)

@@ -32,6 +32,8 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const [projects, setProjects] = useState<Project[]>([])
   /** 环境监测结果（关于组下方，2026-08-24 拍板） */
   const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
+  /** 正在一键安装的运行时 key（按钮转"安装中…"，2026-08-24 拍板） */
+  const [installingKey, setInstallingKey] = useState<string | null>(null)
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
@@ -57,6 +59,25 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     const saved = await window.api.saveSettings(patch)
     setSettings(saved)
   }, [])
+
+  /** 一键安装运行时（2026-08-24 拍板：brew 自动装，装完重新检测） */
+  const handleInstallEnv = async (item: EnvCheckItem): Promise<void> => {
+    setInstallingKey(item.key)
+    const res = await window.api.installEnvTool(item.key)
+    setInstallingKey(null)
+    if (!res.ok) {
+      setEnvItems((items) =>
+        items.map((x) =>
+          x.key === item.key
+            ? { ...x, hint: `自动安装没成功（${res.error ?? '未知原因'}）——去官网手动装` }
+            : x
+        )
+      )
+      return
+    }
+    const fresh = await window.api.checkEnvironment()
+    setEnvItems(fresh)
+  }
 
   // 通用组
   const general = (
@@ -381,21 +402,32 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
                 <div className="settings-row-hint">
                   {item.ok
                     ? item.version
-                    : `${item.hint ?? '未安装'} —— ${item.link ? '点右侧按钮去官网安装' : ''}`}
+                    : `${item.hint ?? '未安装'} —— ${item.link ? '点右侧按钮一键安装或去官网' : ''}`}
                 </div>
               </div>
               <div className="settings-row-control">
                 {item.ok ? (
                   <span className="settings-static">已安装</span>
                 ) : (
-                  item.link && (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => window.api.openExternal(item.link as string)}
-                    >
-                      去安装
-                    </button>
-                  )
+                  <>
+                    {item.installCommand && (
+                      <button
+                        className="btn-secondary"
+                        disabled={installingKey === item.key}
+                        onClick={() => void handleInstallEnv(item)}
+                      >
+                        {installingKey === item.key ? '安装中…' : '一键安装'}
+                      </button>
+                    )}
+                    {item.link && (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => window.api.openExternal(item.link as string)}
+                      >
+                        去官网
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

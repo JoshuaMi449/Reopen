@@ -2,12 +2,14 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   ExternalLink,
   FolderSearch,
+  Group,
   MonitorPause,
   MonitorPlay,
   Palette,
   Pencil,
   Tag,
   Trash2,
+  Ungroup,
   Zap
 } from 'lucide-react'
 import type {
@@ -291,6 +293,10 @@ export default function App(): React.JSX.Element {
       )
     } else if (category === 'web') {
       list = list.filter((p) => p.type === 'web' || (p.type === 'group' && groupHas(p, 'web')))
+    } else if (category.startsWith('group:')) {
+      // 组筛选（2026-08-24 拍板：侧栏组区块）：只看这个组
+      const gid = category.slice(6)
+      list = list.filter((p) => p.id === gid)
     } else if (category.startsWith('tag:')) {
       const tag = category.slice(4)
       list = list.filter(
@@ -631,6 +637,7 @@ export default function App(): React.JSX.Element {
         tags,
         lastPort: p.lastPort,
         entryPath: p.entryPath,
+        entryPaths: p.entryPaths,
         parentId: p.parentId,
         launchModes: p.launchModes,
         activeMode: p.activeMode
@@ -672,12 +679,53 @@ export default function App(): React.JSX.Element {
     toast(`已移除 ${ids.length} 个项目`, 'success')
   }
 
+  /** 批量：手动成组（2026-08-24 拍板：框选右键"添加成组"；顶层项目至少两个，组和子项不算） */
+  const handleBulkGroup = async (): Promise<void> => {
+    const ids = [...selectedIds].filter((id) => {
+      const p = projects.find((x) => x.id === id)
+      return p && !p.parentId && p.type !== 'group'
+    })
+    if (ids.length < 2) {
+      toast('成组至少需要两个顶层项目（组和组内子项不算）', 'info')
+      setSelectedIds(new Set())
+      return
+    }
+    try {
+      const group = await window.api.createGroup(ids)
+      setProjects((ps) =>
+        ps.map((x) => (ids.includes(x.id) ? { ...x, parentId: group.id } : x)).concat(group)
+      )
+      toast(`已创建「${group.name}」收纳 ${ids.length} 个项目，右键组可改名`, 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '成组失败', 'error')
+    }
+    setSelectedIds(new Set())
+  }
+
+  /** 解散组（2026-08-24 拍板）：子项回到顶层，组删除 */
+  const handleUngroup = async (g: Project): Promise<void> => {
+    await window.api.ungroup(g.id)
+    setProjects((ps) =>
+      ps
+        .filter((x) => x.id !== g.id)
+        .map((x) => (x.parentId === g.id ? { ...x, parentId: undefined } : x))
+    )
+    if (category === `group:${g.id}`) setCategory('all')
+    setMenu(null)
+    toast(`已解散「${g.name}」，子项目回到全部列表`, 'success')
+  }
+
   /** 批量右键菜单项 */
   const bulkMenuItems: MenuItem[] = [
     {
       label: `启动全部（${selectedIds.size}）`,
       icon: <MonitorPlay size={14} />,
       onClick: () => void handleBulkStart()
+    },
+    {
+      label: '添加成组',
+      icon: <Group size={14} />,
+      onClick: () => void handleBulkGroup()
     },
     {
       label: '加标签…',
@@ -763,8 +811,8 @@ export default function App(): React.JSX.Element {
     else if (res.reason) toast(res.reason, 'success')
   }
 
-  const handleOpenBrowser = async (p: Project): Promise<void> => {
-    const res = await window.api.openProjectBrowser(p.id)
+  const handleOpenBrowser = async (p: Project, entry?: string): Promise<void> => {
+    const res = await window.api.openProjectBrowser(p.id, entry)
     if (!res.ok) toast(res.reason ?? '打开失败', 'error')
   }
 
@@ -776,13 +824,18 @@ export default function App(): React.JSX.Element {
 
   // 右键菜单项（随运行状态变化；PRD 3.3）
   const menuItems = (p: Project): MenuItem[] => {
-    // 组（2026-08-21 项目组）：不启动，只有编辑/删除
+    // 组（2026-08-21 项目组）：不启动，编辑/解散/删除（解散组 2026-08-24 拍板）
     if (p.type === 'group') {
       return [
         {
           label: '编辑',
           icon: <Pencil size={14} />,
           onClick: () => setForm({ mode: 'edit', project: p })
+        },
+        {
+          label: '解散组',
+          icon: <Ungroup size={14} />,
+          onClick: () => void handleUngroup(p)
         },
         {
           label: '删除',
@@ -848,6 +901,7 @@ export default function App(): React.JSX.Element {
       note: p.note,
       tags: p.tags,
       entryPath: p.entryPath,
+      entryPaths: p.entryPaths,
       parentId: p.parentId,
       launchModes: p.launchModes,
       activeMode: p.activeMode
@@ -893,6 +947,7 @@ export default function App(): React.JSX.Element {
         command: s.suggested.command,
         port: s.suggested.port,
         entryPath: s.suggested.entryPath,
+        entryPaths: s.suggested.entryPaths,
         launchModes: s.suggested.launchModes,
         activeMode: s.suggested.activeMode,
         openBrowser: false,
@@ -967,6 +1022,7 @@ export default function App(): React.JSX.Element {
         tags: next(p.tags),
         lastPort: p.lastPort,
         entryPath: p.entryPath,
+        entryPaths: p.entryPaths,
         parentId: p.parentId,
         launchModes: p.launchModes,
         activeMode: p.activeMode
@@ -1081,6 +1137,9 @@ export default function App(): React.JSX.Element {
         tags={allTags}
         tagColor={tagColor}
         counts={counts}
+        groups={projects
+          .filter((p) => p.type === 'group' && !p.parentId)
+          .map((g) => ({ id: g.id, name: g.name, childCount: childrenOf(g.id).length }))}
         runningCount={Object.values(statuses).filter((s) => s.status === 'running').length}
         onSelect={setCategory}
         onTagContextMenu={(tag, e) => setTagMenu({ x: e.clientX, y: e.clientY, tag })}
@@ -1264,8 +1323,12 @@ export default function App(): React.JSX.Element {
               onStop={() => window.api.stopProject(selectedProject.id)}
               onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
               onDelete={() => setDeleteTarget(selectedProject)}
-              onOpenBrowser={() => handleOpenBrowser(selectedProject)}
+              onOpenBrowser={(entry) => handleOpenBrowser(selectedProject, entry)}
               onViewPreview={() => handleViewPreview(selectedProject)}
+              onInstallDeps={() => {
+                void window.api.installProjectDeps(selectedProject.id)
+                toast('开始安装依赖，看日志面板的进度，装完再点启动', 'info')
+              }}
               onClose={() => setSelectedId(null)}
               // 组视图（2026-08-21 项目组）：子项列表，可逐个启停/点端口
               groupChildren={

@@ -1,6 +1,6 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
 import { execSync, spawn, ChildProcess } from 'child_process'
-import { BrowserWindow, Notification, shell } from 'electron'
+import { app, BrowserWindow, Notification, shell } from 'electron'
 import { chmodSync, existsSync, lstatSync, readdirSync } from 'fs'
 import { get } from 'http'
 import { homedir } from 'os'
@@ -9,6 +9,7 @@ import { connect } from 'net'
 import type {
   LaunchMode,
   Project,
+  ProjectFix,
   ProjectStatus,
   ProjectStatusEvent,
   StartResult
@@ -69,8 +70,8 @@ function setStatus(rt: Runtime, project: Project, status: ProjectStatus, port?: 
   })
 }
 
-function fail(rt: Runtime, project: Project, reason: string): void {
-  emit({ id: project.id, status: 'failed', port: rt.port, reason })
+function fail(rt: Runtime, project: Project, reason: string, fix?: ProjectFix): void {
+  emit({ id: project.id, status: 'failed', port: rt.port, reason, fix })
   rt.status = 'failed'
   // 设置开着"启动失败通知"时发系统通知（PRD 3.6 通知方式）
   if (getSettings().notifyOnFail) {
@@ -84,7 +85,9 @@ function fail(rt: Runtime, project: Project, reason: string): void {
 // 每个项目最近 200 行日志（失败时翻译成大白话用）
 const recentLogs = new Map<string, string[]>()
 
-/** 失败兜底：日志里有常见错误特征时，翻译成人话原因（PRD 3.4：通知带失败原因） */
+/** 失败兜底：日志里有常见错误特征时，翻译成人话原因（PRD 3.4：通知带失败原因）。
+ *  2026-08-24 补齐 9 条高频病：依赖没装/端口占用 Mac 版/Docker 没开/python 缺包/
+ *  npm 版本打架/网络/缺 .env/数据库没开/磁盘满 */
 function failWithLogHint(rt: Runtime, project: Project, fallback: string): void {
   const text = (recentLogs.get(project.id) ?? []).join('\n')
   const portBusy = text.match(/EADDRINUSE[\s\S]*?port:\s*(\d+)/)
@@ -96,7 +99,7 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     )
     return
   }
-  if (/EADDRINUSE/.test(text)) {
+  if (/EADDRINUSE|Errno 48|Address already in use/i.test(text)) {
     fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
     return
   }
@@ -111,8 +114,62 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     fail(
       rt,
       project,
-      '这个项目的依赖没装好（从 Windows 电脑拷贝过来的常见问题）——删掉项目里的 node_modules 和 package-lock.json，重新 npm install 就行'
+      '这个项目的依赖没装好（从 Windows 电脑拷贝过来的常见问题）——删掉项目里的 node_modules 和 package-lock.json 重新安装。下面有「帮我装依赖」按钮，点一下就行',
+      { kind: 'npm-install', label: '帮我装依赖' }
     )
+    return
+  }
+  // 依赖根本没装/启动命令不存在（2026-08-24 SCADA 实测：删了 node_modules 没重装 → vite: command not found）
+  if (
+    /command not found|not recognized as an internal or external command|^sh: .*: not found/m.test(
+      text
+    )
+  ) {
+    fail(rt, project, '这个项目的依赖没装好——点下面的「帮我装依赖」按钮自动安装，装完再点启动', {
+      kind: 'npm-install',
+      label: '帮我装依赖'
+    })
+    return
+  }
+  if (/npm ERR! Missing script/.test(text)) {
+    fail(
+      rt,
+      project,
+      '这个项目的 package.json 里没有对应的启动脚本——右键项目选「编辑」，检查启动命令对不对'
+    )
+    return
+  }
+  if (/Cannot connect to the Docker daemon|Is the docker daemon running/i.test(text)) {
+    fail(rt, project, 'Docker 没开——先打开 Docker Desktop，等它启动完成再点启动')
+    return
+  }
+  const pyMissing = text.match(/ModuleNotFoundError: No module named ['"]([^'"]+)['"]/)
+  if (pyMissing) {
+    fail(
+      rt,
+      project,
+      `这个 Python 项目缺一个包「${pyMissing[1]}」——在项目文件夹的终端里跑 pip install ${pyMissing[1]} 装上再启动`
+    )
+    return
+  }
+  if (/ERESOLVE|Could not resolve dependency|peer dep/i.test(text)) {
+    fail(rt, project, '依赖版本打架——在项目文件夹的终端里跑 npm install --legacy-peer-deps 再试')
+    return
+  }
+  if (/ETIMEDOUT|ECONNRESET|getaddrinfo ENOTFOUND|network request failed/i.test(text)) {
+    fail(rt, project, '网络问题——下载依赖连不上软件源，检查网络或代理，或换个 npm 源再试')
+    return
+  }
+  if (/Missing environment variable|process\.env|\.env file/i.test(text)) {
+    fail(rt, project, '这个项目缺配置（密钥之类的 .env 文件）——看看项目说明文档，把配置补上再启动')
+    return
+  }
+  if (/ECONNREFUSED.*(5432|3306|27017|6379|5433)|connect ECONNREFUSED/s.test(text)) {
+    fail(rt, project, '数据库没启动——先把这个项目用的数据库服务跑起来（或检查数据库地址）')
+    return
+  }
+  if (/ENOSPC|no space left on device/i.test(text)) {
+    fail(rt, project, '磁盘满了——清理磁盘空间后再启动')
     return
   }
   fail(rt, project, fallback)
@@ -177,54 +234,98 @@ function pipeLog(id: string, chunk: string): void {
 
 /** S8：从最近日志里找框架打印的实际端口（vite/next 端口被占自动 +1 时日志会打新的 localhost 地址） */
 function parseLogPort(id: string): number | undefined {
-  for (const line of recentLogs.get(id) ?? []) {
-    const m = line.match(/localhost:(\d{2,5})/)
+  // 从后往前：日志是追加的，最新一次启动打的实际端口在最后（旧行里可能还躺着上次的端口）
+  const lines = recentLogs.get(id) ?? []
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(/localhost:(\d{2,5})/)
     if (m) return Number(m[1])
   }
   return undefined
 }
 
-/** 端口是否已被占用（能连上 = 占用） */
+/** 端口是否已被占用（能连上 = 占用）。
+ *  IPv4/IPv6 双栈并行敲：vite 等框架默认监听 localhost（macOS 解析成 ::1），
+ *  只敲 127.0.0.1 会永远敲不开 → 误判启动失败（2026-08-24 SCADA 事故） */
 function checkPortOpen(port: number): Promise<boolean> {
   return new Promise((resolvePromise) => {
-    const sock = connect({ port, host: '127.0.0.1' })
-    sock.setTimeout(800)
-    sock.once('connect', () => {
-      sock.destroy()
-      resolvePromise(true)
-    })
-    sock.once('timeout', () => {
-      sock.destroy()
-      resolvePromise(false)
-    })
-    sock.once('error', () => resolvePromise(false))
+    let opened = false
+    let failed = 0
+    for (const host of ['127.0.0.1', '::1']) {
+      const sock = connect({ port, host })
+      sock.setTimeout(800)
+      sock.once('connect', () => {
+        sock.destroy()
+        if (!opened) {
+          opened = true
+          resolvePromise(true)
+        }
+      })
+      sock.once('timeout', () => {
+        sock.destroy()
+        finishFail()
+      })
+      sock.once('error', () => {
+        sock.destroy()
+        finishFail()
+      })
+    }
+    function finishFail(): void {
+      failed++
+      if (!opened && failed >= 2) resolvePromise(false)
+    }
   })
 }
 
 /** 探测端口上是不是一个正在响应的网站（2xx/3xx 且是 HTML）。
- *  接管用（2026-08-21）：用户手动在 7100 跑的成品站，Reopen 不再另起炉灶，直接认领显示 */
+ *  接管用（2026-08-21）：用户手动在 7100 跑的成品站，Reopen 不再另起炉灶，直接认领显示。
+ *  IPv4/IPv6 双栈并行探（同 checkPortOpen，2026-08-24 SCADA 事故） */
 function probeWebPort(port: number): Promise<boolean> {
   return new Promise((resolvePromise) => {
-    const req = get({ host: '127.0.0.1', port, path: '/', timeout: 1500 }, (res) => {
-      res.resume()
-      const code = res.statusCode ?? 0
-      const contentType = String(res.headers['content-type'] ?? '')
-      resolvePromise(
-        code >= 200 && code < 400 && (contentType.includes('text/html') || contentType === '')
-      )
-    })
-    req.once('timeout', () => {
-      req.destroy()
-      resolvePromise(false)
-    })
-    req.once('error', () => resolvePromise(false))
+    let answered = false
+    let failed = 0
+    for (const host of ['127.0.0.1', '::1']) {
+      const req = get({ host, port, path: '/', timeout: 1500 }, (res) => {
+        res.resume()
+        if (answered) return
+        const code = res.statusCode ?? 0
+        const contentType = String(res.headers['content-type'] ?? '')
+        if (
+          code >= 200 &&
+          code < 400 &&
+          (contentType.includes('text/html') || contentType === '')
+        ) {
+          answered = true
+          resolvePromise(true)
+        } else {
+          finishFail()
+        }
+      })
+      req.once('timeout', () => {
+        req.destroy()
+        finishFail()
+      })
+      req.once('error', () => {
+        req.destroy()
+        finishFail()
+      })
+    }
+    function finishFail(): void {
+      failed++
+      if (!answered && failed >= 2) resolvePromise(false)
+    }
   })
 }
 
 // GUI 应用拿不到用户 shell 的 PATH（npm/node 常装在自定义位置），补上常见安装位置
 function buildPath(): string {
   const extra = ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.npm-global/bin')]
-  return [...extra, process.env.PATH].filter(Boolean).join(':')
+  // 剔除 Reopen 自己的 node_modules/.bin：dev 模式下它被 electron-vite 注入主进程 PATH，
+  // 原样传给项目会让没装依赖的项目"借"到 Reopen 的 vite 假跑起来（2026-08-24 SCADA 事故）
+  const appRoot = app.getAppPath()
+  const inherited = (process.env.PATH ?? '')
+    .split(':')
+    .filter((seg) => seg && !seg.startsWith(appRoot))
+  return [...extra, ...inherited].join(':')
 }
 
 /** 项目的启动方式：指定 id > activeMode > 第一个；老数据无 launchModes 按 type 生成单方式（Phase B 兼容，2026-08-21） */
@@ -413,7 +514,7 @@ function spawnAndWatch(
           touchStartedAt(project.id)
           touchLastPort(project.id, checkPort)
           if (project.openBrowser) {
-            openUrl(`http://127.0.0.1:${checkPort}`)
+            openUrl(`http://localhost:${checkPort}`)
           }
         } else {
           // S8：端口漂移（vite 端口被占自动 +1）——日志里出现实际端口就切换检查目标
@@ -423,6 +524,8 @@ function spawnAndWatch(
             setStatus(rt, project, 'starting', drifted)
           } else if (Date.now() - rt.healthStart > HEALTH_TIMEOUT_MS) {
             clearInterval(rt.healthTimer)
+            // 进程可能还活着：启动被判失败也不能留僵尸占端口（2026-08-24 SCADA 事故：误判后僵尸越点越多）
+            killTree(rt)
             failWithLogHint(rt, project, `30 秒内端口 ${checkPort} 没有就绪（日志面板有完整输出）`)
           }
         }
@@ -524,7 +627,7 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
     touchLastPort(project.id, port)
     emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${servedEntry}`)
     if (project.openBrowser) {
-      openUrl(`http://127.0.0.1:${port}${servedEntry}`)
+      openUrl(`http://localhost:${port}${servedEntry}`)
     }
     return { ok: true }
   } catch (err) {
@@ -587,6 +690,30 @@ export async function autoStartAll(): Promise<void> {
   }
 }
 
+/** 一键安装依赖（2026-08-24 拍板：失败提示区的"帮我装依赖"按钮）：
+ *  在项目目录跑 npm install，输出实时推项目日志面板，装完打收尾日志，用户自己再点启动 */
+export function installProjectDeps(id: string): void {
+  const project = listProjects().find((p) => p.id === id)
+  if (!project) return
+  emitLog(id, '开始安装依赖：npm install（可能要几分钟，装完会告诉你）')
+  const child = spawn('npm install', {
+    cwd: project.path,
+    shell: true,
+    detached: true,
+    env: { ...process.env, PATH: buildPath() }
+  })
+  child.stdout?.on('data', (d: Buffer) => pipeLog(id, d.toString()))
+  child.stderr?.on('data', (d: Buffer) => pipeLog(id, d.toString()))
+  child.on('exit', (code) => {
+    emitLog(
+      id,
+      code === 0
+        ? '依赖装好了——回到 Reopen 点「启动」试试'
+        : `安装失败（退出码 ${code}），原因看上面日志`
+    )
+  })
+}
+
 /** 打开链接：用户设了默认浏览器 → open -a 指定浏览器；否则系统默认（2026-08-24 拍板"偏好设置里选浏览器"） */
 function openUrl(url: string): void {
   const browser = getSettings().defaultBrowser
@@ -597,8 +724,9 @@ function openUrl(url: string): void {
   }
 }
 
-/** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单） */
-export async function openProjectBrowser(id: string): Promise<StartResult> {
+/** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单）
+ *  entry=入口文件相对路径（多入口列表点哪个开哪个，2026-08-24 拍板） */
+export async function openProjectBrowser(id: string, entry?: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
   const rt = runtimes.get(id)
@@ -606,13 +734,35 @@ export async function openProjectBrowser(id: string): Promise<StartResult> {
     return { ok: false, reason: '项目还没启动，先点启动' }
   }
   if (project.type === 'web') {
-    openUrl(`http://127.0.0.1:${rt.port}${rt.entryPath ?? '/'}`)
+    openUrl(`http://localhost:${rt.port}${entry ?? rt.entryPath ?? '/'}`)
   } else {
     const port = rt.port ?? project.port
     if (!port) return { ok: false, reason: '该项目没有端口，不知道打开哪个地址' }
-    openUrl(`http://127.0.0.1:${port}`)
+    openUrl(`http://localhost:${port}${entry ?? ''}`)
   }
   return { ok: true }
+}
+
+/** 杀整个进程组（整树终止），3 秒没退就强杀；已退/不存在静默。停止与启动失败清理共用 */
+function killTree(rt: Runtime): void {
+  const pid = rt.child?.pid
+  if (!pid) return
+  try {
+    process.kill(-pid, 'SIGTERM')
+  } catch {
+    try {
+      rt.child?.kill('SIGTERM')
+    } catch {
+      // 进程已退出
+    }
+  }
+  setTimeout(() => {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {
+      // 进程已退出
+    }
+  }, KILL_GRACE_MS)
 }
 
 export async function stopProject(id: string): Promise<void> {
@@ -650,26 +800,7 @@ export async function stopProject(id: string): Promise<void> {
   }
 
   if (rt.child && rt.child.pid) {
-    // 服务类：杀整个进程组（整树终止），3 秒没退就强杀
-    try {
-      process.kill(-rt.child.pid, 'SIGTERM')
-    } catch {
-      try {
-        rt.child.kill('SIGTERM')
-      } catch {
-        // 进程已退出
-      }
-    }
-    const pid = rt.child.pid
-    setTimeout(() => {
-      if (rt.status === 'running' || rt.status === 'starting') {
-        try {
-          process.kill(-pid, 'SIGKILL')
-        } catch {
-          // 进程已退出
-        }
-      }
-    }, KILL_GRACE_MS)
-    // exit 事件里会推送 stopped
+    // 服务类：杀整个进程组（整树终止），3 秒没退就强杀；exit 事件里会推送 stopped
+    killTree(rt)
   }
 }

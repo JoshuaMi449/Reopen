@@ -258,10 +258,19 @@ select {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.sidebar-tags-title {
+/* 区块标题（组/标签，2026-08-24 拍板）：字后面跟一根细灰虚线延伸到右侧 */
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-dim);
-  padding: 0 10px 4px;
+  padding: 8px 10px 4px;
+}
+.sidebar-section-title::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px dashed var(--border);
 }
 
 .sidebar-tags {
@@ -881,10 +890,68 @@ html.dark .sidebar-logo-word,
   text-align: right;
 }
 
+/* 入口文件清单行（2026-08-24 拍板：多页面项目登记时展示；主入口标「主页」徽） */
+.form-entry-line {
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.form-entry-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.form-entry-main {
+  flex: none;
+  font-size: 10px;
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 .drawer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* 多入口列表（2026-08-24 拍板：纯网页项目详情里列出全部页面，点哪个打开哪个） */
+.drawer-entries {
+  display: block;
+}
+.drawer-entry-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.drawer-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.drawer-entry:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.drawer-entry-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-entry-main {
+  font-size: 9px;
+  color: var(--primary);
 }
 
 .drawer-log {

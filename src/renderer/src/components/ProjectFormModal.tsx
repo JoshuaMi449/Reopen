@@ -31,6 +31,8 @@ interface FormValues {
   tags: string[]
   /** 识别出的网页入口路径（表单不展示，提交时静默保留，2026-08-21 S3） */
   entryPath?: string
+  /** 全部网页入口清单（2026-08-24 拍板：弹窗展示+提交静默保留） */
+  entryPaths?: string[]
   /** 全部启动方式与默认方式（Phase B 2026-08-21：表单不编辑，静默保留） */
   launchModes?: LaunchMode[]
   activeMode?: string
@@ -72,6 +74,7 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       note: project.note,
       tags: project.tags,
       entryPath: project.entryPath,
+      entryPaths: project.entryPaths,
       launchModes: project.launchModes,
       activeMode: project.activeMode
     }
@@ -87,6 +90,7 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       note: '',
       tags: [],
       entryPath: detect.suggested.entryPath,
+      entryPaths: detect.suggested.entryPaths,
       launchModes: detect.suggested.launchModes,
       activeMode: detect.suggested.activeMode
     }
@@ -195,6 +199,7 @@ export function ProjectFormModal({
       port: port.trim() && !Number.isNaN(portNum) ? portNum : undefined,
       // 网页类型才保留识别出的入口路径；改成服务类型就丢弃
       entryPath: type === 'web' ? init.entryPath : undefined,
+      entryPaths: type === 'web' ? init.entryPaths : undefined,
       // 启动方式清单静默保留（Phase B 2026-08-21：方式在详情抽屉切换，表单不编辑）
       launchModes: init.launchModes,
       activeMode: init.activeMode,
@@ -258,6 +263,23 @@ export function ProjectFormModal({
                 {init.launchModes?.map((m) => (
                   <div key={m.id} className="form-mode-line">
                     {modeSummary(m)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 入口文件清单（2026-08-24 用户拍板：多页面项目登记时就能看到里面有哪些页面，登记后都能打开） */}
+          {type === 'web' && (init.entryPaths?.length ?? 0) > 1 && (
+            <div className="form-modes">
+              <span>里面有 {init.entryPaths?.length} 个页面，登记后都能打开</span>
+              <div className="form-modes-list">
+                {init.entryPaths?.map((ep, i) => (
+                  <div key={ep} className="form-mode-line form-entry-line">
+                    <span className="form-entry-name" title={ep}>
+                      {ep}
+                    </span>
+                    {i === 0 && <span className="form-entry-main">主页</span>}
                   </div>
                 ))}
               </div>

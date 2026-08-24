@@ -56,6 +56,8 @@ export interface Project {
   port?: number
   /** 网页入口文件相对路径（如 /supos-case-anjia.html；2026-08-21 S3：启动打开该文件而非目录根） */
   entryPath?: string
+  /** 全部网页入口清单（2026-08-24 拍板：项目里多个页面都能打开；第一个=主入口；老数据无此字段用 entryPath 兼容） */
+  entryPaths?: string[]
   /** 属于哪个项目组（2026-08-21 拍板：组收纳子项，子项与独立项目同结构） */
   parentId?: string
   /** 全部启动方式（Phase B 2026-08-21：老数据无此字段=单方式，运行时按 type 兼容） */
@@ -88,6 +90,8 @@ export interface DetectSuccess {
     port?: number
     /** 网页入口文件相对路径（2026-08-21 S3） */
     entryPath?: string
+    /** 全部网页入口清单（2026-08-24 拍板：多页面项目登记时展示+登记后都能打开；第一个=主入口） */
+    entryPaths?: string[]
     /** 页面标题（读 index.html 的 <title>，弹窗里显示让用户一眼认出是哪个网站；2026-08-21 拍板） */
     title?: string
     /** 成品文件数（弹窗默认勾选"最大的成品"用；2026-08-21 拍板） */
@@ -134,6 +138,13 @@ export interface DetectDuplicate {
 export type DetectOutcome =
   DetectSuccess | DetectMulti | DetectNeedParseApp | DetectFailed | DetectDuplicate
 
+/** 失败后界面可提供的自动修复动作（2026-08-24 拍板：小白一键装依赖） */
+export interface ProjectFix {
+  kind: 'npm-install'
+  /** 界面按钮文字（如"帮我装依赖"） */
+  label: string
+}
+
 /** 项目状态变化事件（主进程推送 → 渲染层更新圆点/标红） */
 export interface ProjectStatusEvent {
   id: string
@@ -143,6 +154,8 @@ export interface ProjectStatusEvent {
   /** 失败原因（PRD 3.4：通知带失败原因） */
   reason?: string
   startedAt?: number
+  /** 失败时可自动修复的动作（有则界面显示按钮） */
+  fix?: ProjectFix
 }
 
 /** 日志事件（主进程推送 → 行内面板实时显示） */
@@ -233,6 +246,8 @@ export interface EnvCheckItem {
   hint?: string
   /** 没装时的安装官网 */
   link?: string
+  /** 没装时的一键安装命令（Mac 走 brew；空=只能去官网手动装，2026-08-24 拍板） */
+  installCommand?: string
 }
 
 /** 渲染层可用的全部 API（preload 通过 contextBridge 暴露为 window.api） */
@@ -247,12 +262,18 @@ export interface ReopenApi {
   addProject(input: NewProjectInput): Promise<Project>
   updateProject(id: string, input: NewProjectInput): Promise<Project>
   deleteProject(id: string): Promise<void>
+  /** 手动成组：把一批顶层项目收纳成一个新组，返回新组（2026-08-24 拍板：框选右键添加成组） */
+  createGroup(ids: string[]): Promise<Project>
+  /** 解散组：子项回到顶层，组删除（2026-08-24 拍板） */
+  ungroup(id: string): Promise<void>
   startProject(id: string, modeId?: string): Promise<StartResult>
   stopProject(id: string): Promise<void>
+  /** 一键安装依赖：在项目目录跑 npm install，日志实时推项目日志面板（2026-08-24 拍板） */
+  installProjectDeps(id: string): Promise<void>
   /** 打开应用时：检测哪些项目其实已经在跑（端口有响应），直接显示运行中 */
   adoptAllRunning(): Promise<void>
-  /** 在默认浏览器打开该项目（右键菜单），需项目已运行 */
-  openProjectBrowser(id: string): Promise<StartResult>
+  /** 在默认浏览器打开该项目（右键菜单），需项目已运行；entry=入口文件相对路径（多入口列表用，2026-08-24 拍板） */
+  openProjectBrowser(id: string, entry?: string): Promise<StartResult>
   getSettings(): Promise<Settings>
   saveSettings(patch: Partial<Settings>): Promise<Settings>
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */
@@ -266,6 +287,8 @@ export interface ReopenApi {
   listBrowsers(): Promise<string[]>
   /** 环境监测：检测 Node.js/Python/Docker/Bun 装没装（设置-关于组下方） */
   checkEnvironment(): Promise<EnvCheckItem[]>
+  /** 一键安装环境运行时（Mac brew install；装没装成以结果为准，2026-08-24 拍板） */
+  installEnvTool(key: string): Promise<{ ok: boolean; error?: string }>
   /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
   getLanIp(): Promise<string>
   /** 开机自启（Mac 登录项）开关 */

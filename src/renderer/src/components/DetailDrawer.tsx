@@ -11,6 +11,7 @@ import {
   Pencil,
   RotateCcw,
   Trash2,
+  Wrench,
   X
 } from 'lucide-react'
 import {
@@ -28,7 +29,8 @@ interface Props {
   onStop(): void
   onEdit(): void
   onDelete(): void
-  onOpenBrowser(): void
+  /** 打开默认入口（主按钮）；带 entry 参数=打开指定入口页面（多入口列表，2026-08-24 拍板） */
+  onOpenBrowser(entry?: string): void
   onClose(): void
   /** 组的子项（2026-08-21 项目组：组抽屉显示子项列表，可逐个启停/点端口） */
   groupChildren?: Project[]
@@ -42,6 +44,8 @@ interface Props {
   onBack?(): void
   /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
   onViewPreview?(): void
+  /** 失败提示区的一键修复按钮（如"帮我装依赖"，2026-08-24 拍板） */
+  onInstallDeps?(): void
   /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址，2026-08-24） */
   lanIp?: string
 }
@@ -79,6 +83,7 @@ export function DetailDrawer({
   onChildOpen,
   onBack,
   onViewPreview,
+  onInstallDeps,
   lanIp
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
@@ -90,6 +95,8 @@ export function DetailDrawer({
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
+  // 全部网页入口（2026-08-24 拍板：老数据只有 entryPath 一个，entryPaths 存在则用之）
+  const entryList = project.entryPaths ?? (project.entryPath ? [project.entryPath] : [])
   // 组视图（2026-08-21 项目组）：子项列表，无日志区
   if (project.type === 'group' && groupChildren) {
     return (
@@ -233,6 +240,26 @@ export function DetailDrawer({
             <span className="drawer-meta-label">上次启动</span>
             <b>{formatTime(project.lastStartedAt)}</b>
           </div>
+          {/* 多入口列表（2026-08-24 拍板：纯网页项目里多个页面，点哪个打开哪个） */}
+          {isPureWeb(project) && entryList.length > 1 && (status?.port ?? project.port) && (
+            <div className="drawer-meta drawer-entries">
+              <span className="drawer-meta-label">页面（{entryList.length}）</span>
+              <div className="drawer-entry-list">
+                {entryList.map((ep, i) => (
+                  <button
+                    key={ep}
+                    className="drawer-entry"
+                    title={`在浏览器打开 ${ep}`}
+                    onClick={() => onOpenBrowser(ep)}
+                  >
+                    <ExternalLink size={11} />
+                    <span className="drawer-entry-name">{ep}</span>
+                    {i === 0 && <span className="drawer-entry-main">主页</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {project.type === 'service' && (
             <div className="drawer-command">
               <span className="drawer-meta-label">命令</span>
@@ -245,6 +272,11 @@ export function DetailDrawer({
               {hasPreviewFallback(project) && (
                 <button className="btn-mini" onClick={onViewPreview}>
                   <Eye size={12} /> 看成品
+                </button>
+              )}
+              {status.fix?.kind === 'npm-install' && (
+                <button className="btn-mini" onClick={onInstallDeps}>
+                  <Wrench size={12} /> {status.fix.label}
                 </button>
               )}
             </div>
@@ -278,7 +310,7 @@ export function DetailDrawer({
               </button>
             </>
           )}
-          <button className="btn-secondary" onClick={onOpenBrowser}>
+          <button className="btn-secondary" onClick={() => onOpenBrowser()}>
             <ExternalLink size={14} /> 在浏览器打开
           </button>
           <button className="btn-secondary" onClick={onEdit}>
