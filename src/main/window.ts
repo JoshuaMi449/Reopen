@@ -4,7 +4,6 @@ import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { getSettings } from './store'
-import { closeSettingsWindow } from './settingsWindow'
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
@@ -48,11 +47,6 @@ export function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
-  })
-
-  // 点击主界面就关闭设置窗口（2026-08-24 拍板，与 Proma 一致）
-  mainWindow.on('focus', () => {
-    closeSettingsWindow()
   })
 
   // 关闭窗口 = 最小化到托盘（默认开，2026-08-20 拍板；⌘Q 走 before-quit 不拦截）

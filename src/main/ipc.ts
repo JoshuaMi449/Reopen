@@ -1,8 +1,9 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
+import { execSync } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { NewProjectInput, Project, Settings } from '../shared/types'
+import type { EnvCheckItem, NewProjectInput, Project, Settings } from '../shared/types'
 import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
@@ -81,6 +82,73 @@ function listBrowsers(): string[] {
   return Array.from(found)
 }
 
+/** 跑一个命令拿版本（没装返回 null；Windows 用 where 探测） */
+function runVersion(cmd: string): string | null {
+  try {
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    execSync(`${probe} ${cmd}`, { stdio: 'ignore' })
+    return execSync(`${cmd} --version`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .trim()
+      .split('\n')[0]
+  } catch {
+    return null
+  }
+}
+
+/** 环境监测（2026-08-24 拍板：设置-关于组下方；项目要什么运行时一目了然，没装给安装官网） */
+function checkEnvironment(): EnvCheckItem[] {
+  const items: EnvCheckItem[] = []
+  const node = runVersion('node')
+  items.push(
+    node
+      ? { key: 'node', name: 'Node.js', ok: true, version: node }
+      : {
+          key: 'node',
+          name: 'Node.js',
+          ok: false,
+          hint: '跑 npm 项目的运行时',
+          link: 'https://nodejs.org'
+        }
+  )
+  const python = runVersion('python3') ?? runVersion('python')
+  items.push(
+    python
+      ? { key: 'python', name: 'Python', ok: true, version: python }
+      : {
+          key: 'python',
+          name: 'Python',
+          ok: false,
+          hint: '跑 python 程序的运行时',
+          link: 'https://python.org'
+        }
+  )
+  const docker = runVersion('docker')
+  items.push(
+    docker
+      ? { key: 'docker', name: 'Docker', ok: true, version: docker }
+      : {
+          key: 'docker',
+          name: 'Docker',
+          ok: false,
+          hint: '跑 Docker 项目的运行时',
+          link: 'https://docker.com'
+        }
+  )
+  const bun = runVersion('bun')
+  items.push(
+    bun
+      ? { key: 'bun', name: 'Bun', ok: true, version: bun }
+      : {
+          key: 'bun',
+          name: 'Bun',
+          ok: false,
+          hint: '跑 bun 项目的运行时',
+          link: 'https://bun.sh'
+        }
+  )
+  return items
+}
+
 export function registerIpc(): void {
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:detect', (_e, path: string) => detectPath(path))
@@ -122,9 +190,10 @@ export function registerIpc(): void {
 
   // 窗口与应用
   ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
-  ipcMain.handle('window:open-settings', (_e, group?: string) => openSettingsWindow(group))
+  ipcMain.handle('window:open-settings', () => openSettingsWindow())
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
+  ipcMain.handle('system:check-env', () => checkEnvironment())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })

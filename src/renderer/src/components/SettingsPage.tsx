@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
-import type { Project, Settings } from '../../../shared/types'
+import type { EnvCheckItem, Project, Settings } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
 
@@ -25,11 +25,13 @@ const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
   { key: 'about', label: '关于', icon: <Info size={15} /> }
 ]
 
-/** 偏好设置：独立窗口（Proma 式，2026-08-20 用户拍板），左侧分组 + 右侧内容（PRD 3.6） */
-export function SettingsPage(): React.JSX.Element {
+/** 偏好设置（2026-08-24 拍板：主窗口内浮层界面，非独立窗口——Proma 交互）：左侧分组 + 右侧内容（PRD 3.6） */
+export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.Element {
   const [group, setGroup] = useState<GroupKey>('general')
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [projects, setProjects] = useState<Project[]>([])
+  /** 环境监测结果（关于组下方，2026-08-24 拍板） */
+  const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
@@ -48,6 +50,7 @@ export function SettingsPage(): React.JSX.Element {
   useEffect(() => {
     window.api.getSettings().then(setSettings)
     window.api.listProjects().then(setProjects)
+    window.api.checkEnvironment().then(setEnvItems)
   }, [])
 
   const update = useCallback(async (patch: Partial<Settings>): Promise<void> => {
@@ -348,6 +351,50 @@ export function SettingsPage(): React.JSX.Element {
       </div>
       <div className="settings-subtitle">开源协议</div>
       <div className="settings-about-line">MIT License</div>
+
+      {/* 环境监测（2026-08-24 拍板：项目要什么运行时一目了然，没装给安装官网，与 Proma 一致） */}
+      <div className="settings-subtitle">环境监测</div>
+      <div className="settings-card">
+        {envItems.length === 0 ? (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">检测中…</div>
+            </div>
+          </div>
+        ) : (
+          envItems.map((item) => (
+            <div key={item.key} className="settings-row">
+              <div className="settings-row-text">
+                <div className="settings-row-label">
+                  <span className={`env-dot ${item.ok ? 'env-dot-ok' : 'env-dot-miss'}`}>
+                    {item.ok ? '✓' : '!'}
+                  </span>
+                  {item.name}
+                </div>
+                <div className="settings-row-hint">
+                  {item.ok
+                    ? item.version
+                    : `${item.hint ?? '未安装'} —— ${item.link ? '点右侧按钮去官网安装' : ''}`}
+                </div>
+              </div>
+              <div className="settings-row-control">
+                {item.ok ? (
+                  <span className="settings-static">已安装</span>
+                ) : (
+                  item.link && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => window.api.openExternal(item.link as string)}
+                    >
+                      去安装
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 
@@ -380,7 +427,7 @@ export function SettingsPage(): React.JSX.Element {
         <button
           className="settings-close-btn"
           title="关闭"
-          onClick={() => window.api.closeSettingsWindow()}
+          onClick={() => (onClose ? onClose() : window.api.closeSettingsWindow())}
         >
           <X size={14} />
         </button>

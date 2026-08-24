@@ -1,49 +1,14 @@
-// 偏好设置窗口：独立窗口（Proma 式，2026-08-20 用户拍板），单例
-// 2026-08-24 拍板：无红黄绿按钮（titleBarStyle hidden，右上角自定义 ✕）、
-// 只盖在主窗口上方（parent 子窗口，非全局置顶）、点主窗口即关闭
-import { BrowserWindow } from 'electron'
-import { is } from '@electron-toolkit/utils'
-import { join } from 'path'
-import { getMainWindow } from './window'
+// 偏好设置：主窗口内的浮层界面（Proma 交互，2026-08-24 用户指正）
+// 不是独立窗口——固定显示在主界面之上、不可拖动，右上角叉或点击主界面（遮罩）关闭；
+// 渲染层 App.tsx 挂 settings-overlay，主进程只负责"唤起主窗口+发开关事件"
+import { getMainWindow, showMainWindow } from './window'
 
-let settingsWin: BrowserWindow | null = null
-
-export function openSettingsWindow(group?: string): void {
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.show()
-    settingsWin.focus()
-    if (group) settingsWin.webContents.send('app:menu-action', `settings-group-${group}`)
-    return
-  }
-  settingsWin = new BrowserWindow({
-    width: 720,
-    height: 540,
-    show: false,
-    title: '偏好设置',
-    // 挂到主窗口下：设置窗口只显示在主窗口上方，切到其他应用不会被强置顶（2026-08-24 用户澄清"不是全部窗口的最上方"）
-    parent: getMainWindow() ?? undefined,
-    // 完全隐藏系统标题栏（无红黄绿），标题栏和右上角叉由页面自绘（2026-08-24 拍板，与 Proma 一致）
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
-  settingsWin.on('ready-to-show', () => settingsWin?.show())
-  settingsWin.on('closed', () => {
-    settingsWin = null
-  })
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    settingsWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/settings.html`)
-  } else {
-    settingsWin.loadFile(join(__dirname, '../renderer/settings.html'))
-  }
+/** 打开偏好设置：唤起主窗口并通知渲染层弹出设置浮层 */
+export function openSettingsWindow(): void {
+  showMainWindow('settings-open')
 }
 
-/** 关闭设置窗口（页面右上角 ✕；点击主窗口时也走这里，2026-08-24 拍板） */
+/** 关闭偏好设置：通知主窗口渲染层收起浮层 */
 export function closeSettingsWindow(): void {
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.close()
-    settingsWin = null
-  }
+  getMainWindow()?.webContents.send('app:menu-action', 'settings-close')
 }

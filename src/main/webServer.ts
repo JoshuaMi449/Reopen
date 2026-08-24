@@ -68,19 +68,30 @@ export function startWebServer(
   })
 
   return new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    // 端口 0 = 让系统分配一个空闲端口；指定了端口则用指定的
-    server.listen(port ?? 0, '127.0.0.1', () => {
-      const addr = server.address()
-      if (!addr || typeof addr === 'string') {
-        reject(new Error('端口分配失败'))
-        return
-      }
-      resolvePromise({
-        server,
-        port: addr.port,
-        entryPath: entryPath ? encodeURI(entryPath) : `/${encodeURIComponent(entryName)}`
+    /** 监听：指定端口被占（EADDRINUSE）→ 自动让系统分配空闲端口重试一次（2026-08-24：
+     *  用户拖入 html 报 50882 被占标红——纯网页登记是自动上线的，不该因端口冲突失败） */
+    const tryListen = (portToTry: number | undefined, usedFallback: boolean): void => {
+      server.once('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE' && !usedFallback) {
+          tryListen(0, true)
+          return
+        }
+        reject(err)
       })
-    })
+      // 端口 0 = 让系统分配一个空闲端口；指定了端口则用指定的
+      server.listen(portToTry ?? 0, '127.0.0.1', () => {
+        const addr = server.address()
+        if (!addr || typeof addr === 'string') {
+          reject(new Error('端口分配失败'))
+          return
+        }
+        resolvePromise({
+          server,
+          port: addr.port,
+          entryPath: entryPath ? encodeURI(entryPath) : `/${encodeURIComponent(entryName)}`
+        })
+      })
+    }
+    tryListen(port, false)
   })
 }

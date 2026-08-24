@@ -150,6 +150,7 @@ select {
   height: 100vh;
   display: flex;
   background: var(--bg);
+  position: relative; /* 设置浮层定位基准（2026-08-24） */
 }
 
 /* 右侧容器：工具栏 + 两块圆角卡片区（2026-08-20 拍板：左栏贴边到顶，中右保持卡片） */
@@ -1959,9 +1960,32 @@ body.tray-window #root {
 /* ---------- 偏好设置窗口 ---------- */
 
 .settings-window {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* 设置浮层（2026-08-24 拍板：主窗口内界面，Proma 交互——不是独立窗口所以没有红黄绿；
+   点遮罩=点击主界面=关闭；面板不可拖动） */
+.settings-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-panel {
+  width: 780px;
+  height: 580px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 48px);
+  background: var(--bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
 /* 标题栏（2026-08-24 拍板）：整条拖拽区，居中标题，右上角只有一个叉 */
@@ -2814,4 +2838,29 @@ html.dark .settings-card {
 
 .bulk-tag-chip:hover {
   border-color: var(--primary);
+}
+
+
+/* 环境监测状态点（2026-08-24 拍板，设置-关于组） */
+.env-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.env-dot-ok {
+  background: var(--ok);
+  color: #fff;
+}
+
+.env-dot-miss {
+  background: var(--warn);
+  color: #fff;
 }

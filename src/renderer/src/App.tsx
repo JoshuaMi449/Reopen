@@ -33,6 +33,7 @@ import { GroupRow } from './components/GroupRow'
 import { Onboarding } from './components/Onboarding'
 import { ProjectFormModal } from './components/ProjectFormModal'
 import { ProjectRow } from './components/ProjectRow'
+import { SettingsPage } from './components/SettingsPage'
 import { Sidebar, Category } from './components/Sidebar'
 import { TagColorSlider } from './components/TagColorSlider'
 import { TagRenameDialog } from './components/TagRenameDialog'
@@ -119,6 +120,8 @@ export default function App(): React.JSX.Element {
   const [bulkTag, setBulkTag] = useState<{ ids: string[] } | null>(null)
   /** 批量删除二次确认 */
   const [bulkDelete, setBulkDelete] = useState<{ ids: string[] } | null>(null)
+  /** 偏好设置浮层（2026-08-24 拍板：主窗口内界面，非独立窗口——Proma 交互） */
+  const [settingsOpen, setSettingsOpen] = useState(false)
   /** 新手引导是否显示（首次打开） */
   const [showOnboarding, setShowOnboarding] = useState(false)
   /** 系统当前亮暗（主题"跟随系统"用） */
@@ -227,7 +230,8 @@ export default function App(): React.JSX.Element {
       else if (action === 'focus-search') searchRef.current?.focus()
       else if (action === 'set-view-list') updateSettings({ view: 'list' })
       else if (action === 'set-view-card') updateSettings({ view: 'card' })
-      else if (action === 'settings') window.api.openSettingsWindow()
+      else if (action === 'settings' || action === 'settings-open') setSettingsOpen(true)
+      else if (action === 'settings-close') setSettingsOpen(false)
       else if (action === 'about') toast('Reopen 0.1.0（VC复活点）')
       else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
     })
@@ -1386,6 +1390,20 @@ export default function App(): React.JSX.Element {
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+
+      {/* 偏好设置浮层（2026-08-24 拍板）：固定在主界面上方、不可拖动；点遮罩（主界面）=关闭，右上角叉=关闭 */}
+      {settingsOpen && (
+        <div
+          className="settings-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSettingsOpen(false)
+          }}
+        >
+          <div className="settings-panel">
+            <SettingsPage onClose={() => setSettingsOpen(false)} />
+          </div>
+        </div>
       )}
 
       <Toast toasts={toasts} />

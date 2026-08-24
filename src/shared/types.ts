@@ -217,6 +217,21 @@ export const DEFAULT_SETTINGS: Settings = {
   onboarded: false
 }
 
+/** 环境监测项（设置-关于组下方；2026-08-24 拍板：检测电脑装了哪些运行时） */
+export interface EnvCheckItem {
+  key: string
+  /** 显示名（Node.js / Python / Docker / Bun） */
+  name: string
+  /** 装没装 */
+  ok: boolean
+  /** 已装时的版本号 */
+  version?: string
+  /** 没装时的作用说明 */
+  hint?: string
+  /** 没装时的安装官网 */
+  link?: string
+}
+
 /** 渲染层可用的全部 API（preload 通过 contextBridge 暴露为 window.api） */
 export interface ReopenApi {
   /** 拖拽的 File 对象 → 磁盘路径（Electron 32+ 需 webUtils） */
@@ -246,6 +261,8 @@ export interface ReopenApi {
   closeSettingsWindow(): Promise<void>
   /** 自动检索电脑里装的浏览器（app 名列表，默认浏览器选择用） */
   listBrowsers(): Promise<string[]>
+  /** 环境监测：检测 Node.js/Python/Docker/Bun 装没装（设置-关于组下方） */
+  checkEnvironment(): Promise<EnvCheckItem[]>
   /** 开机自启（Mac 登录项）开关 */
   setLaunchAtLogin(v: boolean): Promise<void>
   /** 资料库导出/导入（JSON 文件对话框） */
