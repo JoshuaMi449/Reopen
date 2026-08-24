@@ -10,7 +10,7 @@ import trayIconAsset from '../../resources/tray-icon.png?asset'
 let tray: Tray | null = null
 let panel: BrowserWindow | null = null
 
-/** 托盘图标：用户 2026-08-20 指定的素材（镂空透明，M4 换正式设计）；黑白模板自动适配深色顶栏 */
+/** 托盘图标：2026-08-24 用户提供的正式菜单栏图标（纯白剪影，mono 模板模式自动适配深浅色顶栏） */
 function trayIconImage(mono: boolean): Electron.NativeImage {
   const img = nativeImage.createFromPath(trayIconAsset).resize({ width: 18, height: 18 })
   if (mono) img.setTemplateImage(true)
