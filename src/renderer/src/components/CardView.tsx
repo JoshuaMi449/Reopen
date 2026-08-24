@@ -1,5 +1,15 @@
 import { Fragment } from 'react'
-import { ExternalLink, Eye, FileCode2, Folder, Layers, Play, Square, Tag, Zap } from 'lucide-react'
+import {
+  ExternalLink,
+  Eye,
+  FileCode2,
+  Folder,
+  Layers,
+  MonitorPause,
+  MonitorPlay,
+  Tag,
+  Zap
+} from 'lucide-react'
 import {
   hasPreviewFallback,
   isPureWeb,
@@ -214,7 +224,7 @@ export function CardView({
                         onStop(p)
                       }}
                     >
-                      <Square size={15} />
+                      <MonitorPause size={15} />
                     </button>
                   ) : (
                     <button
@@ -225,7 +235,7 @@ export function CardView({
                         onStart(p)
                       }}
                     >
-                      <Play size={15} />
+                      <MonitorPlay size={15} />
                     </button>
                   )}
                 </span>

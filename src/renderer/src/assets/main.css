@@ -2,20 +2,21 @@
    六套主题（PRD 3.8）：莫兰迪（默认）/海洋/石墨 × 亮暗，CSS 变量驱动；
    风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
-/* ---- 浅色三套 ---- */
+/* ---- 浅色三套（2026-08-24 拍板：底色体系与 Proma 一致——纯白背景/白卡片/浅灰边框 #e5e5e5/近黑文字；
+   三套只保留主色差异，同深色的对称处理） ---- */
 :root,
 :root[data-theme='morandi'] {
   /* 晨雾暖沙 */
-  --bg: #ece8e2;
+  --bg: #ffffff;
   --card: #ffffff;
   --primary: #c0a29a;
   --primary-strong: #a8877d;
   --accent: #b58a3e; /* 辅助强调色（角标等小元素），与主题色搭配（2026-08-20 验收整改） */
-  --text: #3a3433;
-  --text-dim: #8a817c;
-  --border: #ddd6cd;
-  --hover: #faf7f3;
-  --input-bg: #fdfbf8;
+  --text: #0a0a0a;
+  --text-dim: #737373;
+  --border: #e5e5e5;
+  --hover: #f5f5f5;
+  --input-bg: #f5f5f5;
   --danger-bg: #fdf3f2;
   --ok: #7ca982;
   --warn: #d9b45b;
@@ -24,15 +25,16 @@
 
 :root[data-theme='ocean'] {
   /* 晴空 */
-  --bg: #ecf2f7;
+  --bg: #ffffff;
   --card: #ffffff;
   --primary: #408abf;
   --primary-strong: #34739f;
-  --text: #2c3a44;
-  --text-dim: #7d8a94;
-  --border: #d7e2ea;
-  --hover: #f5f9fc;
-  --input-bg: #fcfdfe;
+  --accent: #b58a3e;
+  --text: #0a0a0a;
+  --text-dim: #737373;
+  --border: #e5e5e5;
+  --hover: #f5f5f5;
+  --input-bg: #f5f5f5;
   --danger-bg: #fdf4f3;
   --ok: #5f9d7c;
   --warn: #d9a24b;
@@ -41,15 +43,16 @@
 
 :root[data-theme='slate'] {
   /* 晨雾 */
-  --bg: #e9e9e6;
+  --bg: #ffffff;
   --card: #ffffff;
   --primary: #4a4a45;
   --primary-strong: #5c5c55;
-  --text: #33332f;
-  --text-dim: #84847c;
-  --border: #d8d8d2;
-  --hover: #f6f6f3;
-  --input-bg: #fbfbf9;
+  --accent: #b58a3e;
+  --text: #0a0a0a;
+  --text-dim: #737373;
+  --border: #e5e5e5;
+  --hover: #f5f5f5;
+  --input-bg: #f5f5f5;
   --danger-bg: #fdf3f2;
   --ok: #6f9478;
   --warn: #b98a4a; /* 强调琥珀 */
@@ -266,7 +269,7 @@ select {
   gap: 2px;
 }
 
-/* 底部区域（2026-08-24 拍板）：上方运行数量行（Proma 左下角排版：icon+文字）+ 下方 wordmark+设置 icon 整条水平居中；
+/* 底部区域（2026-08-24 拍板）：上方运行数量行（Proma 左下角排版：icon+文字）+ 下方 wordmark+设置 icon；
    整条=一个整体，hover 高亮、可点开设置；no-drag 必须（sidebar 是窗口拖动区，不加会吞掉点击和 hover） */
 .sidebar-bottom-area {
   margin-top: auto;
@@ -284,6 +287,8 @@ select {
   font-size: 11px;
   color: var(--text-dim);
   padding: 4px 0;
+  /* 与下方 wordmark 的首字母 R 左缘对齐（sidebar padding 8 + sidebar-bottom padding 6 + wordmark margin 17 = 31 → 23px 补偿；2026-08-24 修正） */
+  margin-left: 23px;
 }
 
 .sidebar-running-dot {
@@ -297,8 +302,7 @@ select {
 .sidebar-bottom {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: space-between;
   padding: 8px 6px;
   border-radius: 8px;
   cursor: pointer;
@@ -309,10 +313,12 @@ select {
   background: var(--hover);
 }
 
-/* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白 */
+/* wordmark：HFPoohBear 渲染 PNG（黑色字），深色主题反白；
+   往右移一个首字母 R 的宽度（2026-08-24 拍板；wordmark 634×212 实测 R 宽 136px → 26px 显示 = 16.7px） */
 .sidebar-logo-word {
   height: 26px; /* 回到最初文字版观感大小（2026-08-20 实测反馈） */
   width: auto;
+  margin-left: 17px;
 }
 
 .sidebar-settings-btn {

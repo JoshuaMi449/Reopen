@@ -3,9 +3,9 @@ import {
   ExternalLink,
   FileCode2,
   Folder,
-  Play,
+  MonitorPlay,
   Settings as SettingsIcon,
-  Square,
+  MonitorPause,
   XCircle
 } from 'lucide-react'
 import type { Project, ProjectStatusEvent } from '../../../shared/types'
@@ -91,9 +91,9 @@ export function TrayPanel(): React.JSX.Element {
                   </button>
                 )}
                 {st === 'running' || st === 'starting' ? (
-                  <Square size={13} className="tray-item-action" />
+                  <MonitorPause size={13} className="tray-item-action" />
                 ) : (
-                  <Play size={13} className="tray-item-action" />
+                  <MonitorPlay size={13} className="tray-item-action" />
                 )}
               </div>
             )

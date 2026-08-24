@@ -13,6 +13,11 @@ export function markQuitting(): void {
   quitting = true
 }
 
+/** 主窗口引用（设置窗口 parent 用：设置只盖在主窗口上，不置顶于其他应用，2026-08-24 用户澄清） */
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
 export function createWindow(): void {
   // 默认尺寸按主屏工作区 55% 宽、16:10 比例（2026-08-20 拍板：默认再宽一点，比例=电脑屏幕比例）
   const { workArea } = screen.getPrimaryDisplay()

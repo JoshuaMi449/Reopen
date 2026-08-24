@@ -6,10 +6,10 @@ import {
   FileCode2,
   Folder,
   Layers,
+  MonitorPause,
+  MonitorPlay,
   Pencil,
-  Play,
   RotateCcw,
-  Square,
   Trash2,
   X
 } from 'lucide-react'
@@ -158,7 +158,7 @@ export function DetailDrawer({
                           onChildStop?.(c)
                         }}
                       >
-                        <Square size={14} />
+                        <MonitorPause size={14} />
                       </button>
                     ) : (
                       <button
@@ -169,7 +169,7 @@ export function DetailDrawer({
                           onChildStart?.(c)
                         }}
                       >
-                        <Play size={14} />
+                        <MonitorPlay size={14} />
                       </button>
                     )}
                   </div>
@@ -256,11 +256,11 @@ export function DetailDrawer({
             <>
               {active ? (
                 <button className="btn-secondary" onClick={onStop}>
-                  <Square size={14} /> 停止
+                  <MonitorPause size={14} /> 停止
                 </button>
               ) : (
                 <button className="btn-primary" onClick={onStart}>
-                  <Play size={14} /> 启动
+                  <MonitorPlay size={14} /> 启动
                 </button>
               )}
               <button className="btn-secondary" onClick={onStart} disabled={active}>

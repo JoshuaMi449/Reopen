@@ -1,8 +1,10 @@
 // 偏好设置窗口：独立窗口（Proma 式，2026-08-20 用户拍板），单例
-// 2026-08-24 拍板：无红黄绿按钮（titleBarStyle hidden，右上角自定义 ✕）、始终置顶、点主窗口即关闭
+// 2026-08-24 拍板：无红黄绿按钮（titleBarStyle hidden，右上角自定义 ✕）、
+// 只盖在主窗口上方（parent 子窗口，非全局置顶）、点主窗口即关闭
 import { BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
+import { getMainWindow } from './window'
 
 let settingsWin: BrowserWindow | null = null
 
@@ -18,8 +20,8 @@ export function openSettingsWindow(group?: string): void {
     height: 540,
     show: false,
     title: '偏好设置',
-    // 置顶：设置打开就一直显示在画面最上方（2026-08-24 拍板）
-    alwaysOnTop: true,
+    // 挂到主窗口下：设置窗口只显示在主窗口上方，切到其他应用不会被强置顶（2026-08-24 用户澄清"不是全部窗口的最上方"）
+    parent: getMainWindow() ?? undefined,
     // 完全隐藏系统标题栏（无红黄绿），标题栏和右上角叉由页面自绘（2026-08-24 拍板，与 Proma 一致）
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     webPreferences: {

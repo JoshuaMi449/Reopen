@@ -1,4 +1,13 @@
-import { ExternalLink, Eye, Folder, FileCode2, Play, Square, Tag, Zap } from 'lucide-react'
+import {
+  ExternalLink,
+  Eye,
+  Folder,
+  FileCode2,
+  MonitorPause,
+  MonitorPlay,
+  Tag,
+  Zap
+} from 'lucide-react'
 import {
   hasPreviewFallback,
   isPureWeb,
@@ -192,7 +201,7 @@ export function ProjectRow({
                 onStop()
               }}
             >
-              <Square size={16} />
+              <MonitorPause size={16} />
             </button>
           ) : (
             <button
@@ -203,7 +212,7 @@ export function ProjectRow({
                 onStart()
               }}
             >
-              <Play size={16} />
+              <MonitorPlay size={16} />
             </button>
           )}
         </span>

@@ -2,10 +2,10 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   ExternalLink,
   FolderSearch,
+  MonitorPause,
+  MonitorPlay,
   Palette,
   Pencil,
-  Play,
-  Square,
   Tag,
   Trash2,
   Zap
@@ -661,7 +661,7 @@ export default function App(): React.JSX.Element {
   const bulkMenuItems: MenuItem[] = [
     {
       label: `启动全部（${selectedIds.size}）`,
-      icon: <Play size={14} />,
+      icon: <MonitorPlay size={14} />,
       onClick: () => void handleBulkStart()
     },
     {
@@ -784,13 +784,13 @@ export default function App(): React.JSX.Element {
       if (st === 'running' || st === 'starting') {
         items.push({
           label: '停止',
-          icon: <Square size={14} />,
+          icon: <MonitorPause size={14} />,
           onClick: () => window.api.stopProject(p.id)
         })
       } else {
         items.push({
           label: '启动',
-          icon: <Play size={14} />,
+          icon: <MonitorPlay size={14} />,
           onClick: () => handleStart(p)
         })
       }

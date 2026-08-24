@@ -287,6 +287,54 @@ async function startService(
   return spawnAndWatch(project, rt, command, project.path, port)
 }
 
+/** 常见启动命令 → 依赖检查目标与安装指引（2026-08-24：启动前预检，缺运行时直接人话提示，不用等进程报错） */
+const DEP_RULES: { pattern: RegExp; candidates: string[]; hint: string }[] = [
+  {
+    pattern: /^(npm|npx|yarn|pnpm|node|tsx|ts-node)$/,
+    candidates: ['npm', 'node'],
+    hint: '这台电脑没装 Node.js，但这个项目要用 npm 启动。去 nodejs.org 下载安装，装完重启 Reopen 再点启动'
+  },
+  {
+    pattern: /^(python3|python|py)$/,
+    candidates: ['python3', 'python'],
+    hint: '这台电脑没装 Python，但这个项目要用 python 启动。去 python.org 下载安装，装完重启 Reopen 再点启动'
+  },
+  {
+    pattern: /^docker$/,
+    candidates: ['docker'],
+    hint: '这台电脑没装 Docker，但这个项目用 Docker 启动。去 docker.com 装 Docker Desktop，装完重启 Reopen 再点启动'
+  },
+  {
+    pattern: /^(bun|bunx)$/,
+    candidates: ['bun'],
+    hint: '这台电脑没装 Bun，但这个项目用 bun 启动。去 bun.sh 安装，装完重启 Reopen 再点启动'
+  },
+  {
+    pattern: /^deno$/,
+    candidates: ['deno'],
+    hint: '这台电脑没装 Deno，但这个项目用 deno 启动。去 deno.com 安装，装完重启 Reopen 再点启动'
+  }
+]
+
+/** 命令是否可执行（Windows 用 where，macOS/Linux 用 which） */
+function commandExists(cmd: string): boolean {
+  const probe = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    execSync(`${probe} ${cmd}`, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 启动命令缺依赖 → 返回安装指引文案；依赖齐 → null（自定义脚本交给 shell 报错，不预检） */
+function missingDependencyHint(command: string): string | null {
+  const token = command.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+  const rule = DEP_RULES.find((r) => r.pattern.test(token))
+  if (!rule) return null
+  return rule.candidates.some(commandExists) ? null : rule.hint
+}
+
 /** 起子进程（dev/python/docker 共用，Phase B 2026-08-21）：日志管道 + 退出处理 + 端口健康检查（无端口则存活即运行） */
 function spawnAndWatch(
   project: Project,
@@ -297,6 +345,12 @@ function spawnAndWatch(
   missingHint?: string,
   isRetry?: boolean
 ): StartResult {
+  // 依赖预检（2026-08-24 拍板"是不是要装 npm/node/python"）：spawn 之前先查运行时，缺了直接人话提示+安装指引
+  const depHint = missingDependencyHint(command)
+  if (depHint) {
+    fail(rt, project, depHint)
+    return { ok: false, reason: depHint }
+  }
   setStatus(rt, project, 'starting')
   const child = spawn(command, {
     cwd,
