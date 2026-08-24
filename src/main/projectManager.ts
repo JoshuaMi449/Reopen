@@ -183,6 +183,56 @@ function hasPermissionDenied(id: string): boolean {
   return /Permission denied/i.test((recentLogs.get(id) ?? []).join('\n'))
 }
 
+/** 最近日志里是否出现「跨平台拷贝依赖病」特征（2026-08-24 静默自愈：
+ *  Mac 收到 Windows 项目：原生模块 PE 二进制 / 缺 darwin 可选依赖 / 无执行位
+ *  Windows 收到 Mac 项目：Mach-O 二进制报"not a valid Win32 application"/DLL 初始化失败 */
+function hasCrossPlatformDeps(id: string): boolean {
+  return /ERR_DLOPEN_FAILED|not valid mach-o file|is not a valid Win32 application|DLL initialization routine failed|bad cpu type|exec format error|wrong architecture|not compatible|Cannot find module @rollup\/rollup-darwin|npm has a bug related to optional dependencies/i.test(
+    (recentLogs.get(id) ?? []).join('\n')
+  )
+}
+
+/** 跨平台依赖病静默自愈（2026-08-24 用户拍板"静默直接做好"）：自动 npm install --force 重装依赖，
+ *  装完自动重启项目；装失败才弹人话+「再试一次」按钮。只自动一次（isRetry 不重复） */
+function tryReinstallAndRetry(
+  project: Project,
+  rt: Runtime,
+  command: string,
+  cwd: string,
+  port: number | undefined,
+  missingHint: string | undefined,
+  isRetry: boolean | undefined
+): boolean {
+  if (isRetry) return false
+  emitLog(
+    project.id,
+    '检测到依赖是另一台系统的版本（Windows/Mac 拷贝的通病）——正在自动重新安装依赖，装完自动重启项目'
+  )
+  const child = spawn('npm install --force', {
+    cwd,
+    shell: true,
+    detached: true,
+    env: { ...process.env, PATH: buildPath() }
+  })
+  child.stdout?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
+  child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
+  child.on('exit', (code) => {
+    if (rt.status !== 'starting') return
+    if (code === 0) {
+      emitLog(project.id, '依赖装好了，自动重启项目')
+      spawnAndWatch(project, rt, command, cwd, port, missingHint, true)
+    } else {
+      fail(
+        rt,
+        project,
+        '依赖自动重装没成功（网络或权限问题）——点下面的「再试一次」重装，或看日志手动处理',
+        { kind: 'npm-install', label: '再试一次' }
+      )
+    }
+  })
+  return true
+}
+
 /** 给 node_modules/.bin 下没有执行位的脚本补执行位（Windows/网盘拷贝项目的通病），返回修复个数 */
 function fixBinPermissions(cwd: string): number {
   try {
@@ -494,6 +544,13 @@ function spawnAndWatch(
       if (
         hasPermissionDenied(project.id) &&
         tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+      ) {
+        return
+      }
+      // 跨平台依赖病静默自愈（2026-08-24 用户拍板"静默直接做好"）：自动重装依赖+重启
+      if (
+        hasCrossPlatformDeps(project.id) &&
+        tryReinstallAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
       ) {
         return
       }
