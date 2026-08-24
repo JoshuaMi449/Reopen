@@ -193,6 +193,8 @@ export interface Settings {
   notifyOnFail: boolean
   /** Onboarding 是否已完成（仅首次显示） */
   onboarded: boolean
+  /** 打开项目网页用的默认浏览器（app 名，如 Google Chrome；空=系统默认浏览器；2026-08-24 拍板） */
+  defaultBrowser?: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -240,6 +242,10 @@ export interface ReopenApi {
   quitApp(): Promise<void>
   /** 打开偏好设置窗口（独立窗口，Proma 式） */
   openSettingsWindow(group?: string): Promise<void>
+  /** 关闭偏好设置窗口（右上角 ✕） */
+  closeSettingsWindow(): Promise<void>
+  /** 自动检索电脑里装的浏览器（app 名列表，默认浏览器选择用） */
+  listBrowsers(): Promise<string[]>
   /** 开机自启（Mac 登录项）开关 */
   setLaunchAtLogin(v: boolean): Promise<void>
   /** 资料库导出/导入（JSON 文件对话框） */

@@ -354,7 +354,7 @@ function spawnAndWatch(
           touchStartedAt(project.id)
           touchLastPort(project.id, checkPort)
           if (project.openBrowser) {
-            shell.openExternal(`http://127.0.0.1:${checkPort}`)
+            openUrl(`http://127.0.0.1:${checkPort}`)
           }
         } else {
           // S8：端口漂移（vite 端口被占自动 +1）——日志里出现实际端口就切换检查目标
@@ -460,7 +460,7 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
     touchLastPort(project.id, port)
     emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${servedEntry}`)
     if (project.openBrowser) {
-      shell.openExternal(`http://127.0.0.1:${port}${servedEntry}`)
+      openUrl(`http://127.0.0.1:${port}${servedEntry}`)
     }
     return { ok: true }
   } catch (err) {
@@ -523,6 +523,16 @@ export async function autoStartAll(): Promise<void> {
   }
 }
 
+/** 打开链接：用户设了默认浏览器 → open -a 指定浏览器；否则系统默认（2026-08-24 拍板"偏好设置里选浏览器"） */
+function openUrl(url: string): void {
+  const browser = getSettings().defaultBrowser
+  if (browser) {
+    spawn('open', ['-a', browser, url], { detached: true }).unref()
+  } else {
+    shell.openExternal(url)
+  }
+}
+
 /** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单） */
 export async function openProjectBrowser(id: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
@@ -532,11 +542,11 @@ export async function openProjectBrowser(id: string): Promise<StartResult> {
     return { ok: false, reason: '项目还没启动，先点启动' }
   }
   if (project.type === 'web') {
-    shell.openExternal(`http://127.0.0.1:${rt.port}${rt.entryPath ?? '/'}`)
+    openUrl(`http://127.0.0.1:${rt.port}${rt.entryPath ?? '/'}`)
   } else {
     const port = rt.port ?? project.port
     if (!port) return { ok: false, reason: '该项目没有端口，不知道打开哪个地址' }
-    shell.openExternal(`http://127.0.0.1:${port}`)
+    openUrl(`http://127.0.0.1:${port}`)
   }
   return { ok: true }
 }

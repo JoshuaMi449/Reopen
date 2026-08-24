@@ -1,6 +1,6 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { readFileSync, writeFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { NewProjectInput, Project, Settings } from '../shared/types'
 import { detectPath, parseApp } from './detect'
@@ -11,7 +11,7 @@ import {
   startProject,
   stopProject
 } from './projectManager'
-import { openSettingsWindow } from './settingsWindow'
+import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
 import { refreshShortcuts } from './shortcuts'
 import {
   addProject,
@@ -29,6 +29,56 @@ function broadcastSettings(settings: Settings): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('settings:changed', settings)
   }
+}
+
+/** 常见浏览器 .app 名单（显示名：去 .app 后缀，2026-08-24 拍板"自动检索电脑有哪些浏览器"） */
+const KNOWN_BROWSERS = [
+  'Safari',
+  'Google Chrome',
+  'Google Chrome Canary',
+  'Microsoft Edge',
+  'Firefox',
+  'Firefox Developer Edition',
+  'Arc',
+  'Brave Browser',
+  'Opera',
+  'Opera GX',
+  'Vivaldi',
+  'Chromium',
+  'Mozilla Firefox',
+  'DuckDuckGo',
+  '360Chrome',
+  'QQBrowser'
+]
+
+/** 扫描常见位置，返回这台电脑里装了的浏览器 app 名（按名单顺序） */
+function listBrowsers(): string[] {
+  const dirs = [
+    '/Applications',
+    '/System/Applications',
+    join(app.getPath('home'), 'Applications'),
+    '/Applications/Setapp'
+  ]
+  const found = new Set<string>()
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue
+    let names: string[] = []
+    try {
+      names = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (!name.endsWith('.app')) continue
+      const label = name.slice(0, -4)
+      // 名单命中直接收；另对 Chromium 系做兜底（XXX.app 内容与 Chrome 同款壳）
+      if (KNOWN_BROWSERS.includes(label) || /chrome|browser|firefox|safari|edge/i.test(label)) {
+        found.add(label)
+      }
+    }
+  }
+  // Safari 特殊：系统应用位置在 /System/Applications，扫描到才算
+  return Array.from(found)
 }
 
 export function registerIpc(): void {
@@ -73,6 +123,8 @@ export function registerIpc(): void {
   // 窗口与应用
   ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
   ipcMain.handle('window:open-settings', (_e, group?: string) => openSettingsWindow(group))
+  ipcMain.handle('window:close-settings', () => closeSettingsWindow())
+  ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })

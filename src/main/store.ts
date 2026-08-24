@@ -117,6 +117,20 @@ export function getSettings(): Settings {
   if (!settings) settings = { ...DEFAULT_SETTINGS }
   // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（2026-08-20）
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
+  // 旧数据迁移：特殊风格七套改名换代为 Proma 六套（2026-08-24 拍板；磷光→森息夜语最接近）
+  const STYLE_MAP: Record<string, string> = {
+    'special-sl': 'special-clouddancer',
+    'special-ol': 'special-oceanlight',
+    'special-fl': 'special-forestlight',
+    'special-od': 'special-oceandark',
+    'special-fd': 'special-forestdark',
+    'special-md': 'special-slatedark',
+    'special-td': 'special-forestdark'
+  }
+  if (settings.specialStyle && STYLE_MAP[settings.specialStyle]) {
+    settings = { ...settings, specialStyle: STYLE_MAP[settings.specialStyle] }
+    saveSettings({ specialStyle: settings.specialStyle })
+  }
   return settings
 }
 

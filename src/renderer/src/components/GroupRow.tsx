@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Layers, Tag } from 'lucide-react'
+import { ChevronDown, ChevronRight, Layers, Tag, Zap } from 'lucide-react'
 import type { Project } from '../../../shared/types'
 
 interface Props {
@@ -21,6 +21,11 @@ interface Props {
   onDragOver(e: React.DragEvent): void
   onDragEnd(e: React.DragEvent): void
   onDrop(e: React.DragEvent): void
+  /** 框选多选中（2026-08-24 拍板）：高亮描边 */
+  selected?: boolean
+  /** 有选中时点击=切换选中（代替展开/收起） */
+  selectMode?: boolean
+  onSelectToggle?(): void
 }
 
 /** 项目组行（2026-08-21 拍板）：展开箭头 + 组名 + 标签 + 子项摘要；点击=展开/收起，不启动 */
@@ -39,14 +44,20 @@ export function GroupRow({
   onDragStart,
   onDragOver,
   onDragEnd,
-  onDrop
+  onDrop,
+  selected,
+  selectMode,
+  onSelectToggle
 }: Props): React.JSX.Element {
   return (
-    <div className={`project-row group-row ${dragging ? 'dragging' : ''}`}>
+    <div
+      className={`project-row group-row ${dragging ? 'dragging' : ''} ${selected ? 'selected' : ''}`}
+      data-pid={group.id}
+    >
       <div
         className={`row-main ${dropTarget ? 'drop-target' : ''}`}
         draggable={sortDraggable}
-        onClick={onToggle}
+        onClick={selectMode ? onSelectToggle : onToggle}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)
@@ -65,7 +76,7 @@ export function GroupRow({
         <span className="row-name">{group.name}</span>
         {autoStartChecked && (
           <span className="autostart-check" title="在自启项里（开机只拉组内成品网站）">
-            <Check size={13} />
+            <Zap size={13} />
           </span>
         )}
         {group.tags.length > 0 && (

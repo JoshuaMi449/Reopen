@@ -1,5 +1,15 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, FolderSearch, Palette, Pencil, Play, Square, Trash2 } from 'lucide-react'
+import {
+  ExternalLink,
+  FolderSearch,
+  Palette,
+  Pencil,
+  Play,
+  Square,
+  Tag,
+  Trash2,
+  Zap
+} from 'lucide-react'
 import type {
   DetectMulti,
   DetectNeedParseApp,
@@ -13,6 +23,7 @@ import type {
 } from '../../shared/types'
 import { DEFAULT_SETTINGS, isPureWeb } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
+import { BulkTagModal } from './components/BulkTagModal'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
@@ -93,6 +104,21 @@ export default function App(): React.JSX.Element {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   /** 自启项面板列是否打开（2026-08-21 拍板：占一列的嵌入式列卡片） */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
+  /** 框选多选的选中项目 id（2026-08-24 拍板：鼠标框选+右键批量操作） */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  /** 框选矩形（相对 project-list 容器；非空=正在框选） */
+  const [marqueeBox, setMarqueeBox] = useState<{
+    x: number
+    y: number
+    w: number
+    h: number
+  } | null>(null)
+  /** 批量右键菜单（选中的多个项目） */
+  const [bulkMenu, setBulkMenu] = useState<{ x: number; y: number } | null>(null)
+  /** 批量加标签弹窗（含冲突二次确认） */
+  const [bulkTag, setBulkTag] = useState<{ ids: string[] } | null>(null)
+  /** 批量删除二次确认 */
+  const [bulkDelete, setBulkDelete] = useState<{ ids: string[] } | null>(null)
   /** 新手引导是否显示（首次打开） */
   const [showOnboarding, setShowOnboarding] = useState(false)
   /** 系统当前亮暗（主题"跟随系统"用） */
@@ -102,6 +128,10 @@ export default function App(): React.JSX.Element {
   const searchRef = useRef<HTMLInputElement>(null)
   /** 自启 icon 引用（自启面板定位锚点） */
   const autoStartBtnRef = useRef<HTMLButtonElement>(null)
+  /** 项目列表容器（框选坐标基准，2026-08-24） */
+  const listRef = useRef<HTMLElement>(null)
+  /** 框选起点（相对列表容器；非空=正在框选） */
+  const marqueeStart = useRef<{ x: number; y: number } | null>(null)
 
   // 跟随系统亮暗变化
   useEffect(() => {
@@ -434,6 +464,223 @@ export default function App(): React.JSX.Element {
       window.removeEventListener('mousedown', onMouseDown)
     }
   }, [autoStartOpen])
+
+  // ---------- 框选多选（2026-08-24 拍板：空白处按住拖出矩形框，框住的项目被选中 → 右键批量操作） ----------
+
+  /** 在列表空白处按下左键 = 开始框选（点中项目本体不启动框选，保持点击/拖拽行为）。
+   *  window 监听在按下时挂、松开时卸（原生方式，避免 effect 依赖 churn） */
+  const beginMarquee = (e: React.MouseEvent): void => {
+    if (e.button !== 0) return
+    if ((e.target as Element).closest('[data-pid]')) return
+    const rect = listRef.current?.getBoundingClientRect()
+    if (!rect) return
+    marqueeStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    setSelectedIds(new Set())
+    setMarqueeBox({ x: marqueeStart.current.x, y: marqueeStart.current.y, w: 0, h: 0 })
+
+    const move = (ev: MouseEvent): void => {
+      const r = listRef.current?.getBoundingClientRect()
+      const start = marqueeStart.current
+      if (!r || !start) return
+      const x = ev.clientX - r.left
+      const y = ev.clientY - r.top
+      const box = {
+        x: Math.min(start.x, x),
+        y: Math.min(start.y, y),
+        w: Math.abs(x - start.x),
+        h: Math.abs(y - start.y)
+      }
+      setMarqueeBox(box)
+      // 实时计算与框相交的项目（矩形相交判定）
+      const sel = new Set<string>()
+      document.querySelectorAll<HTMLElement>('[data-pid]').forEach((el) => {
+        const er = el.getBoundingClientRect()
+        const rx = er.left - r.left
+        const ry = er.top - r.top
+        if (
+          rx < box.x + box.w &&
+          rx + er.width > box.x &&
+          ry < box.y + box.h &&
+          ry + er.height > box.y
+        ) {
+          sel.add(el.dataset.pid as string)
+        }
+      })
+      setSelectedIds(sel)
+    }
+    const up = (): void => {
+      marqueeStart.current = null
+      setMarqueeBox(null)
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
+  // Esc 清空选中/关闭批量菜单
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setSelectedIds(new Set())
+        setBulkMenu(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  /** 有选中时点击项目 = 切换选中（2026-08-24 拍板）；无选中时保持打开抽屉/展开组 */
+  const selectMode = selectedIds.size > 0
+
+  const toggleSelect = (id: string): void => {
+    setSelectedIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /** 项目右键：多选中且右键目标是选中之一 → 批量菜单；否则回到单项目菜单 */
+  const handleItemContextMenu = (e: React.MouseEvent, p: Project): void => {
+    if (selectedIds.size > 1 && selectedIds.has(p.id)) {
+      setBulkMenu({ x: e.clientX, y: e.clientY })
+      return
+    }
+    setSelectedIds(new Set([p.id]))
+    setMenu({ x: e.clientX, y: e.clientY, project: p })
+  }
+
+  /** 批量：启动全部（跳过项目组/纯网页/已在运行的） */
+  const handleBulkStart = async (): Promise<void> => {
+    let started = 0
+    let skipped = 0
+    for (const p of projects) {
+      if (!selectedIds.has(p.id)) continue
+      const st = statuses[p.id]?.status ?? 'stopped'
+      if (p.type === 'group' || isPureWeb(p) || st === 'running' || st === 'starting') {
+        skipped++
+        continue
+      }
+      const res = await window.api.startProject(p.id)
+      if (res.ok) started++
+      else skipped++
+    }
+    toast(
+      started > 0
+        ? `已启动 ${started} 个项目${skipped > 0 ? `，跳过 ${skipped} 个` : ''}`
+        : `没有可启动的项目（跳过 ${skipped} 个）`,
+      started > 0 ? 'success' : 'info'
+    )
+    setSelectedIds(new Set())
+  }
+
+  /** 批量：从自启项移出 */
+  const handleBulkRemoveAutoStart = (): void => {
+    void updateSettings({
+      autoStartIds: settings.autoStartIds.filter((id) => !selectedIds.has(id))
+    })
+    toast('已从自启项移出', 'success')
+    setSelectedIds(new Set())
+  }
+
+  /** 批量加标签-第一步：算在别的标签里的项目数（不应用） */
+  const handleBulkTagCheck = (tag: string): Promise<number> => {
+    const ids = bulkTag?.ids ?? []
+    const n = projects.filter(
+      (p) => ids.includes(p.id) && p.tags.length > 0 && !p.tags.includes(tag)
+    ).length
+    return Promise.resolve(n)
+  }
+
+  /** 批量加标签-第二步：应用（用户拍板规则：已有该标签跳过；无标签直接加；conflictMode=move 原标签换成新标签） */
+  const handleBulkTagApply = async (tag: string, conflictMode: 'skip' | 'move'): Promise<void> => {
+    const ids = bulkTag?.ids ?? []
+    let added = 0
+    for (const p of projects) {
+      if (!ids.includes(p.id)) continue
+      if (p.tags.includes(tag)) continue
+      let tags: string[]
+      if (p.tags.length === 0) tags = [tag]
+      else if (conflictMode === 'move') tags = [tag]
+      else continue
+      const updated = await window.api.updateProject(p.id, {
+        name: p.name,
+        type: p.type,
+        path: p.path,
+        command: p.command,
+        port: p.port,
+        openBrowser: p.openBrowser,
+        note: p.note,
+        tags,
+        lastPort: p.lastPort,
+        entryPath: p.entryPath,
+        parentId: p.parentId,
+        launchModes: p.launchModes,
+        activeMode: p.activeMode
+      })
+      setProjects((ps) => ps.map((x) => (x.id === updated.id ? updated : x)))
+      added++
+    }
+    toast(`已给 ${added} 个项目加上「${tag}」标签`, 'success')
+    setBulkTag(null)
+    setSelectedIds(new Set())
+  }
+
+  /** 批量：删除（组连带子项；二次确认由 ConfirmDialog 兜底） */
+  const handleBulkDelete = async (): Promise<void> => {
+    const ids = bulkDelete?.ids ?? []
+    const targets = projects.filter((p) => ids.includes(p.id))
+    for (const p of targets) {
+      if (p.type === 'group') {
+        for (const c of childrenOf(p.id)) {
+          try {
+            await window.api.stopProject(c.id)
+          } catch {
+            // 没在运行就算了
+          }
+          await window.api.deleteProject(c.id)
+        }
+      }
+      await window.api.deleteProject(p.id)
+    }
+    setProjects((ps) =>
+      ps.filter(
+        (x) =>
+          !ids.includes(x.id) && !targets.some((t) => t.type === 'group' && x.parentId === t.id)
+      )
+    )
+    if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+    setBulkDelete(null)
+    setSelectedIds(new Set())
+    toast(`已移除 ${ids.length} 个项目`, 'success')
+  }
+
+  /** 批量右键菜单项 */
+  const bulkMenuItems: MenuItem[] = [
+    {
+      label: `启动全部（${selectedIds.size}）`,
+      icon: <Play size={14} />,
+      onClick: () => void handleBulkStart()
+    },
+    {
+      label: '加标签…',
+      icon: <Tag size={14} />,
+      onClick: () => setBulkTag({ ids: [...selectedIds] })
+    },
+    {
+      label: '从自启项移出',
+      icon: <Zap size={14} />,
+      onClick: handleBulkRemoveAutoStart
+    },
+    {
+      label: `删除 ${selectedIds.size} 个项目…`,
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: () => setBulkDelete({ ids: [...selectedIds] })
+    }
+  ]
 
   /** 松手后的平滑移动动画（FLIP，2026-08-21 拍板）：重排前记旧位置 → 重排后反向位移 → 过渡归零 */
   const animateFlip = (from: Map<HTMLElement, { x: number; y: number }>): void => {
@@ -819,6 +1066,7 @@ export default function App(): React.JSX.Element {
         tags={allTags}
         tagColor={tagColor}
         counts={counts}
+        runningCount={Object.values(statuses).filter((s) => s.status === 'running').length}
         onSelect={setCategory}
         onTagContextMenu={(tag, e) => setTagMenu({ x: e.clientX, y: e.clientY, tag })}
       />
@@ -844,7 +1092,23 @@ export default function App(): React.JSX.Element {
               autoStartBtnRef={autoStartBtnRef}
             />
 
-            <main className="project-list" data-tour="list">
+            <main
+              className="project-list"
+              data-tour="list"
+              ref={listRef}
+              onMouseDown={beginMarquee}
+            >
+              {marqueeBox && (
+                <div
+                  className="marquee-rect"
+                  style={{
+                    left: marqueeBox.x,
+                    top: marqueeBox.y,
+                    width: marqueeBox.w,
+                    height: marqueeBox.h
+                  }}
+                />
+              )}
               {projects.length === 0 ? (
                 <div className="empty">
                   还没有项目。
@@ -870,7 +1134,10 @@ export default function App(): React.JSX.Element {
                         }
                         tagColor={tagColor}
                         autoStartChecked={settings.autoStartIds.includes(p.id)}
-                        onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                        onContextMenu={(e) => handleItemContextMenu(e, p)}
+                        selected={selectedIds.has(p.id)}
+                        selectMode={selectMode}
+                        onSelectToggle={() => toggleSelect(p.id)}
                         sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
                         dragging={dragId === p.id}
                         dropTarget={dragOverId === p.id}
@@ -897,7 +1164,10 @@ export default function App(): React.JSX.Element {
                         onOpen={() => setSelectedId(p.id)}
                         onStart={() => handleStart(p)}
                         onStop={() => window.api.stopProject(p.id)}
-                        onContextMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                        onContextMenu={(e) => handleItemContextMenu(e, p)}
+                        selected={selectedIds.has(p.id)}
+                        selectMode={selectMode}
+                        onSelectToggle={() => toggleSelect(p.id)}
                         sortDraggable={
                           !p.parentId && (settings.sortMode === 'none' || settings.autoStartEnabled)
                         }
@@ -950,8 +1220,11 @@ export default function App(): React.JSX.Element {
                   onStart={handleStart}
                   onStop={(p) => window.api.stopProject(p.id)}
                   onViewPreview={(p) => handleViewPreview(p)}
-                  onContextMenu={(e, p) => setMenu({ x: e.clientX, y: e.clientY, project: p })}
+                  onContextMenu={(e, p) => handleItemContextMenu(e, p)}
                   childrenOf={childrenOf}
+                  selected={(p) => selectedIds.has(p.id)}
+                  selectMode={selectMode}
+                  onSelectToggle={(p) => toggleSelect(p.id)}
                 />
               )}
             </main>
@@ -1013,6 +1286,35 @@ export default function App(): React.JSX.Element {
           multi={multi}
           onConfirm={handleGroupCreate}
           onCancel={() => setMulti(null)}
+        />
+      )}
+
+      {bulkMenu && (
+        <ContextMenu
+          x={bulkMenu.x}
+          y={bulkMenu.y}
+          items={bulkMenuItems}
+          onClose={() => setBulkMenu(null)}
+        />
+      )}
+
+      {bulkTag && (
+        <BulkTagModal
+          count={bulkTag.ids.length}
+          existingTags={allTags}
+          onCheck={handleBulkTagCheck}
+          onApply={handleBulkTagApply}
+          onCancel={() => setBulkTag(null)}
+        />
+      )}
+
+      {bulkDelete && (
+        <ConfirmDialog
+          title="移除多个项目"
+          message={`确定把这 ${bulkDelete.ids.length} 个项目从 Reopen 移除吗？\n项目组会连带里面的子项目一起移除，不删你电脑上的原文件。`}
+          confirmText="移除"
+          onConfirm={() => void handleBulkDelete()}
+          onCancel={() => setBulkDelete(null)}
         />
       )}
 

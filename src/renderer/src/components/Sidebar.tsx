@@ -11,6 +11,8 @@ interface Props {
   /** 标签 → 染色（无颜色返回 undefined，默认无色） */
   tagColor(tag: string): string | undefined
   counts: { all: number; service: number; web: number }
+  /** 实时运行中的项目数量（底部状态行，2026-08-24 拍板，Proma 左下角排版） */
+  runningCount: number
   onSelect(c: Category): void
   /** 标签右键：重命名/删除/染色菜单（2026-08-21） */
   onTagContextMenu(tag: string, e: React.MouseEvent): void
@@ -24,6 +26,7 @@ export function Sidebar({
   tags,
   tagColor,
   counts,
+  runningCount,
   onSelect,
   onTagContextMenu,
   showUpdateDot
@@ -80,13 +83,19 @@ export function Sidebar({
         </div>
       )}
 
-      {/* 底部横条（2026-08-20 拍板，Proma 式）：wordmark 左、设置 icon 右，整条是一个整体——hover 整条高亮、整条可点开设置；有新版时 icon 右上角红点 */}
-      <div className="sidebar-bottom" onClick={() => window.api.openSettingsWindow()}>
-        <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
-        <button className="sidebar-settings-btn" title="设置">
-          <SettingsIcon size={15} />
-          {showUpdateDot && <span className="update-dot" />}
-        </button>
+      {/* 底部（2026-08-24 拍板）：运行数量行 + wordmark/设置 icon 整条水平居中；整条可点开设置，无分割线 */}
+      <div className="sidebar-bottom-area">
+        <div className="sidebar-running">
+          <span className="sidebar-running-dot" />
+          {runningCount} 个运行中
+        </div>
+        <div className="sidebar-bottom" onClick={() => window.api.openSettingsWindow()}>
+          <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
+          <button className="sidebar-settings-btn" title="设置">
+            <SettingsIcon size={15} />
+            {showUpdateDot && <span className="update-dot" />}
+          </button>
+        </div>
       </div>
     </aside>
   )

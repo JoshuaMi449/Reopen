@@ -1,70 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Database, Info, Keyboard, Monitor, Palette, Zap } from 'lucide-react'
+import { Check, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
 import type { Project, Settings } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
 
-// 特殊风格七套（Proma 式竖卡；2026-08-20 验收整改：多色搭配——中性背景 + 主题色 + 辅助色，预览卡用聊天气泡拼贴展示）
+// 特殊风格六套（2026-08-24 拍板：与 Proma 0.9.10 一模一样——名字与双圆预览色取自用户本机 Proma）
 const SPECIAL_STYLES = [
-  {
-    id: 'special-sl',
-    name: '雾白',
-    bg: '#f0f1f5',
-    accent: '#8b93c9',
-    sub: '#aab0d8',
-    bubble: '#ffffff'
-  },
-  {
-    id: 'special-ol',
-    name: '天青',
-    bg: '#e9f4fb',
-    accent: '#3fa0d8',
-    sub: '#7cc4ea',
-    bubble: '#ffffff'
-  },
-  {
-    id: 'special-fl',
-    name: '苔绿',
-    bg: '#eef3ec',
-    accent: '#6f9d7b',
-    sub: '#9dbfa4',
-    bubble: '#ffffff'
-  },
-  {
-    id: 'special-od',
-    name: '山霭',
-    bg: '#171c24',
-    accent: '#7f95b3',
-    sub: '#95a9c4',
-    bubble: '#2b3545'
-  },
-  {
-    id: 'special-fd',
-    name: '林夜',
-    bg: '#141a15',
-    accent: '#7ba382',
-    sub: '#93b598',
-    bubble: '#24302a'
-  },
-  {
-    id: 'special-md',
-    name: '赭夜',
-    bg: '#1e1b20',
-    accent: '#c9a89e',
-    sub: '#b08f85',
-    bubble: '#33303a'
-  },
-  {
-    id: 'special-td',
-    name: '磷光',
-    bg: '#0f130f',
-    accent: '#7da560',
-    sub: '#96c17a',
-    bubble: '#1c241a',
-    tooltip: '该主题包含轻微闪烁动画'
-  }
+  { id: 'special-clouddancer', name: '云朵舞者', pleft: '#e8e6e2', pright: '#f0efec' },
+  { id: 'special-oceanlight', name: '晴空碧海', pleft: '#b8d4e5', pright: '#d4e5f0' },
+  { id: 'special-forestlight', name: '森息晨光', pleft: '#e2e9e4', pright: '#3f8361' },
+  { id: 'special-oceandark', name: '苍穹暮色', pleft: '#1a2535', pright: '#3a6a9b' },
+  { id: 'special-forestdark', name: '森息夜语', pleft: '#1b2721', pright: '#185337' },
+  { id: 'special-slatedark', name: '莫兰迪夜', pleft: '#272429', pright: '#c9a89e' }
 ]
 
 const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
@@ -109,100 +58,105 @@ export function SettingsPage(): React.JSX.Element {
   // 通用组
   const general = (
     <div className="settings-group">
-      <SettingRow label="自启项总开关" hint="打开软件后，自动启动你放进来的产品">
-        <Switch
-          checked={settings.autoStartEnabled}
-          onChange={(v) => update({ autoStartEnabled: v })}
-        />
-      </SettingRow>
+      <div className="settings-card">
+        <SettingRow label="自启项总开关" hint="打开软件后，自动启动你放进来的产品">
+          <Switch
+            checked={settings.autoStartEnabled}
+            onChange={(v) => update({ autoStartEnabled: v })}
+          />
+        </SettingRow>
 
-      <SettingRow label="开机自启" hint="让 Reopen 随 Mac 开机自动打开（加入登录项）">
-        <Switch
-          checked={settings.launchAtLogin}
-          onChange={(v) => {
-            window.api.setLaunchAtLogin(v)
-            update({ launchAtLogin: v })
-          }}
-        />
-      </SettingRow>
+        <SettingRow label="开机自启" hint="让 Reopen 随 Mac 开机自动打开（加入登录项）">
+          <Switch
+            checked={settings.launchAtLogin}
+            onChange={(v) => {
+              window.api.setLaunchAtLogin(v)
+              update({ launchAtLogin: v })
+            }}
+          />
+        </SettingRow>
 
-      <SettingRow label="关闭时最小化到托盘" hint="点红色关闭按钮时隐藏到右上角菜单栏，而不是退出">
-        <Switch checked={settings.closeToTray} onChange={(v) => update({ closeToTray: v })} />
-      </SettingRow>
+        <SettingRow
+          label="关闭时最小化到托盘"
+          hint="点红色关闭按钮时隐藏到右上角菜单栏，而不是退出"
+        >
+          <Switch checked={settings.closeToTray} onChange={(v) => update({ closeToTray: v })} />
+        </SettingRow>
 
-      <SettingRow label="默认浏览器" hint="跟随系统默认浏览器（macOS 系统设置里改）">
-        <span className="settings-static">系统默认</span>
-      </SettingRow>
+        <SettingRow label="默认浏览器" hint="打开项目网页时用哪个浏览器（自动检索你电脑里的）">
+          <BrowserSelect
+            value={settings.defaultBrowser ?? ''}
+            onChange={(v) => update({ defaultBrowser: v })}
+          />
+        </SettingRow>
 
-      <SettingRow label="语言" hint="中英切换随 M4 发布里程碑上线">
-        <span className="settings-static">简体中文</span>
-      </SettingRow>
+        <SettingRow label="语言" hint="中英切换随 M4 发布里程碑上线">
+          <span className="settings-static">简体中文</span>
+        </SettingRow>
 
-      <SettingRow label="启动失败通知" hint="项目启动失败时发系统通知（右上角弹窗）">
-        <Switch checked={settings.notifyOnFail} onChange={(v) => update({ notifyOnFail: v })} />
-      </SettingRow>
+        <SettingRow label="启动失败通知" hint="项目启动失败时发系统通知（右上角弹窗）">
+          <Switch checked={settings.notifyOnFail} onChange={(v) => update({ notifyOnFail: v })} />
+        </SettingRow>
+      </div>
     </div>
   )
 
-  // 外观组（2026-08-20 验收整改：删主题风格三卡与紧凑间距；主题模式四段 + 特殊风格多色卡片）
+  // 外观组（2026-08-24 拍板：与 Proma 一致——主题模式四段+特殊风格六套，都包在圆角卡里）
   const appearance = (
     <div className="settings-group">
-      <div className="settings-subtitle">主题模式</div>
-      <div className="segmented">
-        {(
-          [
-            { key: 'light', label: '浅色' },
-            { key: 'dark', label: '深色' },
-            { key: 'system', label: '跟随系统' },
-            { key: 'special', label: '特殊风格' }
-          ] as const
-        ).map((m) => (
-          <button
-            key={m.key}
-            className={settings.darkMode === m.key ? 'seg-on' : ''}
-            onClick={() =>
-              update({
-                darkMode: m.key,
-                specialStyle: m.key === 'special' ? settings.specialStyle : ''
-              })
-            }
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="settings-subtitle">特殊风格</div>
-      <div className="special-grid">
-        {SPECIAL_STYLES.map((st) => {
-          const isSelected = settings.darkMode === 'special' && settings.specialStyle === st.id
-          return (
-            <button
-              key={st.id}
-              className={`special-card ${isSelected ? 'special-on' : ''}`}
-              title={st.tooltip}
-              onClick={() => update({ darkMode: 'special', specialStyle: st.id })}
-            >
-              <div
-                className="special-preview"
-                style={
-                  {
-                    '--pbg': st.bg,
-                    '--pacc': st.accent,
-                    '--psub': st.sub,
-                    '--pbub': st.bubble
-                  } as React.CSSProperties
+      <div className="settings-card">
+        <div className="settings-card-block">
+          <div className="settings-subtitle">主题模式</div>
+          <div className="segmented">
+            {(
+              [
+                { key: 'light', label: '浅色' },
+                { key: 'dark', label: '深色' },
+                { key: 'system', label: '跟随系统' },
+                { key: 'special', label: '特殊风格' }
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.key}
+                className={settings.darkMode === m.key ? 'seg-on' : ''}
+                onClick={() =>
+                  update({
+                    darkMode: m.key,
+                    specialStyle: m.key === 'special' ? settings.specialStyle : ''
+                  })
                 }
-              />
-              {isSelected && (
-                <span className="special-check">
-                  <Check size={10} />
-                </span>
-              )}
-              <span>{st.name}</span>
-            </button>
-          )
-        })}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="settings-card-block">
+          <div className="settings-subtitle">特殊风格</div>
+          <div className="special-grid">
+            {SPECIAL_STYLES.map((st) => {
+              const isSelected = settings.darkMode === 'special' && settings.specialStyle === st.id
+              return (
+                <button
+                  key={st.id}
+                  className={`special-card ${isSelected ? 'special-on' : ''}`}
+                  onClick={() => update({ darkMode: 'special', specialStyle: st.id })}
+                >
+                  <div
+                    className="special-preview"
+                    style={{ '--pleft': st.pleft, '--pright': st.pright } as React.CSSProperties}
+                  />
+                  {isSelected && (
+                    <span className="special-check">
+                      <Check size={10} />
+                    </span>
+                  )}
+                  <span>{st.name}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -210,26 +164,28 @@ export function SettingsPage(): React.JSX.Element {
   // 菜单栏组
   const menubar = (
     <div className="settings-group">
-      <SettingRow label="显示菜单栏图标" hint="右上角顶栏的 Reopen 图标（点击弹快速启停面板）">
-        <Switch checked={settings.trayEnabled} onChange={(v) => update({ trayEnabled: v })} />
-      </SettingRow>
+      <div className="settings-card">
+        <SettingRow label="显示菜单栏图标" hint="右上角顶栏的 Reopen 图标（点击弹快速启停面板）">
+          <Switch checked={settings.trayEnabled} onChange={(v) => update({ trayEnabled: v })} />
+        </SettingRow>
 
-      <SettingRow label="图标样式" hint="黑白：自动适配深色顶栏；彩色：使用品牌色">
-        <div className="settings-seg">
-          <button
-            className={`settings-seg-btn ${settings.trayIcon === 'mono' ? 'settings-seg-on' : ''}`}
-            onClick={() => update({ trayIcon: 'mono' })}
-          >
-            黑白
-          </button>
-          <button
-            className={`settings-seg-btn ${settings.trayIcon === 'color' ? 'settings-seg-on' : ''}`}
-            onClick={() => update({ trayIcon: 'color' })}
-          >
-            彩色
-          </button>
-        </div>
-      </SettingRow>
+        <SettingRow label="图标样式" hint="黑白：自动适配深色顶栏；彩色：使用品牌色">
+          <div className="settings-seg">
+            <button
+              className={`settings-seg-btn ${settings.trayIcon === 'mono' ? 'settings-seg-on' : ''}`}
+              onClick={() => update({ trayIcon: 'mono' })}
+            >
+              黑白
+            </button>
+            <button
+              className={`settings-seg-btn ${settings.trayIcon === 'color' ? 'settings-seg-on' : ''}`}
+              onClick={() => update({ trayIcon: 'color' })}
+            >
+              彩色
+            </button>
+          </div>
+        </SettingRow>
+      </div>
     </div>
   )
 
@@ -238,68 +194,75 @@ export function SettingsPage(): React.JSX.Element {
 
   const shortcuts = (
     <div className="settings-group">
-      <SettingRow
-        label="全局唤起窗口"
-        hint="在任何软件里按下，唤起/隐藏 Reopen 窗口（至少带一个修饰键）"
-      >
-        {capturing === 'hotkey' ? (
-          <KeyCapture
-            defaultValue={settings.hotkey}
-            onDone={(acc) => {
-              update({ hotkey: acc })
-              setCapturing(null)
-            }}
-            onCancel={() => setCapturing(null)}
-          />
-        ) : (
-          <button className="settings-kbd settings-kbd-btn" onClick={() => setCapturing('hotkey')}>
-            {displayAcc(settings.hotkey)}
-          </button>
-        )}
-      </SettingRow>
+      <div className="settings-card">
+        <SettingRow
+          label="全局唤起窗口"
+          hint="在任何软件里按下，唤起/隐藏 Reopen 窗口（至少带一个修饰键）"
+        >
+          {capturing === 'hotkey' ? (
+            <KeyCapture
+              defaultValue={settings.hotkey}
+              onDone={(acc) => {
+                update({ hotkey: acc })
+                setCapturing(null)
+              }}
+              onCancel={() => setCapturing(null)}
+            />
+          ) : (
+            <button
+              className="settings-kbd settings-kbd-btn"
+              onClick={() => setCapturing('hotkey')}
+            >
+              {displayAcc(settings.hotkey)}
+            </button>
+          )}
+        </SettingRow>
+      </div>
 
       <div className="settings-subtitle">快捷启动项目（一键启动）</div>
       {projects.length === 0 ? (
         <div className="settings-static">还没有登记项目</div>
       ) : (
-        projects.map((p) => (
-          <div key={p.id} className="settings-row">
-            <div className="settings-row-text">
-              <div className="settings-row-label">{p.name}</div>
-            </div>
-            <div className="settings-row-control">
-              {capturing === p.id ? (
-                <KeyCapture
-                  defaultValue={settings.quickLaunch[p.id]}
-                  onDone={(acc) => {
-                    update({ quickLaunch: { ...settings.quickLaunch, [p.id]: acc } })
-                    setCapturing(null)
-                  }}
-                  onCancel={() => setCapturing(null)}
-                />
-              ) : settings.quickLaunch[p.id] ? (
-                <span className="settings-bound">
-                  <span className="settings-kbd">{displayAcc(settings.quickLaunch[p.id])}</span>
-                  <button
-                    className="icon-btn"
-                    title="解绑"
-                    onClick={() => {
-                      const ql = { ...settings.quickLaunch }
-                      delete ql[p.id]
-                      update({ quickLaunch: ql })
+        <div className="settings-card">
+          {projects.map((p) => (
+            <div key={p.id} className="settings-row">
+              <div className="settings-row-text">
+                <div className="settings-row-label">{p.name}</div>
+              </div>
+              <div className="settings-row-control">
+                {capturing === p.id ? (
+                  <KeyCapture
+                    defaultValue={settings.quickLaunch[p.id]}
+                    onDone={(acc) => {
+                      update({ quickLaunch: { ...settings.quickLaunch, [p.id]: acc } })
+                      setCapturing(null)
                     }}
-                  >
-                    ✕
+                    onCancel={() => setCapturing(null)}
+                  />
+                ) : settings.quickLaunch[p.id] ? (
+                  <span className="settings-bound">
+                    <span className="settings-kbd">{displayAcc(settings.quickLaunch[p.id])}</span>
+                    <button
+                      className="icon-btn"
+                      title="解绑"
+                      onClick={() => {
+                        const ql = { ...settings.quickLaunch }
+                        delete ql[p.id]
+                        update({ quickLaunch: ql })
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ) : (
+                  <button className="btn-secondary" onClick={() => setCapturing(p.id)}>
+                    绑定…
                   </button>
-                </span>
-              ) : (
-                <button className="btn-secondary" onClick={() => setCapturing(p.id)}>
-                  绑定…
-                </button>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
 
       <div className="settings-subtitle">应用内快捷键</div>
@@ -341,16 +304,18 @@ export function SettingsPage(): React.JSX.Element {
       </div>
 
       <div className="settings-subtitle">数据备份</div>
-      <SettingRow label="导出资料库" hint="把项目清单和设置导出成 JSON 文件">
-        <button className="btn-secondary" onClick={() => window.api.exportData()}>
-          导出…
-        </button>
-      </SettingRow>
-      <SettingRow label="导入资料库" hint="从 JSON 文件恢复项目清单和设置（与现有项目合并）">
-        <button className="btn-secondary" onClick={() => window.api.importData()}>
-          导入…
-        </button>
-      </SettingRow>
+      <div className="settings-card">
+        <SettingRow label="导出资料库" hint="把项目清单和设置导出成 JSON 文件">
+          <button className="btn-secondary" onClick={() => window.api.exportData()}>
+            导出…
+          </button>
+        </SettingRow>
+        <SettingRow label="导入资料库" hint="从 JSON 文件恢复项目清单和设置（与现有项目合并）">
+          <button className="btn-secondary" onClick={() => window.api.importData()}>
+            导入…
+          </button>
+        </SettingRow>
+      </div>
     </div>
   )
 
@@ -409,23 +374,62 @@ export function SettingsPage(): React.JSX.Element {
 
   return (
     <div className="settings-window">
-      <aside className="settings-sidebar">
-        {GROUPS.map((g) => (
-          <button
-            key={g.key}
-            className={`settings-side-item ${group === g.key ? 'settings-side-active' : ''}`}
-            onClick={() => setGroup(g.key)}
-          >
-            {g.icon}
-            {g.label}
-          </button>
-        ))}
-      </aside>
-      <main className="settings-content">
-        <h2 className="settings-title">{titles[group]}</h2>
-        {groups[group]}
-      </main>
+      {/* 标题栏（2026-08-24 拍板：与 Proma 一致——无红黄绿按钮，只留右上角一个叉，整条可拖拽） */}
+      <div className="settings-titlebar">
+        <span className="settings-titlebar-title">偏好设置</span>
+        <button
+          className="settings-close-btn"
+          title="关闭"
+          onClick={() => window.api.closeSettingsWindow()}
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div className="settings-body">
+        <aside className="settings-sidebar">
+          {GROUPS.map((g) => (
+            <button
+              key={g.key}
+              className={`settings-side-item ${group === g.key ? 'settings-side-active' : ''}`}
+              onClick={() => setGroup(g.key)}
+            >
+              {g.icon}
+              {g.label}
+            </button>
+          ))}
+        </aside>
+        <main className="settings-content">
+          <h2 className="settings-title">{titles[group]}</h2>
+          {groups[group]}
+        </main>
+      </div>
     </div>
+  )
+}
+
+/** 默认浏览器下拉（2026-08-24 拍板：自动检索电脑里的浏览器） */
+function BrowserSelect({
+  value,
+  onChange
+}: {
+  value: string
+  onChange(v: string): void
+}): React.JSX.Element {
+  const [browsers, setBrowsers] = useState<string[]>([])
+
+  useEffect(() => {
+    window.api.listBrowsers().then(setBrowsers)
+  }, [])
+
+  return (
+    <select className="settings-select" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">系统默认</option>
+      {browsers.map((b) => (
+        <option key={b} value={b}>
+          {b}
+        </option>
+      ))}
+    </select>
   )
 }
 

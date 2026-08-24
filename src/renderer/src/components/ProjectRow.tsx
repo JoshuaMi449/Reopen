@@ -1,4 +1,4 @@
-import { Check, ExternalLink, Eye, Folder, FileCode2, Play, Square, Tag } from 'lucide-react'
+import { ExternalLink, Eye, Folder, FileCode2, Play, Square, Tag, Zap } from 'lucide-react'
 import {
   hasPreviewFallback,
   isPureWeb,
@@ -35,6 +35,11 @@ interface Props {
   isChild?: boolean
   /** 标签 → 染色（有颜色时 Tag icon 填色；默认无色，2026-08-21） */
   tagColor?(tag: string): string | undefined
+  /** 框选多选中（2026-08-24 拍板）：高亮描边 */
+  selected?: boolean
+  /** 有选中时点击=切换选中（代替打开抽屉） */
+  selectMode?: boolean
+  onSelectToggle?(): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -70,7 +75,10 @@ export function ProjectRow({
   tagColor,
   onOpenBrowser,
   onViewPreview,
-  isChild
+  isChild,
+  selected,
+  selectMode,
+  onSelectToggle
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -82,12 +90,13 @@ export function ProjectRow({
     <div
       className={`project-row ${failed ? 'row-failed' : ''} ${dragging ? 'dragging' : ''} ${
         isChild ? 'child-row' : ''
-      }`}
+      } ${selected ? 'selected' : ''}`}
+      data-pid={project.id}
     >
       <div
         className={`row-main ${dropTarget ? 'drop-target' : ''}`}
         draggable={sortDraggable}
-        onClick={onOpen}
+        onClick={selectMode ? onSelectToggle : onOpen}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)
@@ -104,7 +113,7 @@ export function ProjectRow({
         <span className="row-name">{project.name}</span>
         {autoStartChecked && (
           <span className="autostart-check" title="在自启项里">
-            <Check size={13} />
+            <Zap size={13} />
           </span>
         )}
         {/* 标签放行中间（名称之后；2026-08-21 拍板：Tag icon+文字，染了色则 icon 填色） */}

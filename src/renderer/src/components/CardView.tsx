@@ -1,15 +1,5 @@
 import { Fragment } from 'react'
-import {
-  Check,
-  ExternalLink,
-  Eye,
-  FileCode2,
-  Folder,
-  Layers,
-  Play,
-  Square,
-  Tag
-} from 'lucide-react'
+import { ExternalLink, Eye, FileCode2, Folder, Layers, Play, Square, Tag, Zap } from 'lucide-react'
 import {
   hasPreviewFallback,
   isPureWeb,
@@ -51,6 +41,11 @@ interface Props {
   onContextMenu(e: React.MouseEvent, p: Project): void
   /** 组 → 子项（2026-08-21 项目组：组卡显示子项汇总+成品端口） */
   childrenOf(id: string): Project[]
+  /** 框选多选中（2026-08-24 拍板）：高亮描边 */
+  selected(p: Project): boolean
+  /** 有选中时点击=切换选中（代替打开抽屉） */
+  selectMode: boolean
+  onSelectToggle(p: Project): void
 }
 
 function formatTime(ts?: number): string {
@@ -81,7 +76,10 @@ export function CardView({
   onStop,
   onViewPreview,
   onContextMenu,
-  childrenOf
+  childrenOf,
+  selected,
+  selectMode,
+  onSelectToggle
 }: Props): React.JSX.Element {
   return (
     <div className="card-grid">
@@ -97,9 +95,12 @@ export function CardView({
             <Fragment key={p.id}>
               {header && <div className="list-group-header card-grid-full">{header.label}</div>}
               <div
-                className={`card ${dragOverId === p.id ? 'drop-target' : ''}`}
+                className={`card ${dragOverId === p.id ? 'drop-target' : ''} ${
+                  selected(p) ? 'selected' : ''
+                }`}
+                data-pid={p.id}
                 draggable={sortDraggable}
-                onClick={() => onOpen(p)}
+                onClick={selectMode ? () => onSelectToggle(p) : () => onOpen(p)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   onContextMenu(e, p)
@@ -116,7 +117,7 @@ export function CardView({
                   <span className="card-name">{p.name}</span>
                   {autoStartIds.includes(p.id) && (
                     <span className="autostart-check" title="在自启项里（开机只拉组内成品网站）">
-                      <Check size={13} />
+                      <Zap size={13} />
                     </span>
                   )}
                 </div>
@@ -166,14 +167,15 @@ export function CardView({
             <div
               className={`card ${failed ? 'card-failed' : ''} ${dragId === p.id ? 'dragging' : ''} ${
                 dragOverId === p.id ? 'drop-target' : ''
-              }`}
+              } ${selected(p) ? 'selected' : ''}`}
+              data-pid={p.id}
               // 组内子项不可拖拽排序（顺序固定在组内，2026-08-21 项目组）
               draggable={sortDraggable && !p.parentId}
               onDragStart={(e) => onDragStart(e, p)}
               onDragOver={(e) => onDragOver(e, p)}
               onDragEnd={onDragEnd}
               onDrop={(e) => onDrop(e, p)}
-              onClick={() => onOpen(p)}
+              onClick={selectMode ? () => onSelectToggle(p) : () => onOpen(p)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 onContextMenu(e, p)
@@ -187,7 +189,7 @@ export function CardView({
                 <span className="card-name">{p.name}</span>
                 {autoStartIds.includes(p.id) && (
                   <span className="autostart-check" title="在自启项里">
-                    <Check size={13} />
+                    <Zap size={13} />
                   </span>
                 )}
                 <span className="row-actions">
