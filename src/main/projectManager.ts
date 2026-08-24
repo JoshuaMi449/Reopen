@@ -110,7 +110,9 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text) ||
     /Cannot find module @rollup\/rollup-darwin|npm has a bug related to optional dependencies/i.test(
       text
-    )
+    ) ||
+    // 原生模块是 Windows 二进制（2026-08-24 my-app 实测：better-sqlite3 从 Windows 拷来，Mac 加载不了）
+    /ERR_DLOPEN_FAILED|not valid mach-o file|is not a valid Win32 application/i.test(text)
   ) {
     fail(
       rt,
