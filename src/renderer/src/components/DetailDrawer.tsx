@@ -42,6 +42,8 @@ interface Props {
   onBack?(): void
   /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
   onViewPreview?(): void
+  /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址，2026-08-24） */
+  lanIp?: string
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -76,7 +78,8 @@ export function DetailDrawer({
   onChildOpenBrowser,
   onChildOpen,
   onBack,
-  onViewPreview
+  onViewPreview,
+  lanIp
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -217,7 +220,14 @@ export function DetailDrawer({
           </div>
           <div>
             <span className="drawer-meta-label">端口</span>
-            <b>{status?.port ?? project.port ?? '—'}</b>
+            <b>
+              {status?.port ?? project.port ?? '—'}
+              {lanIp && (status?.port ?? project.port) && (
+                <span className="drawer-lan">
+                  局域网 {lanIp}:{status?.port ?? project.port}
+                </span>
+              )}
+            </b>
           </div>
           <div>
             <span className="drawer-meta-label">上次启动</span>

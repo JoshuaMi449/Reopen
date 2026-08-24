@@ -93,6 +93,13 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           />
         </SettingRow>
 
+        <SettingRow
+          label="允许局域网访问"
+          hint="打开后，同一 Wi-Fi 的设备（比如另一台电脑/手机）也能访问你跑的项目；公共网络（咖啡馆/机场）慎开"
+        >
+          <Switch checked={settings.lanAccess} onChange={(v) => update({ lanAccess: v })} />
+        </SettingRow>
+
         <SettingRow label="语言" hint="中英切换随 M4 发布里程碑上线">
           <span className="settings-static">简体中文</span>
         </SettingRow>

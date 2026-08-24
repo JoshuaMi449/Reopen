@@ -33,7 +33,9 @@ export interface WebServeResult {
 export function startWebServer(
   projectPath: string,
   port?: number,
-  entryPath?: string
+  entryPath?: string,
+  /** 绑定地址：默认 127.0.0.1 只接待本机；lanAccess 开启时 0.0.0.0 也接待局域网设备（2026-08-24 拍板） */
+  host = '127.0.0.1'
 ): Promise<WebServeResult> {
   const isFile = existsSync(projectPath) && statSync(projectPath).isFile()
   const rootDir = isFile ? dirname(projectPath) : projectPath
@@ -79,7 +81,7 @@ export function startWebServer(
         reject(err)
       })
       // 端口 0 = 让系统分配一个空闲端口；指定了端口则用指定的
-      server.listen(portToTry ?? 0, '127.0.0.1', () => {
+      server.listen(portToTry ?? 0, host, () => {
         const addr = server.address()
         if (!addr || typeof addr === 'string') {
           reject(new Error('端口分配失败'))

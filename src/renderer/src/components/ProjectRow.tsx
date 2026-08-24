@@ -49,6 +49,8 @@ interface Props {
   /** 有选中时点击=切换选中（代替打开抽屉） */
   selectMode?: boolean
   onSelectToggle?(): void
+  /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址，2026-08-24） */
+  lanIp?: string
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -87,7 +89,8 @@ export function ProjectRow({
   isChild,
   selected,
   selectMode,
-  onSelectToggle
+  onSelectToggle,
+  lanIp
 }: Props): React.JSX.Element {
   const st = status?.status ?? 'stopped'
   const failed = st === 'failed'
@@ -140,20 +143,34 @@ export function ProjectRow({
             })}
           </span>
         )}
-        {/* 运行中端口可点开浏览器（2026-08-21 网站常驻） */}
+        {/* 运行中端口可点开浏览器（2026-08-21 网站常驻；局域网访问开时副链显示局域网地址） */}
         <span className="row-port">
           {running && port ? (
-            <a
-              className="port-link"
-              title="在浏览器打开"
-              onClick={(e) => {
-                e.stopPropagation()
-                onOpenBrowser?.()
-              }}
-            >
-              :{port}
-              <ExternalLink size={11} />
-            </a>
+            <>
+              <a
+                className="port-link"
+                title="在浏览器打开"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenBrowser?.()
+                }}
+              >
+                :{port}
+                <ExternalLink size={11} />
+              </a>
+              {lanIp && (
+                <a
+                  className="lan-link"
+                  title="局域网地址（同一 Wi-Fi 的设备用这个）"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.api.openExternal(`http://${lanIp}:${port}`)
+                  }}
+                >
+                  {lanIp}:{port}
+                </a>
+              )}
+            </>
           ) : port ? (
             `:${port}`
           ) : (

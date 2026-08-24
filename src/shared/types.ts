@@ -195,6 +195,8 @@ export interface Settings {
   onboarded: boolean
   /** 打开项目网页用的默认浏览器（app 名，如 Google Chrome；空=系统默认浏览器；2026-08-24 拍板） */
   defaultBrowser?: string
+  /** 允许同一 Wi-Fi 的设备访问跑的项目（默认关；开=服务绑 0.0.0.0+dev 注入 HOST，2026-08-24 拍板） */
+  lanAccess: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -214,7 +216,8 @@ export const DEFAULT_SETTINGS: Settings = {
   quickLaunch: {},
   launchAtLogin: false,
   notifyOnFail: false,
-  onboarded: false
+  onboarded: false,
+  lanAccess: false
 }
 
 /** 环境监测项（设置-关于组下方；2026-08-24 拍板：检测电脑装了哪些运行时） */
@@ -263,6 +266,8 @@ export interface ReopenApi {
   listBrowsers(): Promise<string[]>
   /** 环境监测：检测 Node.js/Python/Docker/Bun 装没装（设置-关于组下方） */
   checkEnvironment(): Promise<EnvCheckItem[]>
+  /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
+  getLanIp(): Promise<string>
   /** 开机自启（Mac 登录项）开关 */
   setLaunchAtLogin(v: boolean): Promise<void>
   /** 资料库导出/导入（JSON 文件对话框） */

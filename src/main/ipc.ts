@@ -2,6 +2,7 @@
 import { execSync } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { networkInterfaces } from 'os'
 import { join } from 'path'
 import type { EnvCheckItem, NewProjectInput, Project, Settings } from '../shared/types'
 import { detectPath, parseApp } from './detect'
@@ -80,6 +81,16 @@ function listBrowsers(): string[] {
   }
   // Safari 特殊：系统应用位置在 /System/Applications，扫描到才算
   return Array.from(found)
+}
+
+/** 本机局域网 IPv4 地址（第一个非内环网卡；没有返回空串，2026-08-24 局域网访问） */
+function getLanIp(): string {
+  for (const list of Object.values(networkInterfaces())) {
+    for (const ni of list ?? []) {
+      if (ni.family === 'IPv4' && !ni.internal) return ni.address
+    }
+  }
+  return ''
 }
 
 /** 跑一个命令拿版本（没装返回 null；Windows 用 where 探测） */
@@ -194,6 +205,7 @@ export function registerIpc(): void {
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())
+  ipcMain.handle('system:get-lan-ip', () => getLanIp())
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })

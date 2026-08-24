@@ -356,7 +356,12 @@ function spawnAndWatch(
     cwd,
     shell: true,
     detached: true, // 独立进程组：停止时整树终止
-    env: { ...process.env, PATH: buildPath() }
+    env: {
+      ...process.env,
+      PATH: buildPath(),
+      // 局域网访问开 → 塞 HOST 让 vite 等框架也对外接待（不认这个变量的框架需要项目里自己配，2026-08-24）
+      ...(getSettings().lanAccess ? { HOST: '0.0.0.0' } : {})
+    }
   })
   rt.child = child
   rt.port = port
@@ -506,7 +511,12 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
       server,
       port,
       entryPath: servedEntry
-    } = await startWebServer(staticRoot, wantPort, entryPath)
+    } = await startWebServer(
+      staticRoot,
+      wantPort,
+      entryPath,
+      getSettings().lanAccess ? '0.0.0.0' : '127.0.0.1'
+    )
     rt.server = server
     rt.entryPath = servedEntry
     setStatus(rt, project, 'running', port)

@@ -2864,3 +2864,25 @@ html.dark .settings-card {
   background: var(--warn);
   color: #fff;
 }
+
+
+/* 局域网地址（2026-08-24 拍板：局域网访问开时端口旁显示，供同一 Wi-Fi 设备使用） */
+.lan-link {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-decoration: none;
+  margin-left: 8px;
+  cursor: pointer;
+}
+
+.lan-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.drawer-lan {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 8px;
+}

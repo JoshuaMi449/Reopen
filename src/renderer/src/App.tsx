@@ -122,6 +122,8 @@ export default function App(): React.JSX.Element {
   const [bulkDelete, setBulkDelete] = useState<{ ids: string[] } | null>(null)
   /** 偏好设置浮层（2026-08-24 拍板：主窗口内界面，非独立窗口——Proma 交互） */
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /** 本机局域网 IP（局域网访问开时显示给其他设备用，2026-08-24 拍板） */
+  const [lanIp, setLanIp] = useState('')
   /** 新手引导是否显示（首次打开） */
   const [showOnboarding, setShowOnboarding] = useState(false)
   /** 系统当前亮暗（主题"跟随系统"用） */
@@ -135,6 +137,15 @@ export default function App(): React.JSX.Element {
   const listRef = useRef<HTMLElement>(null)
   /** 框选起点（相对列表容器；非空=正在框选） */
   const marqueeStart = useRef<{ x: number; y: number } | null>(null)
+
+  // 局域网访问：开关开时拿本机局域网 IP（关了清空）
+  useEffect(() => {
+    if (settings.lanAccess) {
+      window.api.getLanIp().then(setLanIp)
+    } else {
+      requestAnimationFrame(() => setLanIp(''))
+    }
+  }, [settings.lanAccess])
 
   // 跟随系统亮暗变化
   useEffect(() => {
@@ -1194,6 +1205,7 @@ export default function App(): React.JSX.Element {
                         onOpenBrowser={() => handleOpenBrowser(p)}
                         onViewPreview={() => handleViewPreview(p)}
                         isChild={Boolean(p.parentId)}
+                        lanIp={settings.lanAccess ? lanIp : ''}
                       />
                     </Fragment>
                   )
@@ -1229,6 +1241,7 @@ export default function App(): React.JSX.Element {
                   selected={(p) => selectedIds.has(p.id)}
                   selectMode={selectMode}
                   onSelectToggle={(p) => toggleSelect(p.id)}
+                  lanIp={settings.lanAccess ? lanIp : ''}
                 />
               )}
             </main>
@@ -1268,6 +1281,7 @@ export default function App(): React.JSX.Element {
                   ? () => setSelectedId(selectedProject.parentId as string)
                   : undefined
               }
+              lanIp={settings.lanAccess ? lanIp : ''}
             />
           )}
         </div>

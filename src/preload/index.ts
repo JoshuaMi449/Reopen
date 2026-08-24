@@ -32,6 +32,7 @@ const api: ReopenApi = {
   closeSettingsWindow: () => ipcRenderer.invoke('window:close-settings'),
   listBrowsers: () => ipcRenderer.invoke('system:list-browsers'),
   checkEnvironment: () => ipcRenderer.invoke('system:check-env'),
+  getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),
   exportData: () => ipcRenderer.invoke('data:export'),
   importData: () => ipcRenderer.invoke('data:import'),
