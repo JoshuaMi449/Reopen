@@ -1,5 +1,5 @@
 // 主窗口管理：创建、显示、关闭时最小化到托盘（PRD 3.6 通用设置）
-import { BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
@@ -17,6 +17,10 @@ export function createWindow(): void {
   const { workArea } = screen.getPrimaryDisplay()
   const winWidth = Math.min(Math.max(Math.round(workArea.width * 0.55), 1200), 2000)
   const winHeight = Math.round(winWidth * 0.625)
+
+  // macOS Dock 图标：dev 模式跑的是裸 Electron（Dock 显示 Electron 默认图标），显式设置；
+  // 打包成 .app 后由 bundle 里的 icns 接管，此处同样生效无冲突（2026-08-24 用户问"为什么还是 Electron"）
+  if (process.platform === 'darwin') app.dock?.setIcon(icon)
 
   mainWindow = new BrowserWindow({
     // 三栏布局默认宽度（2026-08-21 拍板：左 190 固定、中间 4 列卡片 950、自启面板占 1 列 224、日志占 2 列 456；窗口可调）
