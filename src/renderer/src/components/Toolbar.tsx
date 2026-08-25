@@ -17,7 +17,7 @@ interface Props {
   onOpenAutoStart(): void
   /** 自启项里有几个项目（角标） */
   autoStartCount: number
-  /** 自启项总开关：关=功能消失，顶部图标不显示（2026-08-20 验收整改） */
+  /** 自启项总开关：关=功能消失，顶部图标不显示（验收整改） */
   autoStartEnabled: boolean
   searchInputRef: RefObject<HTMLInputElement | null>
   /** 自启 icon 的 DOM 引用（自启面板定位用） */
@@ -28,11 +28,12 @@ const SORT_OPTIONS: { value: Settings['sortMode']; label: string }[] = [
   { value: 'name', label: '名称' },
   { value: 'recent', label: '最近打开' },
   { value: 'created', label: '添加日期' },
+  { value: 'type', label: '种类' },
   { value: 'tag', label: '标签' },
   { value: 'none', label: '无' }
 ]
 
-/** 顶部工具栏（2026-08-21 拍板：搜索→添加→自启→排序图标→视图单按钮；
+/** 顶部工具栏（搜索→添加→自启→排序图标→视图单按钮；
  *  排序从下拉框改图标+弹出小菜单、视图切换合成一个按钮——极端窄栏时全部放得下） */
 export function Toolbar({
   search,
@@ -109,7 +110,7 @@ export function Toolbar({
           </button>
         </Tooltip>
 
-        {/* 添加按钮紧跟搜索（2026-08-21 用户反馈：原来在最右，极端压缩时被裁一半，往前移保证可见） */}
+        {/* 添加按钮紧跟搜索（原来在最右，极端压缩时被裁一半，往前移保证可见） */}
         <Tooltip text="添加项目">
           <button className="icon-btn" title="添加项目" onClick={onAdd} data-tour="add">
             <Plus size={16} />
@@ -120,10 +121,10 @@ export function Toolbar({
           <Tooltip text="自启项：打开软件自动启动">
             <button
               ref={autoStartBtnRef}
+              data-tour="autostart"
               className="icon-btn"
               title="自启项"
               onClick={onOpenAutoStart}
-              data-tour="autostart"
             >
               <Zap size={16} />
               {autoStartCount > 0 && <span className="autostart-badge">{autoStartCount}</span>}
@@ -161,7 +162,7 @@ export function Toolbar({
           )}
         </div>
 
-        {/* 视图切换合成一个按钮：显示目标视图图标，点一下切过去（2026-08-21 拍板） */}
+        {/* 视图切换合成一个按钮：显示目标视图图标，点一下切过去（ */}
         <Tooltip text={view === 'list' ? '切换到卡片视图' : '切换到列表视图'}>
           <button
             className="icon-btn"

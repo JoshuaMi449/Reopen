@@ -7,7 +7,7 @@ import { UpdateModal } from './UpdateModal'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
 
-// 特殊风格六套（2026-08-24 拍板：与 Proma 0.9.10 一模一样——名字与双圆预览色取自用户本机 Proma）
+// 特殊风格六套（与参考主题一致——名字与双圆预览色取自参考主题）
 const SPECIAL_STYLES = [
   { id: 'special-clouddancer', name: '云朵舞者', pleft: '#e8e6e2', pright: '#f0efec' },
   { id: 'special-oceanlight', name: '晴空碧海', pleft: '#b8d4e5', pright: '#d4e5f0' },
@@ -26,19 +26,19 @@ const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
   { key: 'about', label: '关于', icon: <Info size={15} /> }
 ]
 
-/** 偏好设置（2026-08-24 拍板：主窗口内浮层界面，非独立窗口——Proma 交互）：左侧分组 + 右侧内容（PRD 3.6） */
+/** 偏好设置（主窗口内浮层界面，非独立窗口——浮层交互）：左侧分组 + 右侧内容（PRD 3.6） */
 export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.Element {
   const [group, setGroup] = useState<GroupKey>('general')
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [projects, setProjects] = useState<Project[]>([])
-  /** 环境监测结果（关于组下方，2026-08-24 拍板） */
+  /** 环境监测结果（关于组下方） */
   const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
-  /** 更新检查结果与弹窗（2026-08-24 拍板：关于组「检查更新」，有新版弹 Proma 式弹窗） */
+  /** 更新检查结果与弹窗（关于组「检查更新」，有新版弹窗） */
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [showUpdate, setShowUpdate] = useState(false)
-  /** 正在一键安装的运行时 key（按钮转"取消"；再点=取消安装，2026-08-24 拍板） */
+  /** 正在一键安装的运行时 key（按钮转"取消"；再点=取消安装） */
   const [installingKey, setInstallingKey] = useState<string | null>(null)
-  /** 安装实时日志行（最近 60 行，2026-08-24 拍板：Cakebrew 式流水日志） */
+  /** 安装实时日志行（最近 60 行：Cakebrew 式流水日志） */
   const [installLines, setInstallLines] = useState<string[]>([])
   const installingKeyRef = useRef<string | null>(null)
   const installLogRef = useRef<HTMLDivElement>(null)
@@ -68,14 +68,41 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     setSettings(saved)
   }, [])
 
-  /** 检查更新（2026-08-24 拍板：GitHub Release；有新版弹 Proma 式弹窗，失败静默显示已是最新） */
+  /** 自定义菜单栏图标：选图 → 复制到应用数据目录 → 立即生效 */
+  const pickTrayIcon = async (): Promise<void> => {
+    try {
+      const p = await window.api.pickTrayIcon()
+      if (p) update({ trayIcon: 'custom', trayIconPath: p })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  /** 当前自定义图标的预览（dataURL；GIF 在 <img> 里原生动画） */
+  const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
+  useEffect(() => {
+    if (settings.trayIcon === 'custom' && settings.trayIconPath) {
+      let live = true
+      void window.api.getTrayIconPreview().then((pv) => {
+        if (live) setIconPreview(pv)
+      })
+      return () => {
+        live = false
+      }
+    } else {
+      requestAnimationFrame(() => setIconPreview(null))
+      return undefined
+    }
+  }, [settings.trayIcon, settings.trayIconPath])
+
+  /** 检查更新（GitHub Release；有新版弹窗，失败静默显示已是最新） */
   const checkUpdate = async (): Promise<void> => {
     const info = await window.api.checkUpdate()
     setUpdateInfo(info)
     if (info.hasUpdate) setShowUpdate(true)
   }
 
-  /** 一键安装运行时（2026-08-24 拍板：brew 自动装+实时日志；再点=取消） */
+  /** 一键安装运行时（brew 自动装+实时日志；再点=取消） */
   const handleInstallEnv = (item: EnvCheckItem): void => {
     if (installingKeyRef.current === item.key) {
       // 再点 = 取消（主进程掐进程，结束事件会收尾）
@@ -150,9 +177,29 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
 
         <SettingRow
           label="允许局域网访问"
-          hint="打开后，同一 Wi-Fi 的设备（比如另一台电脑/手机）也能访问你跑的项目；公共网络（咖啡馆/机场）慎开"
+          hint="打开后，同一 Wi-Fi 的设备（比如另一台电脑/手机）也能访问你跑的项目；公共网络（咖啡馆/机场）慎开。其他设备还打不开时，检查 Mac 防火墙是否拦截"
         >
           <Switch checked={settings.lanAccess} onChange={(v) => update({ lanAccess: v })} />
+        </SettingRow>
+
+        <SettingRow
+          label="退出后项目继续运行"
+          hint="勾选后，⌘Q 彻底退出 Reopen 时，正在运行的项目保持本地运行；不勾选则退出时一并停止。点红叉关窗口只是收到托盘，项目始终在跑，不受影响"
+        >
+          <Switch
+            checked={settings.keepProjectsOnQuit}
+            onChange={(v) => update({ keepProjectsOnQuit: v })}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="种类排序顺序"
+          hint="工具栏排序选「种类」时，项目按这个先后分组：文件夹（项目组）→ 服务 → 网页，拖动调整"
+        >
+          <TypeOrderList
+            order={settings.typeOrder}
+            onChange={(o) => void update({ typeOrder: o })}
+          />
         </SettingRow>
 
         <SettingRow label="语言" hint="中英切换随 M4 发布里程碑上线">
@@ -166,7 +213,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     </div>
   )
 
-  // 外观组（2026-08-24 拍板：与 Proma 一致——主题模式四段+特殊风格六套，都包在圆角卡里）
+  // 外观组（与参考主题一致——主题模式四段+特殊风格六套，都包在圆角卡里）
   const appearance = (
     <div className="settings-group">
       <div className="settings-card">
@@ -234,20 +281,63 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           <Switch checked={settings.trayEnabled} onChange={(v) => update({ trayEnabled: v })} />
         </SettingRow>
 
-        <SettingRow label="图标样式" hint="黑白：自动适配深色顶栏；彩色：使用品牌色">
+        <SettingRow
+          label="图标样式"
+          hint="黑白：随系统深浅色自动反转；自定义：用你自己的图片（PNG/JPG/GIF，最大 2MB，自动缩放；GIF 会以动图轮播显示）"
+        >
+          <div className="settings-tray-icon-ctrl">
+            <div className="settings-seg">
+              <button
+                className={`settings-seg-btn ${settings.trayIcon === 'mono' ? 'settings-seg-on' : ''}`}
+                onClick={() => update({ trayIcon: 'mono' })}
+              >
+                黑白
+              </button>
+              <button
+                className={`settings-seg-btn ${settings.trayIcon === 'custom' ? 'settings-seg-on' : ''}`}
+                onClick={() => update({ trayIcon: 'custom' })}
+              >
+                自定义
+              </button>
+            </div>
+            {settings.trayIcon === 'custom' && (
+              <div className="tray-icon-actions">
+                {iconPreview && (
+                  <img className="tray-icon-preview" src={iconPreview.dataUrl} alt="当前图标预览" />
+                )}
+                <button className="btn-secondary" onClick={() => void pickTrayIcon()}>
+                  {settings.trayIconPath ? '换一张图片…' : '选择图片…'}
+                </button>
+              </div>
+            )}
+          </div>
+        </SettingRow>
+
+        <SettingRow label="播放速度" hint="动图轮播的快慢（仅自定义 GIF 图标生效）">
           <div className="settings-seg">
-            <button
-              className={`settings-seg-btn ${settings.trayIcon === 'mono' ? 'settings-seg-on' : ''}`}
-              onClick={() => update({ trayIcon: 'mono' })}
-            >
-              黑白
-            </button>
-            <button
-              className={`settings-seg-btn ${settings.trayIcon === 'color' ? 'settings-seg-on' : ''}`}
-              onClick={() => update({ trayIcon: 'color' })}
-            >
-              彩色
-            </button>
+            {[0.5, 1, 1.5, 2].map((v) => (
+              <button
+                key={v}
+                className={`settings-seg-btn ${settings.trayIconSpeed === v ? 'settings-seg-on' : ''}`}
+                onClick={() => update({ trayIconSpeed: v })}
+              >
+                {v}×
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+
+        <SettingRow label="图标大小" hint="右上角菜单栏图标的大小（黑白和自定义统一生效）">
+          <div className="settings-seg">
+            {[14, 16, 18, 20, 22].map((v) => (
+              <button
+                key={v}
+                className={`settings-seg-btn ${settings.trayIconSize === v ? 'settings-seg-on' : ''}`}
+                onClick={() => update({ trayIconSize: v })}
+              >
+                {v}
+              </button>
+            ))}
           </div>
         </SettingRow>
       </div>
@@ -437,7 +527,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
       <div className="settings-subtitle">开源协议</div>
       <div className="settings-about-line">MIT License</div>
 
-      {/* 环境监测（2026-08-24 拍板：项目要什么运行时一目了然，没装给安装官网，与 Proma 一致） */}
+      {/* 环境监测（项目要什么运行时一目了然，没装给安装官网，与参考主题一致） */}
       <div className="settings-subtitle">环境监测</div>
       <div className="settings-card">
         {envItems.length === 0 ? (
@@ -486,7 +576,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
             </div>
           ))
         )}
-        {/* 安装实时日志（2026-08-24 拍板：Cakebrew 式流水，看得到进度、再点取消） */}
+        {/* 安装实时日志（Cakebrew 式流水，看得到进度、再点取消） */}
         {installingKey && (
           <div className="env-log" ref={installLogRef}>
             {installLines.map((line, i) => (
@@ -523,7 +613,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
 
   return (
     <div className="settings-window">
-      {/* 标题栏（2026-08-24 拍板：与 Proma 一致——无红黄绿按钮，只留右上角一个叉，整条可拖拽） */}
+      {/* 标题栏（与参考主题一致——无红黄绿按钮，只留右上角一个叉，整条可拖拽） */}
       <div className="settings-titlebar">
         <span className="settings-titlebar-title">偏好设置</span>
         <button
@@ -559,7 +649,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   )
 }
 
-/** 默认浏览器下拉（2026-08-24 拍板：自动检索电脑里的浏览器） */
+/** 默认浏览器下拉（自动检索电脑里的浏览器） */
 function BrowserSelect({
   value,
   onChange
@@ -582,6 +672,75 @@ function BrowserSelect({
         </option>
       ))}
     </select>
+  )
+}
+
+/** 侧栏拖拽排序共用的 MIME（同窗口内不会与文件拖入冲突） */
+const SORT_MIME = 'application/x-reopen-sort'
+
+/** 种类排序的顺序列表（文件夹=项目组/服务/网页），拖动调整先后 */
+function TypeOrderList({
+  order,
+  onChange
+}: {
+  order: string[]
+  onChange(order: string[]): void
+}): React.JSX.Element {
+  const TYPE_ITEMS: { value: string; label: string }[] = [
+    { value: 'group', label: '文件夹（项目组）' },
+    { value: 'service', label: '服务' },
+    { value: 'web', label: '网页' }
+  ]
+  const [dropOn, setDropOn] = useState<string | null>(null)
+
+  const items = [...TYPE_ITEMS].sort((a, b) => {
+    const ia = order.indexOf(a.value)
+    const ib = order.indexOf(b.value)
+    if (ia === -1 && ib === -1) return 0
+    if (ia === -1) return 1
+    if (ib === -1) return -1
+    return ia - ib
+  })
+
+  const move = (from: string, to: string): void => {
+    if (from === to) return
+    const cur = items.map((x) => x.value)
+    const fi = cur.indexOf(from)
+    if (fi === -1) return
+    cur.splice(fi, 1)
+    cur.splice(cur.indexOf(to), 0, from)
+    onChange(cur)
+  }
+
+  return (
+    <div className="type-order-list">
+      {items.map((it) => (
+        <div
+          key={it.value}
+          draggable
+          className={`type-order-item ${dropOn === it.value ? 'type-order-item-droptarget' : ''}`}
+          onDragStart={(e) => {
+            e.dataTransfer.setData(SORT_MIME, it.value)
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes(SORT_MIME)) return
+            e.preventDefault()
+            if (dropOn !== it.value) setDropOn(it.value)
+          }}
+          onDragLeave={() => setDropOn(null)}
+          onDrop={(e) => {
+            e.preventDefault()
+            const from = e.dataTransfer.getData(SORT_MIME)
+            setDropOn(null)
+            // 只认三种类型的值（从侧栏拖来的载荷是 JSON，不属于本列表，忽略）
+            if (from && TYPE_ITEMS.some((x) => x.value === from)) move(from, it.value)
+          }}
+        >
+          {it.label}
+        </div>
+      ))}
+    </div>
   )
 }
 

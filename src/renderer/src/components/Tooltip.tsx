@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * 悬停 0.3 秒弹出说明气泡（2026-08-20 拍板：工具栏 icon 全覆盖，速度经两次提速）。
+ * 悬停 0.3 秒弹出说明气泡（工具栏 icon 全覆盖，速度经两次提速）。
  * 用原生 mouseenter/mouseleave 监听（React 合成事件对 select 等原生控件不触发，用户实测反馈）。
  */
 export function Tooltip({ text, children }: Props): React.JSX.Element {

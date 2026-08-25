@@ -1,6 +1,6 @@
 import type { Settings } from '../../shared/types'
 
-/** 特殊风格 id → 亮暗（2026-08-24 Proma 六套：前三浅后三深；CSS 用 data-mode 判定设置卡片样式） */
+/** 特殊风格 id → 亮暗（六套主题：前三浅后三深；CSS 用 data-mode 判定设置卡片样式） */
 const DARK_SPECIAL = new Set(['special-oceandark', 'special-forestdark', 'special-slatedark'])
 
 /** 应用主题到根元素：data-theme（风格）+ .dark class（亮暗）+ data-mode（亮暗标记，特殊风格时 .dark 不在但需要判暗）（PRD 3.8） */

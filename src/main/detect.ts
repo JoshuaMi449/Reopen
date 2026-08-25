@@ -1,9 +1,15 @@
 // 拖拽识别模块：判断拖进来的是什么、猜表单预填（PRD 3.2 全自动猜）
-// 2026-08-21 识别增强（docs/03）：S1 下钻找项目根 / S2 多项目容器 / S4 框架端口匹配脚本内容 /
+// 识别增强（docs/03）：S1 下钻找项目根 / S2 多项目容器 / S4 框架端口匹配脚本内容 /
 // S5 Python / S6 bun·deno / S7 启动脚本 / S9 隐藏根不跳过
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { basename, extname, join, resolve } from 'path'
-import type { DetectOutcome, DetectSuccess, LaunchMode, ProjectType } from '../shared/types'
+import type {
+  DetectOutcome,
+  DetectSuccess,
+  LaunchMode,
+  PortSource,
+  ProjectType
+} from '../shared/types'
 import { listProjects } from './store'
 
 // 服务启动命令猜的优先级：常见开发脚本名
@@ -28,7 +34,7 @@ function successOrDuplicate(p: string, result: DetectSuccess): DetectOutcome {
   return dup ? { ok: false, kind: 'duplicate', name: dup.name } : result
 }
 
-/** 读 html 文件的 <title>（弹窗里显示，用户一眼认出是哪个网站；2026-08-21 拍板） */
+/** 读 html 文件的 <title>（弹窗里显示，用户一眼认出是哪个网站） */
 function readTitle(file: string): string | undefined {
   try {
     const m = readFileSync(file, 'utf-8').match(/<title>([^<]*)<\/title>/i)
@@ -77,7 +83,7 @@ function findHtml(dir: string, depth = 0): string | null {
   return null
 }
 
-/** 收集文件夹里的全部网页入口（2026-08-24 拍板：多入口清单，登记后都能打开；
+/** 收集文件夹里的全部网页入口（多入口清单，登记后都能打开；
  *  最多下钻 2 层，跳隐藏目录和 SKIP_DIRS；按文件大小从大到小排——最大的最可能是主页，排第一当主入口） */
 function findHtmlEntries(dir: string): string[] {
   const out: { rel: string; size: number }[] = []
@@ -104,8 +110,8 @@ function findHtmlEntries(dir: string): string[] {
     }
   }
   walk(dir, 0)
-  // 根层 index.html 优先当主入口（2026-08-24 用户反馈：supOS-Free 主页是「请选择您的身份」，
-  // 但最大文件 factory/index.html 排了第一，打开就跳过选择页；其余仍按大小排）
+  // 根层 index.html 优先当主入口（首页不能被体积更大的内页挤掉，否则打开会跳过首页；
+  // 其余仍按大小排）
   out.sort((a, b) => {
     const ai = a.rel === '/index.html' ? 1 : 0
     const bi = b.rel === '/index.html' ? 1 : 0
@@ -115,7 +121,7 @@ function findHtmlEntries(dir: string): string[] {
   return out.map((x) => x.rel)
 }
 
-/** 绝对路径 → 相对文件夹的入口路径（如 /supos-case-anjia.html；S3 entryPath） */
+/** 绝对路径 → 相对文件夹的入口路径（如 /case-home.html；S3 entryPath） */
 function toEntryPath(dir: string, full: string): string {
   return full.slice(dir.length)
 }
@@ -169,8 +175,9 @@ function guessCommand(dir: string): { command: string; script: string } | undefi
   return undefined
 }
 
-/** 第 1 层：入口源码写死的端口（listen(3459) / PORT || 3459），最确定 */
-function readSourcePort(dir: string): number | undefined {
+/** 第 1 层：入口源码写死的端口（listen(3459) / PORT || 3459），最确定。
+ *  返回来源片段：改端口时直接替换源文件里这段数字 */
+function readSourcePort(dir: string): { port: number; source: PortSource } | undefined {
   try {
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
     const scripts: Record<string, string> = pkg.scripts ?? {}
@@ -184,10 +191,20 @@ function readSourcePort(dir: string): number | undefined {
       if (!entry) continue
       const src = readFileSync(join(dir, entry), 'utf-8')
       const lm = src.match(/listen\(\s*(\d{2,5})/) ?? src.match(/listen\(\s*\n\s*(\d{2,5})/)
-      if (lm) return Number(lm[1])
+      if (lm && lm.index !== undefined) {
+        return {
+          port: Number(lm[1]),
+          source: { file: entry, find: lm[0], portAt: lm[0].indexOf(lm[1]), portLen: lm[1].length }
+        }
+      }
       // 端口常带引号（process.env.PORT || '3001'），加可选引号匹配
       const em = src.match(/process\.env\.PORT\s*\|\|\s*['"]?(\d{2,5})/)
-      if (em) return Number(em[1])
+      if (em && em.index !== undefined) {
+        return {
+          port: Number(em[1]),
+          source: { file: entry, find: em[0], portAt: em[0].indexOf(em[1]), portLen: em[1].length }
+        }
+      }
     }
   } catch {
     // 读不到就算了
@@ -196,12 +213,17 @@ function readSourcePort(dir: string): number | undefined {
 }
 
 /** 第 2 层：环境变量文件里的 PORT=3459 */
-function readEnvPort(dir: string): number | undefined {
+function readEnvPort(dir: string): { port: number; source: PortSource } | undefined {
   for (const f of ['.env', '.env.local', '.env.development', '.env.dev', '.env.production']) {
     try {
       const content = readFileSync(join(dir, f), 'utf-8')
       const m = content.match(/^PORT\s*=\s*(\d{2,5})/m)
-      if (m) return Number(m[1])
+      if (m && m.index !== undefined) {
+        return {
+          port: Number(m[1]),
+          source: { file: f, find: m[0], portAt: m[0].indexOf(m[1]), portLen: m[1].length }
+        }
+      }
     } catch {
       // 没有这个文件就算了
     }
@@ -210,7 +232,7 @@ function readEnvPort(dir: string): number | undefined {
 }
 
 /** 第 3 层：框架配置文件（vite.config / webpack.config 里的 server.port、devServer.port） */
-function readConfigPort(dir: string): number | undefined {
+function readConfigPort(dir: string): { port: number; source: PortSource } | undefined {
   try {
     for (const name of readdirSync(dir)) {
       if (!/^(vite|webpack)\.config\.(js|ts|mjs|cjs)$/.test(name)) continue
@@ -218,7 +240,12 @@ function readConfigPort(dir: string): number | undefined {
       const m =
         content.match(/(?:server|devServer)\s*:\s*\{[^}]*?port\s*:\s*(\d{2,5})/) ??
         content.match(/port\s*:\s*(\d{2,5})/)
-      if (m) return Number(m[1])
+      if (m && m.index !== undefined) {
+        return {
+          port: Number(m[1]),
+          source: { file: name, find: m[0], portAt: m[0].indexOf(m[1]), portLen: m[1].length }
+        }
+      }
     }
   } catch {
     // 读不到就算了
@@ -238,11 +265,12 @@ function defaultPortFromScript(script: string): number | undefined {
   return undefined
 }
 
-/** 从项目读端口：按确定性从高到低；四层都读不到返回 undefined（表单留空请用户填，不瞎猜） */
+/** 从项目读端口：按确定性从高到低；四层都读不到返回 undefined（表单留空请用户填，不瞎猜）。
+ *  带来源片段：改端口时直接改写源文件；第 4 层默认端口只有 vite --port 可写（package.json） */
 function readPort(
   dir: string,
   guessed: { command: string; script: string } | undefined
-): number | undefined {
+): { port: number; source?: PortSource } | undefined {
   if (!guessed) return undefined
   // 1. 源码写死
   const srcPort = readSourcePort(dir)
@@ -253,8 +281,31 @@ function readPort(
   // 3. 框架配置文件
   const cfgPort = readConfigPort(dir)
   if (cfgPort) return cfgPort
-  // 4. 框架默认端口（按脚本内容）
-  return defaultPortFromScript(guessed.script)
+  // 4. 框架默认端口（按脚本内容）；vite 的 --port 参数可以改（含缺值补写），其它框架默认没有可写的来源
+  const scriptSrc = readScriptPortSource(guessed.script)
+  if (scriptSrc) return scriptSrc
+  const def = defaultPortFromScript(guessed.script)
+  return def ? { port: def } : undefined
+}
+
+/** 第 4 层辅助：package.json 脚本里的 --port 参数（`vite --host --port 5173` 或缺值 `--port`） */
+function readScriptPortSource(script: string): { port: number; source: PortSource } | undefined {
+  const m = script.match(/--port[=\s]+(\d{2,5})/)
+  if (m && m.index !== undefined) {
+    return {
+      port: Number(m[1]),
+      source: { file: 'package.json', find: m[0], portAt: m[0].indexOf(m[1]), portLen: m[1].length }
+    }
+  }
+  // --port 缺值（vite --host --port）：改写时把数字补在参数后面
+  const m2 = script.match(/--port\b(?![=\s]*\d)/)
+  if (m2 && m2.index !== undefined) {
+    return {
+      port: defaultPortFromScript(script) ?? 5173,
+      source: { file: 'package.json', find: m2[0], portAt: m2[0].length, portLen: 0 }
+    }
+  }
+  return undefined
 }
 
 /** S5：Python 入口文件（app.py/manage.py/main.py，可下钻 2 层，案例6 的在 server/ 里） */
@@ -277,12 +328,12 @@ function findPythonEntry(dir: string, depth: number): string | null {
   return null
 }
 
-/** 探测函数的轻量返回（Phase B：只供 buildLaunchModes 取 command/port，不再是完整候选） */
+/** 探测函数的轻量返回（只供 buildLaunchModes 取 command/port，不再是完整候选） */
 interface DetectHint {
   ok: true
   type: ProjectType
   path: string
-  suggested: { name: string; command?: string; port?: number }
+  suggested: { name: string; command?: string; port?: number; portSource?: PortSource }
 }
 
 /** S5：Python 项目（requirements.txt + 入口 py）。端口读源码 app.run/uvicorn.run 的 port，读不到按框架默认 */
@@ -309,11 +360,16 @@ function detectPython(dir: string): DetectHint | null {
       : src.includes('flask') || src.includes('app.run')
         ? 5000
         : undefined
+  // 源码写死端口（app.run(port=5001)）记下来源：改端口时直接改写源码
+  const portSource: PortSource | undefined =
+    port && port.index !== undefined
+      ? { file: rel, find: port[0], portAt: port[0].indexOf(port[1]), portLen: port[1].length }
+      : undefined
   return {
     ok: true,
     type: 'service',
     path: dir,
-    suggested: { name: basename(dir), command, port: defaultPort }
+    suggested: { name: basename(dir), command, port: defaultPort, portSource }
   }
 }
 
@@ -382,7 +438,7 @@ function detectLaunchScript(dir: string): DetectHint | null {
   }
 }
 
-/** Phase B（2026-08-21 拍板）：一个项目的全部启动方式清单。
+/** （一个项目的全部启动方式清单。
  *  「成品预览」排最前为默认（用户心智：先看成品）；随后按确定性排列开发类方式 */
 function buildLaunchModes(dir: string): LaunchMode[] {
   const modes: LaunchMode[] = []
@@ -392,12 +448,14 @@ function buildLaunchModes(dir: string): LaunchMode[] {
   }
   if (existsSync(join(dir, 'package.json'))) {
     const guessed = guessCommand(dir)
+    const rp = readPort(dir, guessed)
     modes.push({
       id: 'dev',
       kind: 'dev',
       label: '开发服务器',
       command: guessed?.command,
-      port: readPort(dir, guessed)
+      port: rp?.port,
+      portSource: rp?.source
     })
   }
   const python = detectPython(dir)
@@ -407,7 +465,8 @@ function buildLaunchModes(dir: string): LaunchMode[] {
       kind: 'dev',
       label: 'Python 后端',
       command: python.suggested.command,
-      port: python.suggested.port
+      port: python.suggested.port,
+      portSource: python.suggested.portSource
     })
   }
   const bunDeno = detectBunDeno(dir)
@@ -433,8 +492,8 @@ function buildLaunchModes(dir: string): LaunchMode[] {
   if (existsSync(join(dir, 'docker-compose.yml'))) {
     modes.push({ id: 'docker', kind: 'docker', label: 'Docker', command: 'docker compose up' })
   }
-  // 有成品时附赠「真实 python 静态服务器」方式（2026-08-21 拍板：内置为主+可切换真实命令，Windows 零依赖靠内置）
-  // 必须带上 preview 的 staticRoot——不带则 python 去服务项目根（源码目录），打开「有动效没图片」（2026-08-21 实测破案）
+  // 有成品时附赠「真实 python 静态服务器」方式（内置为主+可切换真实命令，Windows 零依赖靠内置）
+  // 必须带上 preview 的 staticRoot——不带则 python 去服务项目根（源码目录），打开「有动效没图片」（实测破案）
   const preview = modes.find((m) => m.kind === 'preview')
   if (preview) {
     modes.push({
@@ -467,10 +526,10 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
   if (modes.length === 0) return null
   const primary = modes[0]
   const isWeb = primary.kind === 'preview'
-  // 标题/文件数从 preview 静态根读（弹窗显示标题+默认勾最大成品，2026-08-21 拍板）
+  // 标题/文件数从 preview 静态根读（弹窗显示标题+默认勾最大成品）
   const preview = modes.find((m) => m.kind === 'preview')
   const indexFile = preview?.staticRoot ? join(preview.staticRoot, 'index.html') : null
-  // 全部网页入口清单（2026-08-24 拍板：多页面项目登记时展示、登记后都能打开）
+  // 全部网页入口清单（多页面项目登记时展示、登记后都能打开）
   const entries = preview?.staticRoot ? findHtmlEntries(preview.staticRoot) : []
   return {
     ok: true,
@@ -480,6 +539,7 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
       name: basename(dir),
       command: primary.command,
       port: primary.port,
+      portSource: modes.find((m) => m.portSource)?.portSource,
       entryPath: primary.entryPath ?? entries[0],
       entryPaths: entries.length > 1 ? entries : undefined,
       title: indexFile && existsSync(indexFile) ? readTitle(indexFile) : undefined,
@@ -490,7 +550,7 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
   }
 }
 
-/** S2：多项目容器——每个项目根走完整检测（Phase B：合并成一条+多启动方式）+ 根层散装 html 候选，过滤掉已登记的 */
+/** S2：多项目容器——每个项目根走完整检测（合并成一条+多启动方式）+ 根层散装 html 候选，过滤掉已登记的 */
 function detectMulti(dir: string, roots: string[]): DetectOutcome {
   const projects = roots
     .map((r) => detectDirAsProject(r))
@@ -526,7 +586,7 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
   } catch {
     // 读不了就算了
   }
-  // 排序：含成品预览的在前，内部按 fileCount 降序（最大的成品排第一行，默认勾选它；2026-08-21 拍板）
+  // 排序：含成品预览的在前，内部按 fileCount 降序（最大的成品排第一行，默认勾选它）
   projects.sort((a, b) => {
     const ap = a.suggested.launchModes.some((m) => m.kind === 'preview')
     const bp = b.suggested.launchModes.some((m) => m.kind === 'preview')
@@ -577,7 +637,7 @@ export function detectPath(rawPath: string): DetectOutcome {
       path: p,
       suggested: {
         name: basename(p, ext),
-        // 网站标题小字（2026-08-24 用户追问：单 html 拖入英文文件名难认，读 <title> 帮辨认）
+        // 网站标题小字（单 html 拖入英文文件名难认，读 <title> 帮辨认）
         title: readTitle(p),
         launchModes: [{ id: 'preview', kind: 'preview', label: '成品预览' }],
         activeMode: 'preview'
@@ -595,6 +655,7 @@ export function parseApp(appPath: string): DetectOutcome {
     if (!existsSync(root)) continue
     if (existsSync(join(root, 'package.json'))) {
       const guessed = guessCommand(root)
+      const rp = readPort(root, guessed)
       return successOrDuplicate(root, {
         ok: true,
         type: 'service',
@@ -602,14 +663,16 @@ export function parseApp(appPath: string): DetectOutcome {
         suggested: {
           name,
           command: guessed?.command,
-          port: readPort(root, guessed),
+          port: rp?.port,
+          portSource: rp?.source,
           launchModes: [
             {
               id: 'dev',
               kind: 'dev',
               label: '开发服务器',
               command: guessed?.command,
-              port: readPort(root, guessed)
+              port: rp?.port,
+              portSource: rp?.source
             }
           ],
           activeMode: 'dev'

@@ -7,7 +7,7 @@ interface Props {
   onCancel(): void
 }
 
-/** 标签重命名弹窗（2026-08-21：侧栏标签右键菜单「重命名…」） */
+/** 标签重命名弹窗（侧栏标签右键菜单「重命名…」） */
 export function TagRenameDialog({ initial, onConfirm, onCancel }: Props): React.JSX.Element {
   const [name, setName] = useState(initial)
 

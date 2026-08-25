@@ -10,7 +10,7 @@ interface Props {
 }
 
 /**
- * 标签染色滑块（2026-08-21 拍板，嵌在右键菜单里）：
+ * 标签染色滑块（嵌在右键菜单里）：
  * 渐变色板条（最左灰段=无色）+ 可拖动刻度线，拖动实时预览、松手提交；无色按钮一键清除。
  * 每次菜单重新打开组件重挂载，初始位置即最新染色，无需同步 effect。
  */
@@ -34,7 +34,7 @@ export function TagColorSlider({ colors, current, onPick }: Props): React.JSX.El
         max={colors.length}
         step={1}
         value={preview}
-        // 无色时刻度线=透明+描边（和空心 icon 一致），有颜色时=实心色+白边（2026-08-21 用户反馈）
+        // 无色时刻度线=透明+描边（和空心 icon 一致），有颜色时=实心色+白边
         style={
           {
             '--cur': curColor ?? 'transparent',

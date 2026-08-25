@@ -28,19 +28,21 @@ interface Props {
   onStop(): void
   onEdit(): void
   onDelete(): void
-  /** 打开默认入口（主按钮）；带 entry 参数=打开指定入口页面（多入口列表，2026-08-24 拍板） */
+  /** 打开默认入口（主按钮）；带 entry 参数=打开指定入口页面（多入口列表） */
   onOpenBrowser(entry?: string): void
   onClose(): void
-  /** 左上角返回（组页面里的子项详情返回组页面，2026-08-24 组重设计后保留） */
+  /** 左上角返回（组页面里的子项详情返回组页面，组重设计后保留） */
   onBack?(): void
-  /** 启动失败后的「看成品」兜底按钮（2026-08-24 拍板） */
+  /** 启动失败后的「看成品」兜底按钮（ */
   onViewPreview?(): void
-  /** 失败提示区的一键修复按钮（如"帮我装依赖"，2026-08-24 拍板） */
+  /** 失败提示区的一键修复按钮（如"帮我装依赖"） */
   onInstallDeps?(): void
-  /** 同目录残留 dev 进程的「终止残留并启动」按钮（2026-08-24 拍板） */
+  /** 同目录残留 dev 进程的「终止残留并启动」按钮（ */
   onKillResidual?(): void
-  /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址，2026-08-24） */
+  /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址）*/
   lanIp?: string
+  /** 局域网打不开时「由本应用托管」（接管服务没开门） */
+  onRehost?(): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -57,7 +59,7 @@ function formatTime(ts?: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 右侧滑出的项目详情抽屉（2026-08-20 用户拍板：列表/卡片共用一个预览区，不再行内展开） */
+/** 右侧滑出的项目详情抽屉（用户列表/卡片共用一个预览区，不再行内展开） */
 export function DetailDrawer({
   project,
   status,
@@ -72,10 +74,11 @@ export function DetailDrawer({
   onViewPreview,
   onInstallDeps,
   onKillResidual,
-  lanIp
+  lanIp,
+  onRehost
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
-  // 局域网地址复制反馈（2026-08-24 拍板：点击=复制不再跳转）
+  // 局域网地址复制反馈（点击=复制不再跳转）
   const [lanCopied, setLanCopied] = useState(false)
 
   // 日志自动滚到底
@@ -85,9 +88,9 @@ export function DetailDrawer({
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
-  // 全部网页入口（2026-08-24 拍板：老数据只有 entryPath 一个，entryPaths 存在则用之）
+  // 全部网页入口（老数据只有 entryPath 一个，entryPaths 存在则用之）
   const entryList = project.entryPaths ?? (project.entryPath ? [project.entryPath] : [])
-  // 组不再弹抽屉（2026-08-24 拍板重做：点组跳侧栏「组」页面），这里都是普通项目详情
+  // 组不再弹抽屉，这里都是普通项目详情
   return (
     <aside className="drawer">
       <div className="drawer-inner">
@@ -116,20 +119,43 @@ export function DetailDrawer({
             <span className="drawer-meta-label">端口</span>
             <b>
               {status?.port ?? project.port ?? '—'}
-              {lanIp && (status?.port ?? project.port) && (
+              {status?.lanReachable === true && (status?.port ?? project.port) && (
                 <span
                   className={`drawer-lan ${lanCopied ? 'lan-copied' : ''}`}
                   title="局域网地址（点击复制）"
                   onClick={() => {
                     void navigator.clipboard.writeText(
-                      `http://${lanIp}:${status?.port ?? project.port}`
+                      `http://${status?.lanIp ?? lanIp}:${status?.port ?? project.port}`
                     )
                     setLanCopied(true)
                     setTimeout(() => setLanCopied(false), 1500)
                   }}
                 >
-                  局域网 {lanIp}:{status?.port ?? project.port}
+                  局域网 {status?.lanIp ?? lanIp}:{status?.port ?? project.port}
                   {lanCopied && <span className="lan-copied-tag">已复制 ✓</span>}
+                </span>
+              )}
+              {status?.lanReachable === false && (
+                <span
+                  className="lan-blocked"
+                  title={
+                    status.spawned === true
+                      ? '这个服务是本应用拉起的，在项目的启动命令里加 --host 0.0.0.0 才能局域网访问'
+                      : '这个服务只绑了本机，同一 Wi-Fi 的其他设备访问不了'
+                  }
+                >
+                  仅本机可访问
+                  {status.spawned !== true && (
+                    <button
+                      className="lan-rehost"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRehost?.()
+                      }}
+                    >
+                      由本应用托管
+                    </button>
+                  )}
                 </span>
               )}
             </b>
@@ -138,7 +164,7 @@ export function DetailDrawer({
             <span className="drawer-meta-label">上次启动</span>
             <b>{formatTime(project.lastStartedAt)}</b>
           </div>
-          {/* 多入口列表（2026-08-24 拍板：纯网页项目里多个页面，点哪个打开哪个） */}
+          {/* 多入口列表（纯网页项目里多个页面，点哪个打开哪个） */}
           {isPureWeb(project) && entryList.length > 1 && (status?.port ?? project.port) && (
             <div className="drawer-meta drawer-entries">
               <span className="drawer-meta-label">页面（{entryList.length}）</span>
@@ -176,7 +202,7 @@ export function DetailDrawer({
         </div>
 
         <div className="drawer-actions">
-          {/* 纯网页（2026-08-24 拍板）：无需激活、永远在线——没有启动/停止/重启，只有「在浏览器打开」 */}
+          {/* 纯网页（无需激活、永远在线——没有启动/停止/重启，只有「在浏览器打开」 */}
           {!isPureWeb(project) && (
             <>
               {active ? (
@@ -204,7 +230,7 @@ export function DetailDrawer({
           </button>
         </div>
 
-        {/* 失败原因放在日志上方（2026-08-24 用户拍板：报错信息显示在日志的上面） */}
+        {/* 失败原因放在日志上方（用户报错信息显示在日志的上面） */}
         {st === 'failed' && status?.reason && (
           <div className="drawer-fail-reason">
             {status.reason}
@@ -226,7 +252,7 @@ export function DetailDrawer({
           </div>
         )}
 
-        <div className="drawer-log" ref={logRef}>
+        <div className="drawer-log" ref={logRef} data-tour="log-panel">
           {logs.length === 0 ? (
             <div className="log-empty">还没有日志。点「启动」开始运行。</div>
           ) : (

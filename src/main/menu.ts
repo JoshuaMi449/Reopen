@@ -1,4 +1,4 @@
-// 左上角应用菜单：全量标准六菜单（PRD 3.3 应用内快捷键 + 2026-08-20 拍板）
+// 左上角应用菜单：全量标准六菜单（PRD 3.3 应用内快捷键 ）
 import { BrowserWindow, Menu, shell } from 'electron'
 
 /** 给主窗口发菜单动作 */

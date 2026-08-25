@@ -4,7 +4,7 @@ export interface MenuItem {
   label: string
   icon?: ReactNode
   danger?: boolean
-  /** 自定义内容（渲染替代 label，点击不自动关菜单；2026-08-21 标签染色滑块用） */
+  /** 自定义内容（渲染替代 label，点击不自动关菜单；标签染色滑块用） */
   custom?: ReactNode
   onClick(): void
 }
@@ -16,7 +16,7 @@ interface Props {
   onClose(): void
 }
 
-/** 右键菜单（PRD 3.3：列表行/卡片右键；2026-08-21 起支持内嵌自定义控件） */
+/** 右键菜单（PRD 3.3：列表行/卡片右键；起支持内嵌自定义控件） */
 export function ContextMenu({ x, y, items, onClose }: Props): React.JSX.Element {
   return (
     <>
@@ -31,7 +31,7 @@ export function ContextMenu({ x, y, items, onClose }: Props): React.JSX.Element 
           onClose()
         }}
       />
-      {/* 菜单定位在光标右下方一点，让第一个菜单项正好在光标下方，弹出即可点（2026-08-21 修复） */}
+      {/* 菜单定位在光标右下方一点，让第一个菜单项正好在光标下方，弹出即可点（修复） */}
       <div className="context-menu" style={{ left: x, top: y - 4 }}>
         {items.map((item) =>
           item.custom ? (

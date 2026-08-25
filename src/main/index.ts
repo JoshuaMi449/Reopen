@@ -1,11 +1,12 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
 import { createAppMenu } from './menu'
-import { autoStartAll } from './projectManager'
+import { autoStartAll, stopAllRuntimes } from './projectManager'
+import { getSettings } from './store'
 import { refreshShortcuts } from './shortcuts'
 import { initTray } from './tray'
-import { createWindow, markQuitting, showMainWindow } from './window'
+import { createWindow, isQuitConfirmed, markQuitConfirmed, showMainWindow } from './window'
 
 // 单例锁：重复启动时唤起已有窗口而不是开两个（PRD 四·稳定性）
 if (!app.requestSingleInstanceLock()) {
@@ -44,14 +45,37 @@ app.whenReady().then(() => {
   autoStartAll()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // Dock 点击唤起：窗口被隐藏（最小化到托盘）时也重新显示——只查「没有窗口」会导致
+    // 隐藏状态下点 Dock 没反应（用户反馈「启动台的 app 打不开」）
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else {
+      showMainWindow()
+    }
   })
 })
 
-app.on('before-quit', () => {
-  markQuitting()
+// ⌘Q 退出需要二次确认（防误触；托盘右键「退出」是明确意图，走 appQuit 直接退不弹窗）；
+// 关窗口最小化到托盘不走这里（常驻菜单栏设计不变）；
+// 设置里「退出后项目继续运行」勾选时，退出不停正在跑的项目
+app.on('before-quit', (e) => {
+  if (isQuitConfirmed()) return
+  e.preventDefault()
+  const keep = getSettings().keepProjectsOnQuit
+  const choice = dialog.showMessageBoxSync({
+    type: 'question',
+    buttons: ['退出', '取消'],
+    defaultId: 1,
+    cancelId: 1,
+    message: '确定退出 Reopen 吗？',
+    detail: keep
+      ? '正在运行的项目会继续在本地运行。'
+      : '正在运行的项目会一并停止，之后再打开可随时重新启动。'
+  })
+  if (choice !== 0) return
+  if (!keep) stopAllRuntimes()
+  markQuitConfirmed()
+  app.quit()
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common

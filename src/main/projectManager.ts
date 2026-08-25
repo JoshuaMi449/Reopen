@@ -16,6 +16,7 @@ import type {
 } from '../shared/types'
 import { isPureWeb } from '../shared/types'
 import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
+import { getLanIp, probeLan } from './lan'
 import { startWebServer } from './webServer'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
@@ -33,8 +34,10 @@ interface Runtime {
   entryPath?: string
   healthTimer?: NodeJS.Timeout
   healthStart: number
-  /** 启动前检测到的同目录残留进程组（2026-08-24 用户拍板：「终止残留并启动」按钮用） */
+  /** 启动前检测到的同目录残留进程组（用户「终止残留并启动」按钮用） */
   residualPids?: number[]
+  /** 本次启动不自动打开浏览器（自启拉起专用：即使项目勾了「启动后打开浏览器」也不开） */
+  noOpenBrowser?: boolean
 }
 
 const runtimes = new Map<string, Runtime>()
@@ -73,6 +76,102 @@ function setStatus(rt: Runtime, project: Project, status: ProjectStatus, port?: 
   })
 }
 
+/** 局域网可达性探测+推送：lanAccess 开且拿得到本机 IP 才探。
+ *  running 后稍等再探（服务刚就绪的瞬时抖动），失败 4 秒后重试一次再定论；
+ *  接管的服务探测不通时日志给解法（由本应用托管重启才能对局域网开门）。
+ *  spawned 标记服务是不是本应用自己拉起的（渲染层据此决定给按钮还是给提示） */
+function probeAndEmitLan(rt: Runtime, project: Project, port: number): void {
+  if (!getSettings().lanAccess) return
+  const ip = getLanIp()
+  if (!ip) return
+  const tryProbe = (attempt: number): void => {
+    probeLan(ip, port).then((ok) => {
+      if (rt.status !== 'running') return
+      emit({
+        id: project.id,
+        status: 'running',
+        port: rt.port ?? port,
+        lanIp: ip,
+        lanReachable: ok,
+        spawned: !!rt.child?.pid
+      })
+      if (!ok && attempt === 0) {
+        emitLog(
+          project.id,
+          `局域网探测失败：端口 ${port} 的服务只绑了本机，同一 Wi-Fi 的设备访问不了。想局域网访问的话，点「由本应用托管」停掉它重新启动`
+        )
+        setTimeout(() => tryProbe(1), 4000)
+      }
+    })
+  }
+  setTimeout(() => tryProbe(0), 500)
+}
+
+/** 重探所有 running 项目的局域网可达性（开「允许局域网访问」/发现 IP 变化时调用） */
+export function reprobeAllLan(): void {
+  for (const [id, rt] of runtimes) {
+    if (rt.status !== 'running' || !rt.port) continue
+    const project = listProjects().find((p) => p.id === id)
+    if (project) probeAndEmitLan(rt, project, rt.port)
+  }
+}
+
+/** 查占用端口的外部进程 PID（手动起的服务）；没查到返回 null */
+function findPidByPort(port: number): number | null {
+  try {
+    const out = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN -t`, {
+      encoding: 'utf-8',
+      timeout: 5000
+    })
+    const pid = Number(out.trim().split('\n')[0])
+    return Number.isInteger(pid) && pid > 0 ? pid : null
+  } catch {
+    return null
+  }
+}
+
+/** 改由本应用托管（局域网打不开的补救）：停掉占着端口的旧服务（用户手动起的），
+ *  用项目自己的启动方式重新起——本应用起的服务按「允许局域网访问」设置自动开门。
+ *  只杀监听该端口的进程，其余一律不动 */
+export async function rehostProject(id: string): Promise<StartResult> {
+  const project = listProjects().find((p) => p.id === id)
+  if (!project) return { ok: false, reason: '项目不存在' }
+  const rt = getRuntime(id)
+  if (rt.child?.pid) {
+    return {
+      ok: false,
+      reason:
+        '这个服务是本应用拉起的，改不了它开门方式——在项目命令里加 --host 0.0.0.0 才能局域网访问'
+    }
+  }
+  const port = rt.port ?? project.port
+  if (!port) return { ok: false, reason: '该项目没有端口' }
+  const pid = findPidByPort(port)
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch {
+      // 已退出
+    }
+    let released = false
+    for (let i = 0; i < 50; i++) {
+      if (!(await checkPortOpen(port))) {
+        released = true
+        break
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    if (!released) {
+      return { ok: false, reason: `端口 ${port} 的旧服务没有停掉，请手动停掉后再试` }
+    }
+    // 清掉旧的运行态（否则 startProject 会拦「已经在运行了」）
+    rt.status = 'stopped'
+    rt.child = undefined
+    emitLog(id, `已停掉手动起的旧服务，改用本应用启动（端口 ${port}，会自动对局域网开门）`)
+  }
+  return startProject(id)
+}
+
 function fail(rt: Runtime, project: Project, reason: string, fix?: ProjectFix): void {
   emit({ id: project.id, status: 'failed', port: rt.port, reason, fix })
   rt.status = 'failed'
@@ -89,7 +188,7 @@ function fail(rt: Runtime, project: Project, reason: string, fix?: ProjectFix): 
 const recentLogs = new Map<string, string[]>()
 
 /** 失败兜底：日志里有常见错误特征时，翻译成人话原因（PRD 3.4：通知带失败原因）。
- *  2026-08-24 补齐 9 条高频病：依赖没装/端口占用 Mac 版/Docker 没开/python 缺包/
+ *  补齐 9 条高频病：依赖没装/端口占用 Mac 版/Docker 没开/python 缺包/
  *  npm 版本打架/网络/缺 .env/数据库没开/磁盘满 */
 function failWithLogHint(rt: Runtime, project: Project, fallback: string): void {
   const text = (recentLogs.get(project.id) ?? []).join('\n')
@@ -106,14 +205,14 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
     return
   }
-  // 跨平台拷贝的依赖（2026-08-21/22 实测：Windows 项目整个拷到 Mac——二进制不兼容 / 缺 Mac 平台组件 / 权限自动修复后仍有权限问题）
+  // 跨平台拷贝的依赖（/22 实测：Windows 项目整个拷到 Mac——二进制不兼容 / 缺 Mac 平台组件 / 权限自动修复后仍有权限问题）
   if (
     /Permission denied/.test(text) ||
     /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text) ||
     /Cannot find module @rollup\/rollup-darwin|npm has a bug related to optional dependencies/i.test(
       text
     ) ||
-    // 原生模块是 Windows 二进制（2026-08-24 my-app 实测：better-sqlite3 从 Windows 拷来，Mac 加载不了）
+    // 原生模块是 Windows 二进制（my-app 实测：better-sqlite3 从 Windows 拷来，Mac 加载不了）
     /ERR_DLOPEN_FAILED|not valid mach-o file|is not a valid Win32 application/i.test(text)
   ) {
     fail(
@@ -124,7 +223,7 @@ function failWithLogHint(rt: Runtime, project: Project, fallback: string): void 
     )
     return
   }
-  // 依赖根本没装/启动命令不存在（2026-08-24 SCADA 实测：删了 node_modules 没重装 → vite: command not found）
+  // 依赖根本没装/启动命令不存在（SCADA 实测：删了 node_modules 没重装 → vite: command not found）
   if (
     /command not found|not recognized as an internal or external command|^sh: .*: not found/m.test(
       text
@@ -185,7 +284,7 @@ function hasPermissionDenied(id: string): boolean {
   return /Permission denied/i.test((recentLogs.get(id) ?? []).join('\n'))
 }
 
-/** 最近日志里是否出现「跨平台拷贝依赖病」特征（2026-08-24 静默自愈：
+/** 最近日志里是否出现「跨平台拷贝依赖病」特征（静默自愈：
  *  Mac 收到 Windows 项目：原生模块 PE 二进制 / 缺 darwin 可选依赖 / 无执行位
  *  Windows 收到 Mac 项目：Mach-O 二进制报"not a valid Win32 application"/DLL 初始化失败 */
 function hasCrossPlatformDeps(id: string): boolean {
@@ -194,7 +293,7 @@ function hasCrossPlatformDeps(id: string): boolean {
   )
 }
 
-/** 跨平台依赖病静默自愈（2026-08-24 用户拍板"静默直接做好"）：自动 npm install --force 重装依赖，
+/** 跨平台依赖病静默自愈（"静默直接做好"）：自动 npm install --force 重装依赖，
  *  装完自动重启项目；装失败才弹人话+「再试一次」按钮。只自动一次（isRetry 不重复） */
 function tryReinstallAndRetry(
   project: Project,
@@ -254,7 +353,7 @@ function fixBinPermissions(cwd: string): number {
   }
 }
 
-/** 权限病自动修复（2026-08-22 用户拍板）：补上执行位后自动重试一次，日志透明记录发生了什么 */
+/** 权限病自动修复：补上执行位后自动重试一次，日志透明记录发生了什么 */
 function tryFixAndRetry(
   project: Project,
   rt: Runtime,
@@ -300,7 +399,7 @@ function parseLogPort(id: string): number | undefined {
 
 /** 端口是否已被占用（能连上 = 占用）。
  *  IPv4/IPv6 双栈并行敲：vite 等框架默认监听 localhost（macOS 解析成 ::1），
- *  只敲 127.0.0.1 会永远敲不开 → 误判启动失败（2026-08-24 SCADA 事故） */
+ *  只敲 127.0.0.1 会永远敲不开 → 误判启动失败（SCADA 事故） */
 function checkPortOpen(port: number): Promise<boolean> {
   return new Promise((resolvePromise) => {
     let opened = false
@@ -332,8 +431,8 @@ function checkPortOpen(port: number): Promise<boolean> {
 }
 
 /** 探测端口上是不是一个正在响应的网站（2xx/3xx 且是 HTML）。
- *  接管用（2026-08-21）：用户手动在 7100 跑的成品站，Reopen 不再另起炉灶，直接认领显示。
- *  IPv4/IPv6 双栈并行探（同 checkPortOpen，2026-08-24 SCADA 事故） */
+ *  接管用（用户手动在 7100 跑的成品站，Reopen 不再另起炉灶，直接认领显示。
+ *  IPv4/IPv6 双栈并行探（同 checkPortOpen，SCADA 事故） */
 function probeWebPort(port: number): Promise<boolean> {
   return new Promise((resolvePromise) => {
     let answered = false
@@ -375,7 +474,7 @@ function probeWebPort(port: number): Promise<boolean> {
 function buildPath(): string {
   const extra = ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.npm-global/bin')]
   // 剔除 Reopen 自己的 node_modules/.bin：dev 模式下它被 electron-vite 注入主进程 PATH，
-  // 原样传给项目会让没装依赖的项目"借"到 Reopen 的 vite 假跑起来（2026-08-24 SCADA 事故）
+  // 原样传给项目会让没装依赖的项目"借"到 Reopen 的 vite 假跑起来（SCADA 事故）
   const appRoot = app.getAppPath()
   const inherited = (process.env.PATH ?? '')
     .split(':')
@@ -383,7 +482,7 @@ function buildPath(): string {
   return [...extra, ...inherited].join(':')
 }
 
-/** 项目的启动方式：指定 id > activeMode > 第一个；老数据无 launchModes 按 type 生成单方式（Phase B 兼容，2026-08-21） */
+/** 项目的启动方式：指定 id > activeMode > 第一个；老数据无 launchModes 按 type 生成单方式（兼容）*/
 function resolveMode(project: Project, modeId?: string): LaunchMode | undefined {
   const modes = project.launchModes ?? []
   const mode = modes.find((m) => m.id === (modeId ?? project.activeMode)) ?? modes[0]
@@ -400,20 +499,26 @@ function resolveMode(project: Project, modeId?: string): LaunchMode | undefined 
   }
 }
 
-export async function startProject(id: string, modeId?: string): Promise<StartResult> {
+export async function startProject(
+  id: string,
+  modeId?: string,
+  opts?: { noOpenBrowser?: boolean }
+): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
   if (project.type === 'group') {
     return { ok: false, reason: '组不能直接启动——展开组，启动里面的子项' }
   }
   const rt = getRuntime(id)
+  // 每次启动重设（自启拉起传 true；手动启动恢复跟随项目设置）
+  rt.noOpenBrowser = opts?.noOpenBrowser ?? false
   if (rt.status === 'running' || rt.status === 'starting') {
     return { ok: false, reason: '已经在运行了' }
   }
   if (!existsSync(project.path)) {
     return { ok: false, reason: '项目路径不存在（可能被移动或删除了）' }
   }
-  // Phase B（2026-08-21）：按启动方式分发——preview=内置静态服务器、dev=开发服务器、
+  // （按启动方式分发——preview=内置静态服务器、dev=开发服务器、
   // python-static=真实 python http.server、docker=docker compose up
   const mode = resolveMode(project, modeId)
   if (!mode) return { ok: false, reason: '该项目没有启动方式' }
@@ -431,16 +536,19 @@ async function startService(
 ): Promise<StartResult> {
   if (!command) return { ok: false, reason: '该项目没有启动命令' }
 
-  // 端口已有服务在响应：大概率项目已经手动启动了——直接接管显示，不用先杀再开（用户 2026-08-20 拍板）
+  // 端口已有服务在响应：大概率项目已经手动启动了——直接接管显示，不用先杀再开。
+  // 打日志说明发生了什么，否则「绿灯但没有日志」会让人以为启动坏了
   if (port && (await checkPortOpen(port))) {
     rt.port = port
     setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
     touchLastPort(project.id, port)
+    emitLog(project.id, `端口 ${port} 已有服务在响应，直接显示为运行中（没有新开进程）`)
+    probeAndEmitLan(rt, project, port)
     return { ok: true, reason: `检测到端口 ${port} 已有服务在响应，已直接显示为运行中` }
   }
 
-  // 同目录残留检测（2026-08-24 用户拍板）：目录里已有 dev 进程在跑（比如改端口前旧实例没停），
+  // 同目录残留检测：目录里已有 dev 进程在跑（比如改端口前旧实例没停），
   // 直接提示而不是再开一个——两个 dev 共享 .next 缓存会互相踩脚，CPU/内存被打爆（52GB 事故）
   const residual = findResidualDev(project.path)
   if (residual.length > 0) {
@@ -461,7 +569,7 @@ async function startService(
   return spawnAndWatch(project, rt, command, project.path, port)
 }
 
-/** 项目目录下的残留 dev 进程（2026-08-24 用户拍板：启动前检测，防同目录双开 dev 共享 .next 缓存互相踩脚——next-server 52GB 事故）。
+/** 项目目录下的残留 dev 进程（用户启动前检测，防同目录双开 dev 共享 .next 缓存互相踩脚——next-server 52GB 事故）。
  *  一次 lsof 拿全量进程 cwd 对比项目目录；只认 dev 相关命令（node/next/vite/python 等），
  *  排除 shell 本身（用户 cd 进目录的终端不算）与 Reopen 自己管理的进程组（detached 子进程 pgid=child.pid） */
 function findResidualDev(cwd: string): { pid: number; pgid: number }[] {
@@ -498,7 +606,7 @@ function findResidualDev(cwd: string): { pid: number; pgid: number }[] {
   }
 }
 
-/** 常见启动命令 → 依赖检查目标与安装指引（2026-08-24：启动前预检，缺运行时直接人话提示，不用等进程报错） */
+/** 常见启动命令 → 依赖检查目标与安装指引（启动前预检，缺运行时直接人话提示，不用等进程报错） */
 const DEP_RULES: { pattern: RegExp; candidates: string[]; hint: string }[] = [
   {
     pattern: /^(npm|npx|yarn|pnpm|node|tsx|ts-node)$/,
@@ -546,7 +654,7 @@ function missingDependencyHint(command: string): string | null {
   return rule.candidates.some(commandExists) ? null : rule.hint
 }
 
-/** 起子进程（dev/python/docker 共用，Phase B 2026-08-21）：日志管道 + 退出处理 + 端口健康检查（无端口则存活即运行） */
+/** 起子进程（dev/python/docker 共用）：日志管道 + 退出处理 + 端口健康检查（无端口则存活即运行） */
 function spawnAndWatch(
   project: Project,
   rt: Runtime,
@@ -556,7 +664,7 @@ function spawnAndWatch(
   missingHint?: string,
   isRetry?: boolean
 ): StartResult {
-  // 依赖预检（2026-08-24 拍板"是不是要装 npm/node/python"）：spawn 之前先查运行时，缺了直接人话提示+安装指引
+  // 依赖预检（"是不是要装 npm/node/python"）：spawn 之前先查运行时，缺了直接人话提示+安装指引
   const depHint = missingDependencyHint(command)
   if (depHint) {
     fail(rt, project, depHint)
@@ -570,11 +678,10 @@ function spawnAndWatch(
     env: {
       ...process.env,
       PATH: buildPath(),
-      // 表单端口真正生效（2026-08-24 用户拍板）：注入 PORT，Next.js 等认这个变量的框架就真绑表单端口；
+      // 表单端口真正生效：注入 PORT，Next.js 等认这个变量的框架就真绑表单端口；
       // vite 等不认的框架忽略，无害
-      ...(port ? { PORT: String(port) } : {}),
-      // 局域网访问开 → 塞 HOST 让 vite 等框架也对外接待（不认这个变量的框架需要项目里自己配，2026-08-24）
-      ...(getSettings().lanAccess ? { HOST: '0.0.0.0' } : {})
+      ...(port ? { PORT: String(port) } : {})
+      // 局域网访问开 → 塞 HOST 让 vite 等框架也对外接待（不认这个变量的框架需要项目里自己配）...(getSettings().lanAccess ? { HOST: '0.0.0.0' } : {})
     }
   })
   rt.child = child
@@ -584,7 +691,7 @@ function spawnAndWatch(
   child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
 
   child.on('error', (err) => {
-    // 命令不存在（python3/docker 没装）→ 用大白话提示（2026-08-21 跨平台失败翻译）
+    // 命令不存在（python3/docker 没装）→ 用大白话提示（跨平台失败翻译）
     const code = (err as NodeJS.ErrnoException).code
     const enoent = code === 'ENOENT'
     // 直接执行无权限的可执行文件（罕见，一般走 exit 分支的 npm 路径）
@@ -600,14 +707,14 @@ function spawnAndWatch(
     if (rt.healthTimer) clearInterval(rt.healthTimer)
     rt.child = undefined
     if (rt.status === 'starting') {
-      // 权限病自动修复（2026-08-22 用户拍板）：日志出现 Permission denied → 补执行位自动重试一次
+      // 权限病自动修复：日志出现 Permission denied → 补执行位自动重试一次
       if (
         hasPermissionDenied(project.id) &&
         tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
       ) {
         return
       }
-      // 跨平台依赖病静默自愈（2026-08-24 用户拍板"静默直接做好"）：自动重装依赖+重启
+      // 跨平台依赖病静默自愈（"静默直接做好"）：自动重装依赖+重启
       if (
         hasCrossPlatformDeps(project.id) &&
         tryReinstallAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
@@ -629,7 +736,7 @@ function spawnAndWatch(
       checkPortOpen(checkPort).then((open) => {
         if (rt.status !== 'starting') return
         if (open) {
-          // 项目日志打了另一个端口（框架端口被占自动漂移，2026-08-24 open suposs 撞车破案）：
+          // 项目日志打了另一个端口（框架端口被占自动漂移，open 撞车破案）：
           // 配置端口通 ≠ 项目通（占着的可能是别人）——信日志端口，切过去等它确认
           const drifted = parseLogPort(project.id)
           if (drifted && drifted !== checkPort) {
@@ -641,6 +748,7 @@ function spawnAndWatch(
           setStatus(rt, project, 'running', checkPort)
           touchStartedAt(project.id)
           touchLastPort(project.id, checkPort)
+          probeAndEmitLan(rt, project, checkPort)
           // 保险：3 秒后日志若打出另一个端口且开放 → 纠正显示（vite 日志晚于健康检查判定的场景）
           const myPort = checkPort
           setTimeout(() => {
@@ -652,11 +760,12 @@ function spawnAndWatch(
                   rt.port = d
                   setStatus(rt, project, 'running', d)
                   touchLastPort(project.id, d)
+                  probeAndEmitLan(rt, project, d)
                 }
               })
             }
           }, 3000)
-          if (project.openBrowser) {
+          if (project.openBrowser && !rt.noOpenBrowser) {
             openUrl(`http://localhost:${checkPort}`)
           }
         } else {
@@ -667,7 +776,7 @@ function spawnAndWatch(
             setStatus(rt, project, 'starting', drifted)
           } else if (Date.now() - rt.healthStart > HEALTH_TIMEOUT_MS) {
             clearInterval(rt.healthTimer)
-            // 进程可能还活着：启动被判失败也不能留僵尸占端口（2026-08-24 SCADA 事故：误判后僵尸越点越多）
+            // 进程可能还活着：启动被判失败也不能留僵尸占端口（SCADA 事故：误判后僵尸越点越多）
             killTree(rt)
             failWithLogHint(rt, project, `30 秒内端口 ${checkPort} 没有就绪（日志面板有完整输出）`)
           }
@@ -683,13 +792,13 @@ function spawnAndWatch(
   return { ok: true }
 }
 
-/** python-static 方式（Phase B 2026-08-21）：真实跑 python3 -m http.server（静态根=成品目录），内置预览的替代 */
+/** python-static 方式：真实跑 python3 -m http.server（静态根=成品目录），内置预览的替代 */
 async function startPythonStatic(
   project: Project,
   rt: Runtime,
   mode: LaunchMode
 ): Promise<StartResult> {
-  // 老数据（Phase B 前登记）python-static 没存 staticRoot：兜底到 preview 方式的静态根（同一份成品），而不是项目根源码目录
+  // 老数据（前登记）python-static 没存 staticRoot：兜底到 preview 方式的静态根（同一份成品），而不是项目根源码目录
   const root =
     mode.staticRoot ??
     project.launchModes?.find((m) => m.kind === 'preview')?.staticRoot ??
@@ -703,6 +812,7 @@ async function startPythonStatic(
       touchStartedAt(project.id)
       touchLastPort(project.id, port)
       emitLog(project.id, `端口 ${port} 已有网站在运行，直接接管`)
+      probeAndEmitLan(rt, project, port)
       return { ok: true }
     }
     return { ok: false, reason: `端口 ${port} 已被占用` }
@@ -717,7 +827,7 @@ async function startPythonStatic(
   )
 }
 
-/** docker 方式（Phase B 2026-08-21 拍板）：docker compose up，无端口则进程存活即运行 */
+/** docker 方式：docker compose up，无端口则进程存活即运行 */
 async function startDocker(project: Project, rt: Runtime, mode: LaunchMode): Promise<StartResult> {
   return spawnAndWatch(
     project,
@@ -733,16 +843,17 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
   const staticRoot = mode.staticRoot ?? project.path
   const entryPath = mode.entryPath ?? project.entryPath
   const modePort = mode.port ?? project.port
-  // 端口稳定（2026-08-21 网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）
+  // 端口稳定（网站常驻）：没指定端口时沿用上次实际端口（重启后地址不变）
   let wantPort = modePort ?? project.lastPort
   if (wantPort && (await checkPortOpen(wantPort))) {
-    // 端口被占：先探测是不是一个已经跑着的网站（用户手动起在 7100 的成品站等）——是则直接接管，不再另起炉灶（2026-08-21 实测）
+    // 端口被占：先探测是不是一个已经跑着的网站（用户手动起在 7100 的成品站等）——是则直接接管，不再另起炉灶（实测）
     if (await probeWebPort(wantPort)) {
       rt.port = wantPort
       setStatus(rt, project, 'running', wantPort)
       touchStartedAt(project.id)
       touchLastPort(project.id, wantPort)
       emitLog(project.id, `端口 ${wantPort} 已有网站在运行，直接接管`)
+      probeAndEmitLan(rt, project, wantPort)
       return { ok: true }
     }
     // 不是网站：显式填的端口报占用；沿用 lastPort 的交给系统自动分配
@@ -769,7 +880,8 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
     touchStartedAt(project.id)
     touchLastPort(project.id, port)
     emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${servedEntry}`)
-    if (project.openBrowser) {
+    probeAndEmitLan(rt, project, port)
+    if (project.openBrowser && !rt.noOpenBrowser) {
       openUrl(`http://localhost:${port}${servedEntry}`)
     }
     return { ok: true }
@@ -780,18 +892,19 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
 }
 
 /** 接管显示：端口有服务在响应 → 标记运行中（不启动任何东西）。
- *  幂等重复 emit（2026-08-21 修复）：渲染层加载完成后调用一次兜底——若之前的 emit 因时序竞争丢失
+ *  幂等重复 emit（修复）：渲染层加载完成后调用一次兜底——若之前的 emit 因时序竞争丢失
  *  （StrictMode 双跑/订阅未就绪），rt 已 running 也重新推一次状态，界面才能从灰色恢复绿点 */
 export async function adoptRunning(project: Project): Promise<void> {
-  if (project.type === 'group') return // 组没有端口，跳过（2026-08-21 项目组）
+  if (project.type === 'group') return // 组没有端口，跳过（项目组）
   const rt = getRuntime(project.id)
   if (rt.status === 'starting') return // 自己正在启动中（健康检查在跑），不插手
-  // 端口优先用登记值，其次上次实际运行端口（web 自动分配/端口写错时也能找回，2026-08-20）
+  // 端口优先用登记值，其次上次实际运行端口（web 自动分配/端口写错时也能找回）
   const port = project.port ?? project.lastPort
   if (!port) return
   if (await checkPortOpen(port)) {
     rt.port = port
     setStatus(rt, project, 'running', port)
+    probeAndEmitLan(rt, project, port)
   }
 }
 
@@ -803,7 +916,7 @@ export async function adoptAllRunning(): Promise<void> {
 }
 
 /** 打开 Reopen 时自动拉起自启项（PRD 3.5：软件层自动启动；失败静默，界面上标红可见）
- *  2026-08-21 拍板：组在自启里 = 只拉组内成品子项（web 类型），开发子项保留手动启动 */
+ *  组在自启里 = 只拉组内成品子项（web 类型），开发子项保留手动启动 */
 export async function autoStartAll(): Promise<void> {
   const { autoStartEnabled, autoStartIds } = getSettings()
   if (!autoStartEnabled || autoStartIds.length === 0) return
@@ -813,7 +926,7 @@ export async function autoStartAll(): Promise<void> {
     if (!project) continue
     try {
       if (project.type === 'group') {
-        // 组自启只拉成品（2026-08-21 拍板）：有「成品预览」方式的子项按 preview 启动；
+        // 组自启只拉成品（有「成品预览」方式的子项按 preview 启动；
         // 老数据（无 launchModes）按 type=web 兼容
         for (const child of projects.filter((p) => {
           if (p.parentId !== id) return false
@@ -822,10 +935,10 @@ export async function autoStartAll(): Promise<void> {
             (p.launchModes === undefined && p.type === 'web')
           )
         })) {
-          await startProject(child.id, 'preview')
+          await startProject(child.id, 'preview', { noOpenBrowser: true })
         }
       } else {
-        await startProject(id)
+        await startProject(id, undefined, { noOpenBrowser: true })
       }
     } catch {
       // 单个项目失败不影响其他
@@ -833,7 +946,7 @@ export async function autoStartAll(): Promise<void> {
   }
 }
 
-/** 一键安装依赖（2026-08-24 拍板：失败提示区的"帮我装依赖"按钮）：
+/** 一键安装依赖（失败提示区的"帮我装依赖"按钮）：
  *  在项目目录跑 npm install，输出实时推项目日志面板，装完打收尾日志，用户自己再点启动 */
 export function installProjectDeps(id: string): void {
   const project = listProjects().find((p) => p.id === id)
@@ -857,7 +970,7 @@ export function installProjectDeps(id: string): void {
   })
 }
 
-/** 打开链接：用户设了默认浏览器 → open -a 指定浏览器；否则系统默认（2026-08-24 拍板"偏好设置里选浏览器"） */
+/** 打开链接：用户设了默认浏览器 → open -a 指定浏览器；否则系统默认（"偏好设置里选浏览器"） */
 function openUrl(url: string): void {
   const browser = getSettings().defaultBrowser
   if (browser) {
@@ -879,8 +992,8 @@ async function waitRunning(id: string, ms: number): Promise<boolean> {
 }
 
 /** 右键"在浏览器打开"：项目运行中则弹默认浏览器（PRD 3.3 右键菜单）
- *  entry=入口文件相对路径（多入口列表点哪个开哪个，2026-08-24 拍板）
- *  纯网页（登记即在线）：没运行/启动中 → 自动拉起等就绪再开（2026-08-24 用户实测"打开是空的"） */
+ *  entry=入口文件相对路径（多入口列表点哪个开哪个）
+ *  纯网页（登记即在线）：没运行/启动中 → 自动拉起等就绪再开（用户实测"打开是空的"） */
 export async function openProjectBrowser(id: string, entry?: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (!project) return { ok: false, reason: '项目不存在' }
@@ -905,7 +1018,7 @@ export async function openProjectBrowser(id: string, entry?: string): Promise<St
   }
   if (!rt) return { ok: false, reason: '网页服务还没起来，稍等几秒再点' }
   if (project.type === 'web') {
-    // /index.html 归一为 /（2026-08-24 用户反馈：Vite 单页应用的路由只认 /，
+    // /index.html 归一为 /（Vite 单页应用的路由只认 /，
     // 带 /index.html 打开显示不对；静态多页项目的主页同理）
     const target = entry ?? rt.entryPath ?? '/'
     openUrl(`http://localhost:${rt.port}${target === '/index.html' ? '/' : target}`)
@@ -939,7 +1052,7 @@ function killTree(rt: Runtime): void {
   }, KILL_GRACE_MS)
 }
 
-/** 「终止残留并启动」（2026-08-24 用户拍板）：杀掉启动前检测到的同目录残留进程组，稍等后重新启动项目 */
+/** 「终止残留并启动」：杀掉启动前检测到的同目录残留进程组，稍等后重新启动项目 */
 export async function killResidualAndStart(id: string): Promise<StartResult> {
   const rt = getRuntime(id)
   const groups = rt.residualPids ?? []
@@ -966,6 +1079,13 @@ export async function killResidualAndStart(id: string): Promise<StartResult> {
   const project = listProjects().find((p) => p.id === id)
   if (project) emitLog(id, `已终止 ${groups.length} 个残留进程，重新启动`)
   return startProject(id)
+}
+
+/** 退出应用时停掉所有正在运行的项目（⌘Q 确认后调用——不留下孤儿进程占端口） */
+export function stopAllRuntimes(): void {
+  for (const id of [...runtimes.keys()]) {
+    void stopProject(id).catch(() => undefined)
+  }
 }
 
 export async function stopProject(id: string): Promise<void> {

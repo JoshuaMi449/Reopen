@@ -32,6 +32,7 @@ import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { DetailDrawer } from './components/DetailDrawer'
+import { GroupNameDialog } from './components/GroupNameDialog'
 import { GroupPreviewModal } from './components/GroupPreviewModal'
 import { GroupRow } from './components/GroupRow'
 import { Onboarding } from './components/Onboarding'
@@ -65,7 +66,7 @@ interface TagMenuState {
   tag: string
 }
 
-// 标签染色色板（2026-08-21 拍板：侧栏标签右键染色；默认无色）
+// 标签染色色板（侧栏标签右键染色；默认无色）
 const TAG_COLORS = [
   '#e74c3c',
   '#e67e22',
@@ -77,6 +78,104 @@ const TAG_COLORS = [
   '#16a085'
 ]
 
+/** 引导演示用的假项目（引导期间并入列表展示，结束后消失；不写库、不参与自启） */
+const DEMO_PROJECTS: Project[] = [
+  {
+    id: 'demo-app',
+    type: 'service',
+    name: '演示应用',
+    path: '~/演示项目/演示应用',
+    command: 'npm run dev',
+    port: 5321,
+    openBrowser: false,
+    note: '',
+    tags: [],
+    createdAt: 1_782_000_000_000,
+    lastStartedAt: 1_786_600_000_000,
+    launchModes: [
+      { id: 'dev', kind: 'dev', label: '开发服务器', command: 'npm run dev', port: 5321 }
+    ],
+    activeMode: 'dev'
+  },
+  {
+    id: 'demo-web',
+    type: 'web',
+    name: '演示官网',
+    path: '~/演示项目/我的产品/演示官网',
+    port: 53100,
+    entryPath: '/index.html',
+    openBrowser: false,
+    note: '',
+    tags: ['演示'],
+    createdAt: 1_781_000_000_000,
+    lastStartedAt: 1_785_500_000_000,
+    parentId: 'demo-group',
+    launchModes: [{ id: 'preview', kind: 'preview', label: '成品预览', entryPath: '/index.html' }],
+    activeMode: 'preview'
+  },
+  {
+    id: 'demo-py',
+    type: 'service',
+    name: '演示数据服务',
+    path: '~/演示项目/我的产品/演示数据服务',
+    command: 'python3 app.py',
+    port: 5001,
+    openBrowser: false,
+    note: '',
+    tags: ['工作'],
+    createdAt: 1_780_000_000_000,
+    lastStartedAt: 1_784_500_000_000,
+    parentId: 'demo-group',
+    launchModes: [
+      {
+        id: 'python-dev',
+        kind: 'python-static',
+        label: 'python 程序',
+        command: 'python3 app.py',
+        port: 5001
+      }
+    ],
+    activeMode: 'dev'
+  },
+  {
+    id: 'demo-script',
+    type: 'service',
+    name: '演示脚本',
+    path: '~/演示项目/演示脚本',
+    command: './start.command',
+    port: 8080,
+    openBrowser: false,
+    note: '',
+    tags: [],
+    createdAt: 1_779_000_000_000,
+    lastStartedAt: 1_783_500_000_000,
+    launchModes: [
+      { id: 'launch', kind: 'dev', label: '启动脚本', command: './start.command', port: 8080 }
+    ],
+    activeMode: 'dev'
+  },
+  {
+    id: 'demo-group',
+    type: 'group',
+    name: '我的产品',
+    path: '~/演示项目/我的产品',
+    command: '',
+    openBrowser: false,
+    note: '',
+    tags: [],
+    createdAt: 1_783_000_000_000,
+    lastStartedAt: 1_786_700_000_000
+  }
+]
+
+/** 引导第 2 步演示用的假日志（演示应用详情抽屉里显示，引导结束消失） */
+const DEMO_LOGS = [
+  '> npm run dev',
+  '> demo-app@1.0.0 dev',
+  'ready in 312ms',
+  '➜ Local: http://localhost:5321'
+]
+
 export default function App(): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([])
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
@@ -86,17 +185,17 @@ export default function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [search, setSearch] = useState('')
-  /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起，2026-08-20 拍板） */
+  /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起） */
   const [searchOpen, setSearchOpen] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
-  /** 多项目容器候选（2026-08-21 S2，组预览勾选式）：确认后登记成组 */
+  /** 多项目容器候选（S2，组预览勾选式）：确认后登记成组 */
   const [multi, setMulti] = useState<DetectMulti | null>(null)
   const [appPrompt, setAppPrompt] = useState<DetectNeedParseApp | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
-  /** 更新检查结果（2026-08-24 拍板：启动时自动查 GitHub Release，有新版本弹 Proma 式弹窗） */
+  /** 更新检查结果（启动时自动查 GitHub Release，有新版本弹窗） */
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
-  /** 侧栏标签右键菜单（重命名/删除/染色，2026-08-21） */
+  /** 侧栏标签右键菜单（重命名/删除/染色）*/
   const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null)
   /** 正在重命名的标签名 */
   const [tagRename, setTagRename] = useState<string | null>(null)
@@ -106,11 +205,16 @@ export default function App(): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   /** 行排序拖拽中的项目 id（仅手动排序模式） */
   const [dragId, setDragId] = useState<string | null>(null)
-  /** 拖拽悬停的目标项目 id：其后面显示占位空位（动态让位效果，2026-08-21） */
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
-  /** 自启项面板列是否打开（2026-08-21 拍板：占一列的嵌入式列卡片） */
+  /** 排序拖拽的插入位置：目标项目 + 插前/插后 + 目标矩形（全局指示线用，不受行/卡 overflow 裁剪） */
+  const [sortOver, setSortOver] = useState<{
+    id: string
+    before: boolean
+    rect: DOMRect
+    kind: 'row' | 'card'
+  } | null>(null)
+  /** 自启项面板列是否打开（占一列的嵌入式列卡片） */
   const [autoStartOpen, setAutoStartOpen] = useState(false)
-  /** 框选多选的选中项目 id（2026-08-24 拍板：鼠标框选+右键批量操作） */
+  /** 框选多选的选中项目 id（鼠标框选+右键批量操作） */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   /** 框选矩形（相对 project-list 容器；非空=正在框选） */
   const [marqueeBox, setMarqueeBox] = useState<{
@@ -123,14 +227,18 @@ export default function App(): React.JSX.Element {
   const [bulkMenu, setBulkMenu] = useState<{ x: number; y: number } | null>(null)
   /** 批量加标签弹窗（含冲突二次确认） */
   const [bulkTag, setBulkTag] = useState<{ ids: string[] } | null>(null)
+  /** 成组弹窗待收纳的项目（点「添加成组」先起名再提交） */
+  const [bulkGroupIds, setBulkGroupIds] = useState<string[] | null>(null)
   /** 批量删除二次确认 */
   const [bulkDelete, setBulkDelete] = useState<{ ids: string[] } | null>(null)
-  /** 偏好设置浮层（2026-08-24 拍板：主窗口内界面，非独立窗口——Proma 交互） */
+  /** 偏好设置浮层（主窗口内界面，非独立窗口——浮层交互） */
   const [settingsOpen, setSettingsOpen] = useState(false)
-  /** 本机局域网 IP（局域网访问开时显示给其他设备用，2026-08-24 拍板） */
+  /** 本机局域网 IP（局域网访问开时显示给其他设备用） */
   const [lanIp, setLanIp] = useState('')
   /** 新手引导是否显示（首次打开） */
   const [showOnboarding, setShowOnboarding] = useState(false)
+  /** 引导当前步骤（第 3 步起 demo 卡片假装运行中，端口旁亮局域网地址供演示） */
+  const [onboardStep, setOnboardStep] = useState(0)
   /** 系统当前亮暗（主题"跟随系统"用） */
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -138,7 +246,7 @@ export default function App(): React.JSX.Element {
   const searchRef = useRef<HTMLInputElement>(null)
   /** 自启 icon 引用（自启面板定位锚点） */
   const autoStartBtnRef = useRef<HTMLButtonElement>(null)
-  /** 项目列表容器（框选坐标基准，2026-08-24） */
+  /** 项目列表容器（框选坐标基准）*/
   const listRef = useRef<HTMLElement>(null)
   /** 框选起点（相对列表容器；非空=正在框选） */
   const marqueeStart = useRef<{ x: number; y: number } | null>(null)
@@ -150,6 +258,24 @@ export default function App(): React.JSX.Element {
     } else {
       requestAnimationFrame(() => setLanIp(''))
     }
+  }, [settings.lanAccess])
+
+  // 换 WiFi 后 IP 可能变了：每 60 秒对一次，变了就重探所有运行中项目的局域网可达性
+  const lanIpRef = useRef(lanIp)
+  useEffect(() => {
+    lanIpRef.current = lanIp
+  }, [lanIp])
+  useEffect(() => {
+    if (!settings.lanAccess) return
+    const timer = setInterval(() => {
+      window.api.getLanIp().then((ip) => {
+        if (ip && ip !== lanIpRef.current) {
+          setLanIp(ip)
+          void window.api.recheckLan()
+        }
+      })
+    }, 60_000)
+    return () => clearInterval(timer)
   }, [settings.lanAccess])
 
   // 跟随系统亮暗变化
@@ -165,7 +291,7 @@ export default function App(): React.JSX.Element {
     applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
   }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
-  // 启动时自动检查更新（2026-08-24 拍板：有新版弹 Proma 式「发现新版本」弹窗；失败静默不打扰）
+  // 启动时自动检查更新（有新版弹出「发现新版本」弹窗；失败静默不打扰）
   useEffect(() => {
     void window.api.checkUpdate().then((info) => {
       if (info.hasUpdate) setUpdateInfo(info)
@@ -194,8 +320,8 @@ export default function App(): React.JSX.Element {
     window.api.listProjects().then(async (ps) => {
       setProjects(ps)
       await window.api.adoptAllRunning()
-      // 网站常驻（2026-08-21 拍板）：打开 Reopen 自动把网页项目拉回在线（服务类保持手动）
-      // Phase B：有「成品预览」方式的都算网页项目；老数据（无 launchModes）按 type=web 兼容
+      // 网站常驻（打开 Reopen 自动把网页项目拉回在线（服务类保持手动）
+      // ：有「成品预览」方式的都算网页项目；老数据（无 launchModes）按 type=web 兼容
       for (const p of ps) {
         const hasPreview =
           (p.launchModes ?? []).some((m) => m.kind === 'preview') ||
@@ -218,6 +344,8 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const offStatus = window.api.onStatus((e: ProjectStatusEvent) => {
       setStatuses((s) => ({ ...s, [e.id]: e }))
+      // 局域网探测通过时顺带刷新本机 IP（事件里带的是探测那一刻的 IP，显示恒一致）
+      if (e.lanReachable === true && e.lanIp) setLanIp(e.lanIp)
       if (e.status === 'failed') {
         const name = projectsRef.current.find((p) => p.id === e.id)?.name ?? '项目'
         toast(`「${name}」启动失败：${e.reason ?? '未知原因'}`, 'error')
@@ -233,7 +361,7 @@ export default function App(): React.JSX.Element {
     }
   }, [toast])
 
-  // ⌘F 展开并聚焦搜索框（应用内快捷键；2026-08-20 搜索改收起式后同步调整）
+  // ⌘F 展开并聚焦搜索框（应用内快捷键；搜索改收起式后同步调整）
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -246,9 +374,11 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // 左上角应用菜单的动作（menu.ts 发送）
+  // 左上角应用菜单的动作（menu.ts 发送；引导期间全部忽略——蒙层下的界面不能被菜单破坏，
+  // 例如 ⌘, 打开偏好设置浮层会盖在引导上）
   useEffect(() => {
     const off = window.api.onMenuAction((action) => {
+      if (showOnboarding) return
       if (action === 'add-project') setForm({ mode: 'manual' })
       else if (action === 'focus-search') searchRef.current?.focus()
       else if (action === 'set-view-list') updateSettings({ view: 'list' })
@@ -259,15 +389,33 @@ export default function App(): React.JSX.Element {
       else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
     })
     return off
-  }, [toast, updateSettings])
+  }, [toast, updateSettings, showOnboarding])
 
-  // 已有标签聚合（表单联想下拉的数据源；2026-08-21 拍板：标签无颜色，列表/卡片不展示）
-  const allTags = useMemo(() => [...new Set(projects.flatMap((p) => p.tags))].sort(), [projects])
+  // 已有标签聚合（表单联想下拉的数据源：标签无颜色，列表/卡片不展示）
+  // 标签显示顺序：settings.tagOrder 优先（侧栏拖动调整），新标签按字母序排后面
+  const allTags = useMemo(() => {
+    const all = [...new Set(projects.flatMap((p) => p.tags))]
+    const order = settings.tagOrder
+    return all.sort((a, b) => {
+      const ia = order.indexOf(a)
+      const ib = order.indexOf(b)
+      if (ia === -1 && ib === -1) return a.localeCompare(b, 'zh')
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+  }, [projects, settings.tagOrder])
 
-  // 组 → 子项映射（2026-08-21 项目组：子项按登记顺序固定在组内）
+  // 组 → 子项映射（项目组：子项按登记顺序固定在组内）
+  // 引导演示假数据：引导期间并入展示（真实组件渲染），结束消失，不写库
+  const allProjects = useMemo(
+    () => (showOnboarding ? DEMO_PROJECTS : projects),
+    [showOnboarding, projects]
+  )
+
   const childrenMap = useMemo(() => {
     const m = new Map<string, Project[]>()
-    for (const p of projects) {
+    for (const p of allProjects) {
       if (!p.parentId) continue
       const arr = m.get(p.parentId)
       if (arr) arr.push(p)
@@ -275,14 +423,14 @@ export default function App(): React.JSX.Element {
     }
     for (const arr of m.values()) arr.sort((a, b) => a.createdAt - b.createdAt)
     return m
-  }, [projects])
+  }, [allProjects])
 
   const childrenOf = useCallback(
     (id: string): Project[] => childrenMap.get(id) ?? [],
     [childrenMap]
   )
 
-  /** 点开项目：组 → 跳侧栏「组」页面（2026-08-24 拍板：组不再弹右侧抽屉，页面里显示全部子项）；普通项目 → 详情抽屉 */
+  /** 点开项目：组 → 跳侧栏「组」页面（组不再弹右侧抽屉，页面里显示全部子项）；普通项目 → 详情抽屉 */
   const handleOpen = (p: Project): void => {
     if (p.type === 'group') {
       setCategory(`group:${p.id}` as Category)
@@ -292,10 +440,10 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  // 分类 + 搜索 + 排序（PRD 3.3；排序体系 2026-08-20 重做：名称/最近打开/添加日期/标签/无）
-  // 2026-08-21 项目组：顶层视角——组与独立项目同层，子项只随组出现；组按子项内容进分类
+  // 分类 + 搜索 + 排序（PRD 3.3；排序体系 重做：名称/最近打开/添加日期/标签/无）
+  // 项目组：顶层视角——组与独立项目同层，子项只随组出现；组按子项内容进分类
   const visibleProjects = useMemo(() => {
-    let list = projects.filter((p) => !p.parentId)
+    let list = allProjects.filter((p) => !p.parentId)
     const groupHas = (g: Project, type: 'service' | 'web'): boolean =>
       childrenOf(g.id).some((c) => c.type === type)
     if (category === 'service') {
@@ -305,9 +453,9 @@ export default function App(): React.JSX.Element {
     } else if (category === 'web') {
       list = list.filter((p) => p.type === 'web' || (p.type === 'group' && groupHas(p, 'web')))
     } else if (category.startsWith('group:')) {
-      // 组页面（2026-08-24 拍板：点组跳到这里，平铺显示组内全部子项）
+      // 组页面（点组跳到这里，平铺显示组内全部子项）
       const gid = category.slice(6)
-      list = projects.filter((p) => p.parentId === gid)
+      list = allProjects.filter((p) => p.parentId === gid)
     } else if (category.startsWith('tag:')) {
       const tag = category.slice(4)
       list = list.filter(
@@ -326,16 +474,44 @@ export default function App(): React.JSX.Element {
       // 子项命中 → 组跟着显示
       list = list.filter((p) => match(p) || (p.type === 'group' && childrenOf(p.id).some(match)))
     }
+    // 组之间永远按侧栏顺序（groupOrder，侧栏拖动调整）——任何排序方式下组的先后都跟随侧栏
+    const byGroupOrder = (a: Project, b: Project): number | null => {
+      if (a.type !== 'group' || b.type !== 'group') return null
+      const order = settings.groupOrder
+      const ia = order.indexOf(a.id)
+      const ib = order.indexOf(b.id)
+      if (ia === ib) return null
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    }
     if (settings.sortMode === 'name') {
-      list.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+      list.sort((a, b) => byGroupOrder(a, b) ?? a.name.localeCompare(b.name, 'zh'))
     } else if (settings.sortMode === 'created') {
-      list.sort((a, b) => b.createdAt - a.createdAt)
+      list.sort((a, b) => byGroupOrder(a, b) ?? b.createdAt - a.createdAt)
     } else if (settings.sortMode === 'recent') {
       list.sort(
-        (a, b) => (b.lastStartedAt ?? 0) - (a.lastStartedAt ?? 0) || b.createdAt - a.createdAt
+        (a, b) =>
+          (byGroupOrder(a, b) ?? (b.lastStartedAt ?? 0) - (a.lastStartedAt ?? 0)) ||
+          b.createdAt - a.createdAt
+      )
+    } else if (settings.sortMode === 'type') {
+      // 种类：按 typeOrder 排类型（组「文件夹」→服务→网页，顺序在设置里可调），同类型内按名称
+      const order = settings.typeOrder
+      const rank = (p: Project): number => {
+        const i = order.indexOf(p.type)
+        return i === -1 ? order.length : i
+      }
+      list.sort(
+        (a, b) => (byGroupOrder(a, b) ?? rank(a) - rank(b)) || a.name.localeCompare(b.name, 'zh')
       )
     } else if (settings.sortMode === 'tag') {
-      // 按第一个标签分组：无标签排最后；组间按标签名，组内按名称
+      // 按第一个标签分组：无标签排最后；组间按侧栏标签顺序（tagOrder），组内按名称
+      const order = settings.tagOrder
+      const rank = (t: string): number => {
+        const i = order.indexOf(t)
+        return i === -1 ? order.length : i
+      }
       const tagOf = (p: Project): string => p.tags[0] ?? ''
       list.sort((a, b) => {
         const ta = tagOf(a)
@@ -343,9 +519,9 @@ export default function App(): React.JSX.Element {
         if (ta !== tb) {
           if (!ta) return 1
           if (!tb) return -1
-          return ta.localeCompare(tb, 'zh')
+          return rank(ta) - rank(tb) || ta.localeCompare(tb, 'zh')
         }
-        return a.name.localeCompare(b.name, 'zh')
+        return byGroupOrder(a, b) ?? a.name.localeCompare(b.name, 'zh')
       })
     } else {
       // 'none'：手动拖拽顺序：按 settings.manualOrder，没记录过的排后面
@@ -353,17 +529,27 @@ export default function App(): React.JSX.Element {
       list.sort((a, b) => {
         const ia = order.indexOf(a.id)
         const ib = order.indexOf(b.id)
-        if (ia === -1 && ib === -1) return a.createdAt - b.createdAt
+        if (ia === -1 && ib === -1) return byGroupOrder(a, b) ?? a.createdAt - b.createdAt
         if (ia === -1) return 1
         if (ib === -1) return -1
-        return ia - ib
+        return byGroupOrder(a, b) ?? ia - ib
       })
     }
     return list
-  }, [projects, category, search, settings.sortMode, settings.manualOrder, childrenOf])
+  }, [
+    allProjects,
+    category,
+    search,
+    settings.sortMode,
+    settings.manualOrder,
+    settings.typeOrder,
+    settings.tagOrder,
+    settings.groupOrder,
+    childrenOf
+  ])
 
-  // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」；2026-08-21 起无颜色，只留文字）
-  // 2026-08-21 项目组：展开的组后面紧跟其子项（子项无组头、不参与顶层排序）
+  // 标签排序时给每个项目标注"是否需要插组头"（组头 = 第一个标签或「无标签」；起无颜色，只留文字）
+  // 项目组：展开的组后面紧跟其子项（子项无组头、不参与顶层排序）
   const listItems = useMemo(() => {
     const items: { p: Project; header: { label: string } | null }[] = []
     let last: string | undefined
@@ -379,24 +565,24 @@ export default function App(): React.JSX.Element {
     return items
   }, [visibleProjects, settings.sortMode])
 
-  // 2026-08-21 项目组：条目数按顶层算（组算 1 个）；组按子项内容计入分类
+  // 项目组：条目数按顶层算（组算 1 个）；组按子项内容计入分类
   const counts = useMemo(
     () => ({
-      all: projects.filter((p) => !p.parentId).length,
-      service: projects.filter(
+      all: allProjects.filter((p) => !p.parentId).length,
+      service: allProjects.filter(
         (p) =>
           !p.parentId &&
           (p.type === 'service' ||
             (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'service')))
       ).length,
-      web: projects.filter(
+      web: allProjects.filter(
         (p) =>
           !p.parentId &&
           (p.type === 'web' ||
             (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'web')))
       ).length
     }),
-    [projects, childrenOf]
+    [allProjects, childrenOf]
   )
 
   // 识别结果的统一处理：成功→确认表单；多项目→候选清单；.app→询问解析；识别不了→提示；重复→提示
@@ -417,6 +603,21 @@ export default function App(): React.JSX.Element {
   const handleDrop = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
     setDragOver(false)
+    // 引导期间忽略文件拖入——登记表单会盖在引导遮罩上（引导走完才能拖）
+    if (showOnboarding) return
+    // 排序拖拽落到空白（列表底部/子项区域）= 移到末尾
+    const sortId = e.dataTransfer.getData('application/x-reopen-id')
+    if (sortId && dragId) {
+      const order =
+        settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
+      const from = order.indexOf(sortId)
+      if (from !== -1) order.splice(from, 1)
+      order.push(sortId)
+      setDragId(null)
+      setSortOver(null)
+      applyManualOrder(order)
+      return
+    }
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
     const path = window.api.getPathForFile(files[0])
@@ -424,7 +625,7 @@ export default function App(): React.JSX.Element {
     handleDetectOutcome(await window.api.detectPath(path))
   }
 
-  // 「+」按钮：打开访达选文件夹 → 自动识别 → 补信息（2026-08-20 拍板）
+  // 「+」按钮：打开访达选文件夹 → 自动识别 → 补信息（
   const handlePickFolder = async (): Promise<void> => {
     const path = await window.api.pickProjectFolder()
     if (!path) return
@@ -438,19 +639,31 @@ export default function App(): React.JSX.Element {
     setDragId(p.id)
   }
 
-  // 自启项（PRD 3.5）
-  const autoStartItems = useMemo(
+  // 自启项（PRD 3.5）；引导第 4 步演示：演示脚本自动出现在面板里（引导结束消失）
+  const autoStartItems = useMemo(() => {
+    const ids =
+      showOnboarding && onboardStep >= 3
+        ? [...settings.autoStartIds, 'demo-script']
+        : settings.autoStartIds
+    return ids.map((id) => allProjects.find((p) => p.id === id)).filter(Boolean) as Project[]
+  }, [settings.autoStartIds, allProjects, showOnboarding, onboardStep])
+
+  // 引导期演示脚本的卡片/行亮自启闪电标记（与面板内容一致）
+  const autoStartIdsForUi = useMemo(
     () =>
-      settings.autoStartIds
-        .map((id) => projects.find((p) => p.id === id))
-        .filter(Boolean) as Project[],
-    [settings.autoStartIds, projects]
+      showOnboarding && onboardStep >= 3
+        ? [...settings.autoStartIds, 'demo-script']
+        : settings.autoStartIds,
+    [settings.autoStartIds, showOnboarding, onboardStep]
   )
+
+  // 引导第 4 步自动滑出自启面板（演示脚本在里面）；其它步随真实开关状态
+  const autoStartVisible = autoStartOpen || (showOnboarding && onboardStep === 3)
 
   const addToAutoStart = (id: string): void => {
     if (settings.autoStartIds.includes(id)) return
     const p = projects.find((x) => x.id === id)
-    // 2026-08-21 拍板：组内子项不能单独自启，自启打在组上（只拉成品子项）
+    // 组内子项不能单独自启，自启打在组上（只拉成品子项）
     if (p?.parentId) {
       toast('组内子项不能单独自启——请把整个组拖进来', 'error')
       return
@@ -459,7 +672,9 @@ export default function App(): React.JSX.Element {
     toast(
       p?.type === 'group'
         ? '已加入自启项：打开 Reopen 只自动拉起组里的成品网站'
-        : '已加入自启项：打开 Reopen 会自动启动它'
+        : p?.openBrowser
+          ? '已加入自启项：打开 Reopen 会随应用一起激活它。注意：「启动后打开浏览器」对自启不生效，自启不会自动打开浏览器'
+          : '已加入自启项：打开 Reopen 会随应用一起激活它'
     )
   }
 
@@ -467,7 +682,7 @@ export default function App(): React.JSX.Element {
     updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => x !== id) })
   }
 
-  // 自启面板已改为 .app-body 内占一列的嵌入式列卡片（2026-08-21 拍板）：挤入时项目自动让一列，不遮挡
+  // 自启面板已改为 .app-body 内占一列的嵌入式列卡片（挤入时项目自动让一列，不遮挡
 
   // 自启面板关闭：Esc / 点面板外（点 icon 由 toggle 处理；拖拽期间 mousedown 不触发，天然不关）
   useEffect(() => {
@@ -476,11 +691,11 @@ export default function App(): React.JSX.Element {
       if (e.key === 'Escape') setAutoStartOpen(false)
     }
     const onMouseDown = (e: MouseEvent): void => {
-      if (e.button !== 0) return // 右键等不关面板（2026-08-21）
+      if (e.button !== 0) return // 右键等不关面板（
       const panel = document.querySelector('.autostart-panel')
       if (!panel || panel.contains(e.target as Node)) return
       if (autoStartBtnRef.current?.contains(e.target as Node)) return
-      // 按在项目行/卡片上=准备拖拽进面板，不能关（2026-08-20/21 实测反馈：一按下面板就关了，拖不进去）
+      // 按在项目行/卡片上=准备拖拽进面板，不能关（/21 实测反馈：一按下面板就关了，拖不进去）
       if ((e.target as Element).closest('.project-row')) return
       if ((e.target as Element).closest('.card')) return
       setAutoStartOpen(false)
@@ -493,7 +708,7 @@ export default function App(): React.JSX.Element {
     }
   }, [autoStartOpen])
 
-  // ---------- 框选多选（2026-08-24 拍板：空白处按住拖出矩形框，框住的项目被选中 → 右键批量操作） ----------
+  // ---------- 框选多选（空白处按住拖出矩形框，框住的项目被选中 → 右键批量操作） ----------
 
   /** 在列表空白处按下左键 = 开始框选（点中项目本体不启动框选，保持点击/拖拽行为）。
    *  window 监听在按下时挂、松开时卸（原生方式，避免 effect 依赖 churn） */
@@ -558,7 +773,7 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  /** 有选中时点击项目 = 切换选中（2026-08-24 拍板）；无选中时保持打开抽屉/展开组 */
+  /** 有选中时点击项目 = 切换选中（无选中时保持打开抽屉/展开组 */
   const selectMode = selectedIds.size > 0
 
   const toggleSelect = (id: string): void => {
@@ -622,7 +837,7 @@ export default function App(): React.JSX.Element {
     return Promise.resolve(n)
   }
 
-  /** 批量加标签-第二步：应用（用户拍板规则：已有该标签跳过；无标签直接加；conflictMode=move 原标签换成新标签） */
+  /** 批量加标签-第二步：应用（用户规则：已有该标签跳过；无标签直接加；conflictMode=move 原标签换成新标签） */
   const handleBulkTagApply = async (tag: string, conflictMode: 'skip' | 'move'): Promise<void> => {
     const ids = bulkTag?.ids ?? []
     let added = 0
@@ -671,6 +886,13 @@ export default function App(): React.JSX.Element {
           }
           await window.api.deleteProject(c.id)
         }
+      } else {
+        // 正在运行的先停掉再删（防孤儿进程占端口）
+        try {
+          await window.api.stopProject(p.id)
+        } catch {
+          // 没在运行就算了
+        }
       }
       await window.api.deleteProject(p.id)
     }
@@ -686,19 +908,20 @@ export default function App(): React.JSX.Element {
     toast(`已移除 ${ids.length} 个项目`, 'success')
   }
 
-  /** 批量：手动成组（2026-08-24 拍板：框选右键"添加成组"；顶层项目至少两个，组和子项不算） */
-  const handleBulkGroup = async (): Promise<void> => {
-    const ids = [...selectedIds].filter((id) => {
+  /** 批量：手动成组（框选右键"添加成组"→先起组名；顶层项目至少两个，组和子项不算） */
+  const handleBulkGroup = async (name: string): Promise<void> => {
+    const ids = [...(bulkGroupIds ?? [])].filter((id) => {
       const p = projects.find((x) => x.id === id)
       return p && !p.parentId && p.type !== 'group'
     })
     if (ids.length < 2) {
       toast('成组至少需要两个顶层项目（组和组内子项不算）', 'info')
       setSelectedIds(new Set())
+      setBulkGroupIds(null)
       return
     }
     try {
-      const group = await window.api.createGroup(ids)
+      const group = await window.api.createGroup(ids, name)
       setProjects((ps) =>
         ps.map((x) => (ids.includes(x.id) ? { ...x, parentId: group.id } : x)).concat(group)
       )
@@ -707,9 +930,10 @@ export default function App(): React.JSX.Element {
       toast(err instanceof Error ? err.message : '成组失败', 'error')
     }
     setSelectedIds(new Set())
+    setBulkGroupIds(null)
   }
 
-  /** 解散组（2026-08-24 拍板）：子项回到顶层，组删除 */
+  /** 解散组（子项回到顶层，组删除 */
   const handleUngroup = async (g: Project): Promise<void> => {
     await window.api.ungroup(g.id)
     setProjects((ps) =>
@@ -732,7 +956,7 @@ export default function App(): React.JSX.Element {
     {
       label: '添加成组',
       icon: <Group size={14} />,
-      onClick: () => void handleBulkGroup()
+      onClick: () => setBulkGroupIds([...selectedIds])
     },
     {
       label: '加标签…',
@@ -752,7 +976,7 @@ export default function App(): React.JSX.Element {
     }
   ]
 
-  /** 松手后的平滑移动动画（FLIP，2026-08-21 拍板）：重排前记旧位置 → 重排后反向位移 → 过渡归零 */
+  /** 松手后的平滑移动动画（FLIP）：重排前记旧位置 → 重排后反向位移 → 过渡归零 */
   const animateFlip = (from: Map<HTMLElement, { x: number; y: number }>): void => {
     const els = Array.from(document.querySelectorAll<HTMLElement>('.project-row, .card'))
     requestAnimationFrame(() => {
@@ -786,30 +1010,48 @@ export default function App(): React.JSX.Element {
     })
   }
 
-  const handleRowDrop = (e: React.DragEvent, target: Project): void => {
-    // 文件拖入不归行处理，冒泡给窗口的登记逻辑
-    if (e.dataTransfer.types.includes('Files')) return
-    e.preventDefault()
-    e.stopPropagation()
-    const id = e.dataTransfer.getData('application/x-reopen-id') || dragId
-    setDragId(null)
-    setDragOverId(null)
-    if (!id || id === target.id) return
-    const order =
-      settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
-    const from = order.indexOf(id)
-    if (from !== -1) order.splice(from, 1)
-    const to = order.indexOf(target.id)
-    // 插到目标行后面（to+1）：拖 A 到 B 上 = A 移到 B 后面。
-    // 之前插目标前面，拖到相邻行等于原位，看起来"拖了根本不会排序"（2026-08-20 实测反馈）
-    order.splice(to === -1 ? order.length : to + 1, 0, id)
-    // 重排前记录所有项目元素的位置，供松手后的平滑移动动画使用
+  /** 按新顺序落位：写 manualOrder + FLIP 平滑移动（拖到空白=移到末尾也走这里） */
+  const applyManualOrder = (order: string[]): void => {
     const before = new Map<HTMLElement, { x: number; y: number }>()
     document.querySelectorAll<HTMLElement>('.project-row, .card').forEach((el) => {
       const r = el.getBoundingClientRect()
       before.set(el, { x: r.left, y: r.top })
     })
     void updateSettings({ manualOrder: order }).then(() => animateFlip(before))
+  }
+
+  /** 排序拖拽 dragover（行/卡共用）：指针在目标中线以上=插前、以下=插后（仿访达插入线语义） */
+  const handleSortDragOver = (e: React.DragEvent, p: Project, kind: 'row' | 'card'): void => {
+    if (e.dataTransfer.types.includes('Files')) return
+    if (p.parentId) return // 组内子项不是排序目标（落到空白=移到末尾）
+    e.preventDefault()
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const before =
+      kind === 'card' ? e.clientX < r.left + r.width / 2 : e.clientY < r.top + r.height / 2
+    if (sortOver?.id === p.id && sortOver.before === before) return
+    setSortOver({ id: p.id, before, rect: r, kind })
+  }
+
+  /** 排序拖拽落下（drop 在目标行/卡上；插入位置以 dragover 时的插前/插后为准） */
+  const handleRowDrop = (e: React.DragEvent): void => {
+    // 文件拖入不归行处理，冒泡给窗口的登记逻辑
+    if (e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const id = e.dataTransfer.getData('application/x-reopen-id') || dragId
+    const over = sortOver
+    setDragId(null)
+    setSortOver(null)
+    if (!id || !over || id === over.id) return
+    const order =
+      settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
+    const from = order.indexOf(id)
+    if (from !== -1) order.splice(from, 1)
+    const to = order.indexOf(over.id)
+    // before=插到目标前面（拖到第一个的上半就能排到最前，修复"拖不到第一个"）；
+    // 目标没记录过=插到末尾（splice 语义安全）
+    order.splice(to === -1 ? order.length : over.before ? to : to + 1, 0, id)
+    applyManualOrder(order)
   }
 
   const handleStart = async (p: Project): Promise<void> => {
@@ -823,7 +1065,14 @@ export default function App(): React.JSX.Element {
     if (!res.ok) toast(res.reason ?? '打开失败', 'error')
   }
 
-  /** 启动失败后的「看成品」兜底（2026-08-24 拍板）：以成品预览方式打开 */
+  /** 由本应用托管：停掉手动起的旧服务、用项目自己的方式重新启动（对局域网开门） */
+  const handleRehost = async (p: Project): Promise<void> => {
+    toast('正在停掉旧服务并重新启动，稍等几秒', 'info')
+    const res = await window.api.rehostProject(p.id)
+    if (!res.ok) toast(res.reason ?? '切换失败', 'error')
+  }
+
+  /** 启动失败后的「看成品」兜底（以成品预览方式打开 */
   const handleViewPreview = async (p: Project): Promise<void> => {
     const res = await window.api.startProject(p.id, 'preview')
     if (!res.ok) toast(res.reason ?? '打开成品失败', 'error')
@@ -831,7 +1080,7 @@ export default function App(): React.JSX.Element {
 
   // 右键菜单项（随运行状态变化；PRD 3.3）
   const menuItems = (p: Project): MenuItem[] => {
-    // 组（2026-08-21 项目组）：不启动，编辑/解散/删除（解散组 2026-08-24 拍板）
+    // 组（项目组）：不启动，编辑/解散/删除（解散组）
     if (p.type === 'group') {
       return [
         {
@@ -854,7 +1103,7 @@ export default function App(): React.JSX.Element {
     }
     const st = statuses[p.id]?.status ?? 'stopped'
     const items: MenuItem[] = []
-    // 纯网页（2026-08-24 拍板）：无需激活——右键菜单没有启动/停止
+    // 纯网页（无需激活——右键菜单没有启动/停止
     if (!isPureWeb(p)) {
       if (st === 'running' || st === 'starting') {
         items.push({
@@ -899,7 +1148,7 @@ export default function App(): React.JSX.Element {
     return items
   }
 
-  // 项目文件夹被移动后的找回：访达选新位置 → 更新路径（2026-08-20 用户提问，启动时标红提示引导到这里）
+  // 项目文件夹被移动后的找回：访达选新位置 → 更新路径（用户提问，启动时标红提示引导到这里）
   const handleRelocate = async (p: Project): Promise<void> => {
     const newPath = await window.api.pickProjectFolder(p.type === 'web')
     if (!newPath) return
@@ -922,63 +1171,94 @@ export default function App(): React.JSX.Element {
     toast(`已重新定位「${updated.name}」`, 'success')
   }
 
+  /** 改过端口且有来源：先改源文件，成功返回新来源片段 → 档案落新端口；
+   *  改不动则档案保持原端口（源码和档案永不打架，不会「改了打不开」） */
+  const rewritePortFirst = async (
+    path: string,
+    oldPort: number | undefined,
+    input: NewProjectInput
+  ): Promise<NewProjectInput> => {
+    if (input.port === undefined || input.port === oldPort || !input.portSource) return input
+    const r = await window.api.rewriteProjectPortFile(path, input.portSource, input.port)
+    if (!r.ok || !r.source) {
+      toast(r.reason ?? '端口改写没成功，已保持项目原端口', 'error')
+      // 回退：档案用原端口、源码没动，两边一致
+      return { ...input, port: oldPort }
+    }
+    toast('已同步改写项目源代码里的端口，重新启动项目后生效', 'success')
+    return { ...input, portSource: r.source }
+  }
+
   const handleFormSubmit = async (input: NewProjectInput): Promise<void> => {
-    if (form?.mode === 'edit' && form.project) {
-      const updated = await window.api.updateProject(form.project.id, input)
-      setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)))
-      toast(`已保存「${updated.name}」`, 'success')
-    } else {
-      const project = await window.api.addProject(input)
-      setProjects((ps) => [...ps, project])
-      toast(`已添加「${project.name}」`, 'success')
-      // 网站常驻（2026-08-21 拍板）：网页类型登记提交即上线，端口挂在行上随时点开
-      if (project.type === 'web') {
-        const r = await window.api.startProject(project.id)
-        if (!r.ok && r.reason) toast(r.reason, 'error')
+    try {
+      if (form?.mode === 'edit' && form.project) {
+        // 端口改过且有来源 → 先改写源文件（vite 等不认注入的项目靠这个生效），成功才落新端口
+        const finalInput = await rewritePortFirst(form.project.path, form.project.port, input)
+        const updated = await window.api.updateProject(form.project.id, finalInput)
+        setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)))
+        toast(`已保存「${updated.name}」`, 'success')
+      } else {
+        // 拖入登记时改过端口且有来源 → 先改源文件再登记（表单里已提示「会替换写死的端口」）
+        const finalInput = await rewritePortFirst(input.path, form?.detect?.suggested.port, input)
+        const project = await window.api.addProject(finalInput)
+        setProjects((ps) => [...ps, project])
+        toast(`已添加「${project.name}」`, 'success')
+        // 网站常驻（网页类型登记提交即上线，端口挂在行上随时点开
+        if (project.type === 'web') {
+          const r = await window.api.startProject(project.id)
+          if (!r.ok && r.reason) toast(r.reason, 'error')
+        }
       }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '保存失败', 'error')
+      return
     }
     setForm(null)
   }
 
-  /** 组预览确认：登记组 + 按勾选顺序登记子项（成品先勾选的在前），成品子项登记即上线（2026-08-21 拍板） */
+  /** 组预览确认：登记组 + 按勾选顺序登记子项（成品先勾选的在前），成品子项登记即上线（ */
   const handleGroupCreate = async (name: string, selected: DetectSuccess[]): Promise<void> => {
-    const group = await window.api.addProject({
-      name,
-      type: 'group',
-      path: multi?.path ?? '',
-      openBrowser: false,
-      note: '',
-      tags: []
-    })
-    const added: Project[] = [group]
-    for (const s of selected) {
-      const child = await window.api.addProject({
-        name: s.suggested.name,
-        type: s.type,
-        path: s.path,
-        command: s.suggested.command,
-        port: s.suggested.port,
-        entryPath: s.suggested.entryPath,
-        entryPaths: s.suggested.entryPaths,
-        launchModes: s.suggested.launchModes,
-        activeMode: s.suggested.activeMode,
+    try {
+      const group = await window.api.addProject({
+        name,
+        type: 'group',
+        path: multi?.path ?? '',
         openBrowser: false,
         note: '',
-        tags: [],
-        parentId: group.id
+        tags: []
       })
-      added.push(child)
-      // 成品网页登记即上线（网站常驻；Phase B：有成品预览方式即按 preview 上线）
-      if ((child.launchModes ?? []).some((m) => m.kind === 'preview')) {
-        const r = await window.api.startProject(child.id, 'preview')
-        if (!r.ok && r.reason) toast(r.reason, 'error')
+      const added: Project[] = [group]
+      for (const s of selected) {
+        const child = await window.api.addProject({
+          name: s.suggested.name,
+          type: s.type,
+          path: s.path,
+          command: s.suggested.command,
+          port: s.suggested.port,
+          entryPath: s.suggested.entryPath,
+          entryPaths: s.suggested.entryPaths,
+          launchModes: s.suggested.launchModes,
+          activeMode: s.suggested.activeMode,
+          openBrowser: false,
+          note: '',
+          tags: [],
+          parentId: group.id
+        })
+        added.push(child)
+        // 成品网页登记即上线（网站常驻；：有成品预览方式即按 preview 上线）
+        if ((child.launchModes ?? []).some((m) => m.kind === 'preview')) {
+          const r = await window.api.startProject(child.id, 'preview')
+          if (!r.ok && r.reason) toast(r.reason, 'error')
+        }
       }
+      setProjects((ps) => [...ps, ...added])
+      setMulti(null)
+      // 新组登记完直接跳组页面
+      setCategory(`group:${group.id}` as Category)
+      toast(`已登记项目组「${name}」（${selected.length} 个子项）`, 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '登记失败', 'error')
     }
-    setProjects((ps) => [...ps, ...added])
-    setMulti(null)
-    // 新组登记完直接跳组页面（2026-08-24 拍板重做：点组=跳侧栏「组」页面看子项）
-    setCategory(`group:${group.id}` as Category)
-    toast(`已登记项目组「${name}」（${selected.length} 个子项）`, 'success')
   }
 
   const handleParseApp = async (): Promise<void> => {
@@ -991,7 +1271,7 @@ export default function App(): React.JSX.Element {
 
   const handleDelete = async (): Promise<void> => {
     if (!deleteTarget) return
-    // 组（2026-08-21 项目组）：先停掉在线的子项、删子项，再删组本身
+    // 组（项目组）：先停掉在线的子项、删子项，再删组本身
     if (deleteTarget.type === 'group') {
       for (const c of childrenOf(deleteTarget.id)) {
         try {
@@ -1007,14 +1287,83 @@ export default function App(): React.JSX.Element {
     } else {
       setProjects((ps) => ps.filter((p) => p.id !== deleteTarget.id))
     }
+    // 正在运行的项目先停掉再删（不然进程变孤儿继续占端口，日志面板也还指着它）
+    if (deleteTarget.type !== 'group') {
+      try {
+        await window.api.stopProject(deleteTarget.id)
+      } catch {
+        // 没在运行就算了
+      }
+    }
     await window.api.deleteProject(deleteTarget.id)
     if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
   }
 
-  // ---------- 标签管理（2026-08-21 拍板：侧栏标签右键 重命名/删除/染色，颜色填进标签 icon） ----------
+  // ---------- 标签管理（侧栏标签右键 重命名/删除/染色，颜色填进标签 icon） ----------
 
   /** 标签 → 染色（默认无色） */
+  // 组显示顺序：settings.groupOrder 优先（侧栏拖动调整），新组按创建时间排后面
+  const orderedGroups = useMemo(() => {
+    const gs = allProjects.filter((p) => p.type === 'group' && !p.parentId)
+    const order = settings.groupOrder
+    return gs.sort((a, b) => {
+      const ia = order.indexOf(a.id)
+      const ib = order.indexOf(b.id)
+      if (ia === -1 && ib === -1) return a.createdAt - b.createdAt
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+  }, [allProjects, settings.groupOrder])
+
+  /** 侧栏拖动标签换顺序：全量把当前显示顺序写进 tagOrder（标签排序模式下分组顺序跟着变） */
+  const handleTagMove = async (from: string, to: string, before: boolean): Promise<void> => {
+    const tags = [...allTags]
+    const fi = tags.indexOf(from)
+    if (fi === -1 || from === to) return
+    tags.splice(fi, 1)
+    let ti = tags.indexOf(to)
+    if (ti === -1) return
+    if (!before) ti += 1
+    tags.splice(ti, 0, from)
+    await updateSettings({ tagOrder: tags })
+  }
+
+  /** 侧栏拖动组换顺序：全量把当前显示顺序写进 groupOrder（任何排序方式下组的先后跟着变） */
+  const handleGroupMove = async (from: string, to: string, before: boolean): Promise<void> => {
+    const gs = [...orderedGroups]
+    const fi = gs.findIndex((g) => g.id === from)
+    if (fi === -1 || from === to) return
+    const [g] = gs.splice(fi, 1)
+    let ti = gs.findIndex((x) => x.id === to)
+    if (ti === -1) return
+    if (!before) ti += 1
+    gs.splice(ti, 0, g)
+    await updateSettings({ groupOrder: gs.map((x) => x.id) })
+  }
+
+  /** 侧栏拖出条目范围（列表上方/下方）→ 直接排到最前/最后 */
+  const handleTagMoveToEdge = async (from: string, edge: 'start' | 'end'): Promise<void> => {
+    const tags = [...allTags]
+    const fi = tags.indexOf(from)
+    if (fi === -1) return
+    tags.splice(fi, 1)
+    if (edge === 'start') tags.unshift(from)
+    else tags.push(from)
+    await updateSettings({ tagOrder: tags })
+  }
+
+  const handleGroupMoveToEdge = async (from: string, edge: 'start' | 'end'): Promise<void> => {
+    const gs = [...orderedGroups]
+    const fi = gs.findIndex((g) => g.id === from)
+    if (fi === -1) return
+    const [g] = gs.splice(fi, 1)
+    if (edge === 'start') gs.unshift(g)
+    else gs.push(g)
+    await updateSettings({ groupOrder: gs.map((x) => x.id) })
+  }
+
   const tagColor = (tag: string): string | undefined => settings.tagColors[tag]
 
   /** 把含某标签的项目批量改名/移除（渲染层逐个 updateProject，全字段传入保留 lastPort） */
@@ -1056,12 +1405,16 @@ export default function App(): React.JSX.Element {
     }
     await updateTagInProjects(old, (tags) => tags.map((t) => (t === old ? trimmed : t)))
     const color = settings.tagColors[old]
+    const patch: Partial<Settings> = {
+      tagOrder: settings.tagOrder.map((t) => (t === old ? trimmed : t))
+    }
     if (color) {
       const next = { ...settings.tagColors }
       delete next[old]
       next[trimmed] = color
-      await updateSettings({ tagColors: next })
+      patch.tagColors = next
     }
+    await updateSettings(patch)
     if (category === `tag:${old}`) setCategory(`tag:${trimmed}` as Category)
     toast(`标签已重命名为「${trimmed}」`, 'success')
   }
@@ -1074,7 +1427,10 @@ export default function App(): React.JSX.Element {
     await updateTagInProjects(tag, (tags) => tags.filter((t) => t !== tag))
     const next = { ...settings.tagColors }
     delete next[tag]
-    await updateSettings({ tagColors: next })
+    await updateSettings({
+      tagColors: next,
+      tagOrder: settings.tagOrder.filter((t) => t !== tag)
+    })
     if (category === `tag:${tag}`) setCategory('all')
     toast(`标签「${tag}」已删除`, 'success')
   }
@@ -1087,7 +1443,7 @@ export default function App(): React.JSX.Element {
     await updateSettings({ tagColors: next })
   }
 
-  /** 标签右键菜单项（2026-08-21 拍板：染色不是弹窗，而是菜单里内嵌渐变色板滑块+无色按钮） */
+  /** 标签右键菜单项（染色不是弹窗，而是菜单里内嵌渐变色板滑块+无色按钮） */
   const tagMenuItems = (tag: string): MenuItem[] => [
     {
       label: '重命名…',
@@ -1104,7 +1460,7 @@ export default function App(): React.JSX.Element {
           current={settings.tagColors[tag]}
           onPick={(color) => {
             void handleTagPickColor(tag, color)
-            // 选完颜色（或点无色）菜单立即关闭（2026-08-21 用户反馈）
+            // 选完颜色（或点无色）菜单立即关闭
             setTagMenu(null)
           }}
         />
@@ -1118,7 +1474,27 @@ export default function App(): React.JSX.Element {
     }
   ]
 
-  const selectedProject = projects.find((p) => p.id === selectedId) ?? null
+  // 引导期 demo 项目也能打开抽屉（allProjects 含假数据）；
+  // 引导第 2 步自动拉出演示应用的详情抽屉展示日志（渲染时派生，不写 state），离开该步自动关上
+  const drawerId = showOnboarding && onboardStep === 1 ? 'demo-app' : selectedId
+  const selectedProject = allProjects.find((p) => p.id === drawerId) ?? null
+
+  // 关闭时保留最后项目渲染到槽位宽度收回完成（overflow 裁掉内容）——内容不瞬消，关闭不闪；
+  // 打开/关闭在事件里同步更新幽灵副本（不写 effect，避开级联渲染）
+  const [drawerGhost, setDrawerGhost] = useState<Project | null>(null)
+  const drawerProject = selectedProject ?? drawerGhost
+
+  // 引导期 demo 卡片：第 3 步起假装运行中（端口旁亮出局域网地址供演示），引导结束消失
+  const cardStatuses = useMemo(() => {
+    if (!showOnboarding || onboardStep < 2) return statuses
+    return { ...statuses, 'demo-app': { id: 'demo-app', status: 'running' as const, port: 5321 } }
+  }, [statuses, showOnboarding, onboardStep])
+  const demoLanOf = (p: Project): string =>
+    p.id === 'demo-app' && showOnboarding && onboardStep >= 2
+      ? '192.168.1.8'
+      : settings.lanAccess
+        ? lanIp
+        : ''
 
   return (
     <div
@@ -1131,9 +1507,12 @@ export default function App(): React.JSX.Element {
         }
       }}
       onDragLeave={(e) => {
-        if (e.currentTarget === e.target) {
+        // 只有指针真的离开窗口/容器才清除遮罩：relatedTarget 为空=拖去别的软件或桌面；
+        // 旧写法 currentTarget===target 在指针停在子元素上时误判「已离开」→ 遮罩卡住不消失（bug）
+        const rt = e.relatedTarget as Node | null
+        if (!rt || !(e.currentTarget as Node).contains(rt)) {
           setDragOver(false)
-          setDragOverId(null)
+          setSortOver(null)
         }
       }}
       onDrop={handleDrop}
@@ -1144,23 +1523,54 @@ export default function App(): React.JSX.Element {
         </div>
       )}
 
+      {/* 排序拖拽的插入指示线（fixed 全局渲染：行=横线贴目标上/下缘，卡片=竖线在目标左/右间隙，
+          不受行/卡 overflow:hidden 裁剪，位置随指针上半/下半（左半/右半）切换） */}
+      {sortOver && dragId && (
+        <div
+          className={`drop-line ${sortOver.kind === 'card' ? 'drop-line-v' : 'drop-line-h'}`}
+          style={
+            sortOver.kind === 'card'
+              ? {
+                  left: sortOver.before ? sortOver.rect.left - 7 : sortOver.rect.right + 5,
+                  top: sortOver.rect.top + 6,
+                  height: sortOver.rect.height - 12
+                }
+              : {
+                  left: sortOver.rect.left + 8,
+                  width: sortOver.rect.width - 16,
+                  top: sortOver.before ? sortOver.rect.top - 4 : sortOver.rect.bottom + 2
+                }
+          }
+        />
+      )}
+
       <Sidebar
         category={category}
         tags={allTags}
         tagColor={tagColor}
         counts={counts}
-        groups={projects
-          .filter((p) => p.type === 'group' && !p.parentId)
-          .map((g) => ({ id: g.id, name: g.name, childCount: childrenOf(g.id).length }))}
+        groups={orderedGroups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          childCount: childrenOf(g.id).length
+        }))}
         runningCount={Object.values(statuses).filter((s) => s.status === 'running').length}
         onSelect={setCategory}
         onTagContextMenu={(tag, e) => setTagMenu({ x: e.clientX, y: e.clientY, tag })}
+        onGroupContextMenu={(id, e) => {
+          const g = projects.find((x) => x.id === id)
+          if (g) handleItemContextMenu(e, g)
+        }}
+        onTagMove={(from, to, before) => void handleTagMove(from, to, before)}
+        onGroupMove={(from, to, before) => void handleGroupMove(from, to, before)}
+        onTagMoveToEdge={(from, edge) => void handleTagMoveToEdge(from, edge)}
+        onGroupMoveToEdge={(from, edge) => void handleGroupMoveToEdge(from, edge)}
       />
 
       <div className="app-right">
         <div className="app-body">
           <div className="app-main">
-            {/* toolbar 属中间栏：右栏滑出时随中间整体挤压（2026-08-20 拍板） */}
+            {/* toolbar 属中间栏：右栏滑出时随中间整体挤压（ */}
             <Toolbar
               search={search}
               onSearch={setSearch}
@@ -1172,7 +1582,7 @@ export default function App(): React.JSX.Element {
               onSort={(m) => updateSettings({ sortMode: m })}
               onAdd={handlePickFolder}
               onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
-              autoStartCount={settings.autoStartIds.length}
+              autoStartCount={autoStartIdsForUi.length}
               autoStartEnabled={settings.autoStartEnabled}
               searchInputRef={searchRef}
               autoStartBtnRef={autoStartBtnRef}
@@ -1181,6 +1591,7 @@ export default function App(): React.JSX.Element {
             <main
               className="project-list"
               data-tour="list"
+
               ref={listRef}
               onMouseDown={beginMarquee}
             >
@@ -1206,7 +1617,7 @@ export default function App(): React.JSX.Element {
               ) : settings.view === 'list' ? (
                 listItems.map(({ p, header }) =>
                   p.type === 'group' ? (
-                    // 组行（2026-08-21 项目组）：展开/收起，子项由 listItems 顺序跟随
+                    // 组行（项目组）：展开/收起，子项由 listItems 顺序跟随
                     <Fragment key={p.id}>
                       {header && <div className="list-group-header">{header.label}</div>}
                       <GroupRow
@@ -1218,26 +1629,23 @@ export default function App(): React.JSX.Element {
                             .length
                         }
                         tagColor={tagColor}
-                        autoStartChecked={settings.autoStartIds.includes(p.id)}
+                        autoStartChecked={autoStartIdsForUi.includes(p.id)}
                         onContextMenu={(e) => handleItemContextMenu(e, p)}
                         selected={selectedIds.has(p.id)}
                         selectMode={selectMode}
                         onSelectToggle={() => toggleSelect(p.id)}
-                        sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                        sortDraggable={
+                          !showOnboarding &&
+                          (settings.sortMode === 'none' || settings.autoStartEnabled)
+                        }
                         dragging={dragId === p.id}
-                        dropTarget={dragOverId === p.id}
                         onDragStart={(e) => handleRowDragStart(e, p)}
-                        onDragOver={(e) => {
-                          if (!e.dataTransfer.types.includes('Files')) {
-                            e.preventDefault()
-                            setDragOverId(p.id)
-                          }
-                        }}
+                        onDragOver={(e) => handleSortDragOver(e, p, 'row')}
                         onDragEnd={() => {
                           setDragId(null)
-                          setDragOverId(null)
+                          setSortOver(null)
                         }}
-                        onDrop={(e) => handleRowDrop(e, p)}
+                        onDrop={(e) => handleRowDrop(e)}
                       />
                     </Fragment>
                   ) : (
@@ -1245,7 +1653,7 @@ export default function App(): React.JSX.Element {
                       {header && <div className="list-group-header">{header.label}</div>}
                       <ProjectRow
                         project={p}
-                        status={statuses[p.id]}
+                        status={cardStatuses[p.id]}
                         onOpen={() => setSelectedId(p.id)}
                         onStart={() => handleStart(p)}
                         onStop={() => window.api.stopProject(p.id)}
@@ -1254,28 +1662,25 @@ export default function App(): React.JSX.Element {
                         selectMode={selectMode}
                         onSelectToggle={() => toggleSelect(p.id)}
                         sortDraggable={
-                          !p.parentId && (settings.sortMode === 'none' || settings.autoStartEnabled)
+                          !showOnboarding &&
+                          !p.parentId &&
+                          (settings.sortMode === 'none' || settings.autoStartEnabled)
                         }
                         dragging={dragId === p.id}
-                        dropTarget={dragOverId === p.id}
                         onDragStart={(e) => handleRowDragStart(e, p)}
-                        onDragOver={(e) => {
-                          if (!e.dataTransfer.types.includes('Files')) {
-                            e.preventDefault()
-                            setDragOverId(p.id)
-                          }
-                        }}
+                        onDragOver={(e) => handleSortDragOver(e, p, 'row')}
                         onDragEnd={() => {
                           setDragId(null)
-                          setDragOverId(null)
+                          setSortOver(null)
                         }}
-                        onDrop={(e) => handleRowDrop(e, p)}
-                        autoStartChecked={settings.autoStartIds.includes(p.id)}
+                        onDrop={(e) => handleRowDrop(e)}
+                        autoStartChecked={autoStartIdsForUi.includes(p.id)}
                         tagColor={tagColor}
                         onOpenBrowser={() => handleOpenBrowser(p)}
                         onViewPreview={() => handleViewPreview(p)}
                         isChild={Boolean(p.parentId)}
-                        lanIp={settings.lanAccess ? lanIp : ''}
+                        lanIp={demoLanOf(p)}
+                        onRehost={() => handleRehost(p)}
                       />
                     </Fragment>
                   )
@@ -1283,23 +1688,19 @@ export default function App(): React.JSX.Element {
               ) : (
                 <CardView
                   items={listItems}
-                  statuses={statuses}
-                  autoStartIds={settings.autoStartIds}
+                  statuses={cardStatuses}
+                  autoStartIds={autoStartIdsForUi}
                   dragId={dragId}
-                  dragOverId={dragOverId}
-                  sortDraggable={settings.sortMode === 'none' || settings.autoStartEnabled}
+                  sortDraggable={
+                    !showOnboarding && (settings.sortMode === 'none' || settings.autoStartEnabled)
+                  }
                   onDragStart={(e, p) => handleRowDragStart(e, p)}
-                  onDragOver={(e, p) => {
-                    if (!e.dataTransfer.types.includes('Files')) {
-                      e.preventDefault()
-                      setDragOverId(p.id)
-                    }
-                  }}
+                  onDragOver={(e, p) => handleSortDragOver(e, p, 'card')}
                   onDragEnd={() => {
                     setDragId(null)
-                    setDragOverId(null)
+                    setSortOver(null)
                   }}
-                  onDrop={(e, p) => handleRowDrop(e, p)}
+                  onDrop={(e) => handleRowDrop(e)}
                   tagColor={tagColor}
                   onOpen={(p) => handleOpen(p)}
                   onOpenBrowser={(p) => handleOpenBrowser(p)}
@@ -1312,48 +1713,70 @@ export default function App(): React.JSX.Element {
                   selectMode={selectMode}
                   onSelectToggle={(p) => toggleSelect(p.id)}
                   lanIp={settings.lanAccess ? lanIp : ''}
+                  onRehost={handleRehost}
+                  demoLanIp={showOnboarding && onboardStep >= 2 ? '192.168.1.8' : undefined}
                 />
               )}
             </main>
           </div>
 
-          {autoStartOpen && settings.autoStartEnabled && (
-            <AutoStartPanel
-              items={autoStartItems}
-              onRemove={removeFromAutoStart}
-              onDropId={addToAutoStart}
-            />
-          )}
+          {/* 自启面板常驻 DOM：槽位宽度 0↔224 平滑过渡（与抽屉同款滑动，不瞬跳） */}
+          <div
+            className={`autostart-slot ${
+              autoStartVisible && settings.autoStartEnabled ? 'autostart-open' : ''
+            }`}
+          >
+            {settings.autoStartEnabled && (
+              <AutoStartPanel
+                items={autoStartItems}
+                onRemove={removeFromAutoStart}
+                onDropId={addToAutoStart}
+                tourItemId={showOnboarding ? 'demo-script' : undefined}
+              />
+            )}
+          </div>
 
-          {selectedProject && (
-            <DetailDrawer
-              project={selectedProject}
-              status={statuses[selectedProject.id]}
-              logs={logs[selectedProject.id] ?? []}
-              onStart={() => handleStart(selectedProject)}
-              onStop={() => window.api.stopProject(selectedProject.id)}
-              onEdit={() => setForm({ mode: 'edit', project: selectedProject })}
-              onDelete={() => setDeleteTarget(selectedProject)}
-              onOpenBrowser={(entry) => handleOpenBrowser(selectedProject, entry)}
-              onViewPreview={() => handleViewPreview(selectedProject)}
-              onInstallDeps={() => {
-                void window.api.installProjectDeps(selectedProject.id)
-                toast('开始安装依赖，看日志面板的进度，装完再点启动', 'info')
-              }}
-              onKillResidual={() => {
-                void window.api.killResidual(selectedProject.id)
-                toast('正在终止残留进程并重新启动', 'info')
-              }}
-              onClose={() => setSelectedId(null)}
-              onBack={
-                selectedProject.parentId
-                  ? () =>
-                      handleOpen(projects.find((x) => x.id === selectedProject.parentId) as Project)
-                  : undefined
-              }
-              lanIp={settings.lanAccess ? lanIp : ''}
-            />
-          )}
+          {/* 抽屉常驻 DOM：槽位宽度 0↔456 平滑过渡（中间栏每帧跟着收缩，卡片自然滑动换列，
+              不再瞬跳闪一下）；关闭时内容保留到收回完成，被 overflow 裁掉，也不闪 */}
+          <div className={`drawer-slot ${selectedProject ? 'drawer-open' : ''}`}>
+            {drawerProject && (
+              <DetailDrawer
+                project={drawerProject}
+                status={statuses[drawerProject.id]}
+                logs={
+                  drawerProject.id === 'demo-app' && showOnboarding
+                    ? DEMO_LOGS
+                    : (logs[drawerProject.id] ?? [])
+                }
+                onStart={() => handleStart(drawerProject)}
+                onStop={() => window.api.stopProject(drawerProject.id)}
+                onEdit={() => setForm({ mode: 'edit', project: drawerProject })}
+                onDelete={() => setDeleteTarget(drawerProject)}
+                onOpenBrowser={(entry) => handleOpenBrowser(drawerProject, entry)}
+                onViewPreview={() => handleViewPreview(drawerProject)}
+                onInstallDeps={() => {
+                  void window.api.installProjectDeps(drawerProject.id)
+                  toast('开始安装依赖，看日志面板的进度，装完再点启动', 'info')
+                }}
+                onKillResidual={() => {
+                  void window.api.killResidual(drawerProject.id)
+                  toast('正在终止残留进程并重新启动', 'info')
+                }}
+                onClose={() => {
+                  setDrawerGhost(drawerProject)
+                  setSelectedId(null)
+                }}
+                onBack={
+                  drawerProject.parentId
+                    ? () =>
+                        handleOpen(projects.find((x) => x.id === drawerProject.parentId) as Project)
+                    : undefined
+                }
+                lanIp={settings.lanAccess ? lanIp : ''}
+                onRehost={() => handleRehost(drawerProject)}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -1368,7 +1791,7 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      {/* 多项目容器 → 项目组预览勾选（2026-08-21 拍板）：确认后登记成组 */}
+      {/* 多项目容器 → 项目组预览勾选（确认后登记成组 */}
       {multi && (
         <GroupPreviewModal
           multi={multi}
@@ -1393,6 +1816,14 @@ export default function App(): React.JSX.Element {
           onCheck={handleBulkTagCheck}
           onApply={handleBulkTagApply}
           onCancel={() => setBulkTag(null)}
+        />
+      )}
+
+      {bulkGroupIds && (
+        <GroupNameDialog
+          count={bulkGroupIds.length}
+          onConfirm={(name) => void handleBulkGroup(name)}
+          onCancel={() => setBulkGroupIds(null)}
         />
       )}
 
@@ -1478,7 +1909,7 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      {/* 偏好设置浮层（2026-08-24 拍板）：固定在主界面上方、不可拖动；点遮罩（主界面）=关闭，右上角叉=关闭 */}
+      {/* 偏好设置浮层（固定在主界面上方、不可拖动；点遮罩（主界面）=关闭，右上角叉=关闭 */}
       {settingsOpen && (
         <div
           className="settings-overlay"
@@ -1499,6 +1930,12 @@ export default function App(): React.JSX.Element {
           onDone={() => {
             updateSettings({ onboarded: true })
             setShowOnboarding(false)
+            setDrawerGhost(null)
+          }}
+          onStepChange={(next) => {
+            setOnboardStep(next)
+            // 离开第 2 步（抽屉自动收回）：保留演示项目渲染到收回完成，不瞬消
+            if (next !== 1) setDrawerGhost(drawerProject)
           }}
         />
       )}

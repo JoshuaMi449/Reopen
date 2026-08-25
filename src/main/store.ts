@@ -24,15 +24,15 @@ export function listProjects(): Project[] {
     console.error('读取 projects.json 失败，按空列表继续：', err)
     projects = []
   }
-  // 旧数据惰性迁移（2026-08-24 用户拍板"顺手刷一遍"）：老项目没有 launchModes → 按 type 生成单方式+activeMode，一次性写回
+  // 旧数据惰性迁移（"顺手刷一遍"）：老项目没有 launchModes → 按 type 生成单方式+activeMode，一次性写回
   if (migrateLaunchModes(projects)) persist()
-  // 主入口修正（2026-08-24 用户反馈）：根层 index.html 才是主页，一次性写回
+  // 主入口修正：根层 index.html 才是主页，一次性写回
   if (migrateRootEntry(projects)) persist()
   loaded = true
   return projects
 }
 
-/** 老项目补 launchModes/activeMode（Phase B 前的数据；返回是否有改动） */
+/** 老项目补 launchModes/activeMode（前的数据；返回是否有改动） */
 function migrateLaunchModes(list: Project[]): boolean {
   let changed = false
   for (const p of list) {
@@ -53,8 +53,7 @@ function migrateLaunchModes(list: Project[]): boolean {
   return changed
 }
 
-/** 主入口修正：入口清单里有根层 index.html 时它就是主页（2026-08-24 用户反馈：
- *  supOS-Free 的「请选择您的身份」首页被最大的 factory/index.html 挤掉；返回是否有改动） */
+/** 主入口修正：入口清单里有根层 index.html 时它就是主页（*  网站的首页被体积更大的内页挤掉；返回是否有改动） */
 function migrateRootEntry(list: Project[]): boolean {
   let changed = false
   for (const p of list) {
@@ -108,7 +107,7 @@ export function touchStartedAt(id: string): void {
   }
 }
 
-/** 回写实际运行端口（重启 Reopen 后用它做接管检测，2026-08-20 修复"运行中显示已停止"） */
+/** 回写实际运行端口（重启 Reopen 后用它做接管检测，修复"运行中显示已停止"） */
 export function touchLastPort(id: string, port: number): void {
   const p = projects.find((p) => p.id === id)
   if (p && p.lastPort !== port) {
@@ -135,9 +134,11 @@ export function getSettings(): Settings {
     console.error('读取 settings.json 失败，按默认设置继续：', err)
   }
   if (!settings) settings = { ...DEFAULT_SETTINGS }
-  // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（2026-08-20）
+  // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
-  // 旧数据迁移：特殊风格七套改名换代为 Proma 六套（2026-08-24 拍板；磷光→森息夜语最接近）
+  // 旧数据迁移：彩色托盘图标选项已删除 → 回落黑白（用户要求只留黑白/自定义）
+  if ((settings.trayIcon as string) === 'color') settings.trayIcon = 'mono'
+  // 旧数据迁移：特殊风格七套改名换代为 六套主题（磷光→森息夜语最接近）
   const STYLE_MAP: Record<string, string> = {
     'special-sl': 'special-clouddancer',
     'special-ol': 'special-oceanlight',

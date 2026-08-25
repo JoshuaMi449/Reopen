@@ -14,16 +14,21 @@ const api: ReopenApi = {
   getPathForFile: (file) => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke('project:list'),
   detectPath: (path) => ipcRenderer.invoke('project:detect', path),
-  /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null），2026-08-20 拍板 */
+  /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null） */
   pickProjectFolder: (allowFile?: boolean) =>
     ipcRenderer.invoke('dialog:pick-project-folder', allowFile),
   parseApp: (path) => ipcRenderer.invoke('project:parse-app', path),
   addProject: (input: NewProjectInput) => ipcRenderer.invoke('project:add', input),
   updateProject: (id, input) => ipcRenderer.invoke('project:update', id, input),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
-  createGroup: (ids: string[]) => ipcRenderer.invoke('project:create-group', ids),
+  createGroup: (ids: string[], name?: string) =>
+    ipcRenderer.invoke('project:create-group', ids, name),
   ungroup: (id: string) => ipcRenderer.invoke('project:ungroup', id),
+  rewriteProjectPortFile: (path, source, port) =>
+    ipcRenderer.invoke('project:rewrite-port-file', path, source, port),
   startProject: (id, modeId) => ipcRenderer.invoke('project:start', id, modeId),
+  checkPortInUse: (port, excludeId) => ipcRenderer.invoke('project:check-port', port, excludeId),
+  pickTrayIcon: () => ipcRenderer.invoke('tray:pick-icon'),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
   installProjectDeps: (id) => ipcRenderer.invoke('project:install-deps', id),
   killResidual: (id) => ipcRenderer.invoke('project:kill-residual', id),
@@ -45,6 +50,9 @@ const api: ReopenApi = {
     return () => ipcRenderer.removeListener('system:env-install-event', listener)
   },
   getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
+  getTrayIconPreview: () => ipcRenderer.invoke('tray:get-icon-preview'),
+  recheckLan: () => ipcRenderer.invoke('system:recheck-lan'),
+  rehostProject: (id) => ipcRenderer.invoke('project:rehost', id),
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),
   exportData: () => ipcRenderer.invoke('data:export'),
   importData: () => ipcRenderer.invoke('data:import'),

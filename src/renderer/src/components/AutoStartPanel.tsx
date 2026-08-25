@@ -7,16 +7,23 @@ interface Props {
   items: Project[]
   onRemove(id: string): void
   onDropId(id: string): void
+  /** 引导第 4 步：命中 id 的条目带 data-tour 圈进高亮（引导结束后不传） */
+  tourItemId?: string
 }
 
 /**
- * 自启项面板（2026-08-21 拍板：占一列宽度的嵌入式列卡片）：
+ * 自启项面板（占一列宽度的嵌入式列卡片）：
  * - .app-body 内与中间栏、日志抽屉平级，固定 224 宽，挤入时项目自动让一列
  * - 外层做宽度滑入动画，内层固定 220 不重排（仿抽屉两层结构）
  * - 面板内只有项目 chips+移出（总开关只在设置里，无 ✕）
  * - 关闭：再点 icon / Esc / 点面板外（拖拽期间天然不触发关闭）
  */
-export function AutoStartPanel({ items, onRemove, onDropId }: Props): React.JSX.Element {
+export function AutoStartPanel({
+  items,
+  onRemove,
+  onDropId,
+  tourItemId
+}: Props): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
 
   return (
@@ -50,12 +57,16 @@ export function AutoStartPanel({ items, onRemove, onDropId }: Props): React.JSX.
             <div className="autostart-empty">把列表行或卡片拖到这里</div>
           ) : (
             items.map((p) => (
-              <div key={p.id} className="autostart-item">
+              <div
+                key={p.id}
+                className="autostart-item"
+                data-tour={p.id === tourItemId ? 'autostart' : undefined}
+              >
                 {p.type === 'group' ? (
                   <Layers
                     size={12}
                     className="autostart-item-icon"
-                    // 组：开机只拉成品子项（2026-08-21 拍板）
+                    // 组：开机只拉成品子项（
                   />
                 ) : (
                   <Zap size={12} className="autostart-item-icon" />

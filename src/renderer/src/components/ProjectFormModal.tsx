@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
 import { pinyin } from 'pinyin-pro'
 import type {
   DetectSuccess,
   LaunchMode,
   NewProjectInput,
+  PortSource,
   Project,
   ProjectType
 } from '../../../shared/types'
@@ -29,16 +30,18 @@ interface FormValues {
   openBrowser: boolean
   note: string
   tags: string[]
-  /** 识别出的网页入口路径（表单不展示，提交时静默保留，2026-08-21 S3） */
+  /** 识别出的网页入口路径（表单不展示，提交时静默保留，S3） */
   entryPath?: string
-  /** 全部网页入口清单（2026-08-24 拍板：弹窗展示+提交静默保留） */
+  /** 全部网页入口清单（弹窗展示+提交静默保留） */
   entryPaths?: string[]
-  /** 全部启动方式与默认方式（Phase B 2026-08-21：表单不编辑，静默保留） */
+  /** 全部启动方式与默认方式（表单不编辑，静默保留） */
   launchModes?: LaunchMode[]
   activeMode?: string
+  /** 端口来源（改端口时直接改写项目源文件；提交后由 App 调用 rewrite） */
+  portSource?: PortSource
 }
 
-/** 规格摘要行（2026-08-24 用户拍板：拖入登记时就标明里面有什么，大白话事实陈述，不出现「启动方式」这个词） */
+/** 规格摘要行（用户拖入登记时就标明里面有什么，大白话事实陈述，不出现「启动方式」这个词） */
 function modeSummary(m: LaunchMode): string {
   switch (m.id) {
     case 'preview':
@@ -76,7 +79,8 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       entryPath: project.entryPath,
       entryPaths: project.entryPaths,
       launchModes: project.launchModes,
-      activeMode: project.activeMode
+      activeMode: project.activeMode,
+      portSource: project.portSource
     }
   }
   if (mode === 'create' && detect) {
@@ -92,7 +96,8 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       entryPath: detect.suggested.entryPath,
       entryPaths: detect.suggested.entryPaths,
       launchModes: detect.suggested.launchModes,
-      activeMode: detect.suggested.activeMode
+      activeMode: detect.suggested.activeMode,
+      portSource: detect.suggested.portSource
     }
   }
   return {
@@ -119,11 +124,11 @@ const SUBMIT_TEXT: Record<Props['mode'], string> = {
   manual: '添加'
 }
 
-/** 标签上限（2026-08-20 拍板） */
+/** 标签上限（ */
 const TAG_MAX = 6
 
 /** 项目表单：登记/编辑/手动三种模式（PRD 3.2 确认表单 + 3.3 右键编辑）
- *  标签控件（2026-08-21 拍板）：空的输入框 → 点击展开联想下拉（拼音/英文/中文匹配已有标签，
+ *  标签控件（空的输入框 → 点击展开联想下拉（拼音/英文/中文匹配已有标签，
  *  无匹配显示"作为新标签"候选）→ 只有提交时才真正创建新标签，输入过程中零持久化 */
 export function ProjectFormModal({
   mode,
@@ -142,8 +147,12 @@ export function ProjectFormModal({
   // PRD 3.2：启动后开浏览器默认关（两种类型都是）
   const [openBrowser, setOpenBrowser] = useState(init.openBrowser)
   const [note, setNote] = useState(init.note)
-  /** 标签文本：已选标签直接显示在输入框里，逗号分隔可直接编辑（2026-08-21 拍板） */
+  /** 标签文本：已选标签直接显示在输入框里，逗号分隔可直接编辑（ */
   const [tagText, setTagText] = useState(() => init.tags.join(', '))
+  /** 端口冲突（输入时实时查重：档案撞车=project / 本机被监听=system） */
+  const [portConflict, setPortConflict] = useState<
+    { kind: 'project'; name: string } | { kind: 'system' } | null
+  >(null)
   /** 联想下拉是否展开（点输入框展开；点外部/选完收起） */
   const [open, setOpen] = useState(false)
 
@@ -175,6 +184,24 @@ export function ProjectFormModal({
     : existingTags
   const showNewCandidate = q !== '' && !existingTags.includes(current)
 
+  // 端口输入实时查重（防抖 400ms，全部异步更新避免 lint set-state-in-effect）：
+  // 先查 Reopen 里其他项目登记的端口（编辑自己时排除自身），再探测本机有没有程序在监听
+  useEffect(() => {
+    const num = Number(port.trim())
+    const t = setTimeout(() => {
+      if (!port.trim() || Number.isNaN(num)) {
+        setPortConflict(null)
+        return
+      }
+      void window.api.checkPortInUse(num, mode === 'edit' ? project?.id : undefined).then((r) => {
+        if (!r.inUse) setPortConflict(null)
+        else if (r.byProject) setPortConflict({ kind: 'project', name: r.byProject })
+        else setPortConflict({ kind: 'system' })
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [port, mode, project?.id])
+
   /** 点选已有标签：把当前词替换成完整标签，然后收起下拉 */
   const pickTag = (tag: string): void => {
     const before = parts
@@ -191,7 +218,7 @@ export function ProjectFormModal({
   const submit = (): void => {
     const portNum = Number(port.trim())
     const finalPort = port.trim() && !Number.isNaN(portNum) ? portNum : undefined
-    // 改了端口 → 同步进默认启动方式（启动时实际读 mode.port；2026-08-24 破案"拖入时设置别的端口没反应"）
+    // 改了端口 → 同步进默认启动方式（启动时实际读 mode.port；破案"拖入时设置别的端口没反应"）
     const launchModes = init.launchModes
       ? init.launchModes.map((m) =>
           m.id === init.activeMode && finalPort !== undefined && m.port !== finalPort
@@ -199,7 +226,7 @@ export function ProjectFormModal({
             : m
         )
       : init.launchModes
-    // 新标签只在提交这一刻才真正创建（2026-08-21 拍板）：输入框文本就是最终标签列表
+    // 新标签只在提交这一刻才真正创建（输入框文本就是最终标签列表
     onSubmit({
       name: name.trim() || init.name,
       type,
@@ -209,9 +236,10 @@ export function ProjectFormModal({
       // 网页类型才保留识别出的入口路径；改成服务类型就丢弃
       entryPath: type === 'web' ? init.entryPath : undefined,
       entryPaths: type === 'web' ? init.entryPaths : undefined,
-      // 启动方式清单静默保留（Phase B 2026-08-21：方式在详情抽屉切换，表单不编辑）
+      // 启动方式清单静默保留（方式在详情抽屉切换，表单不编辑）
       launchModes,
       activeMode: init.activeMode,
+      portSource: init.portSource,
       openBrowser,
       note: note.trim(),
       tags: [
@@ -237,7 +265,7 @@ export function ProjectFormModal({
         </div>
 
         <div className="form-body">
-          {/* 组（2026-08-21 项目组）：只编辑名称/备注/标签，类型与路径不可改 */}
+          {/* 组（项目组）：只编辑名称/备注/标签，类型与路径不可改 */}
           {type !== 'group' && (
             <label>
               <span>类型</span>
@@ -253,7 +281,7 @@ export function ProjectFormModal({
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </label>
 
-          {/* 辨认小字（2026-08-24 用户拍板：拖进来的项目名称下都有小字——
+          {/* 辨认小字（用户拖进来的项目名称下都有小字——
               网页类显示读到的 <title>（英文文件名也能认出是哪个网站）；
               开发类没有标题，显示文件夹完整路径；标题与名称重复就不显示） */}
           {mode === 'create' &&
@@ -279,7 +307,7 @@ export function ProjectFormModal({
             </label>
           )}
 
-          {/* 规格摘要区（2026-08-24 用户拍板：拖入时就标明里面有什么；只读事实陈述） */}
+          {/* 规格摘要区（用户拖入时就标明里面有什么；只读事实陈述） */}
           {type !== 'group' && (init.launchModes?.length ?? 0) > 0 && (
             <div className="form-modes">
               <span>发现</span>
@@ -293,7 +321,7 @@ export function ProjectFormModal({
             </div>
           )}
 
-          {/* 入口文件清单（2026-08-24 用户拍板：多页面项目登记时就能看到里面有哪些页面，登记后都能打开） */}
+          {/* 入口文件清单（用户多页面项目登记时就能看到里面有哪些页面，登记后都能打开） */}
           {type === 'web' && (init.entryPaths?.length ?? 0) > 1 && (
             <div className="form-modes">
               <span>里面有 {init.entryPaths?.length} 个页面，登记后都能打开</span>
@@ -327,10 +355,21 @@ export function ProjectFormModal({
               <input
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
+                className={portConflict ? 'port-conflict' : ''}
                 placeholder={
                   type === 'service' ? '如 5173（读不到就填项目的端口）' : '留空自动分配'
                 }
               />
+              {portConflict && (
+                <span className="form-hint port-conflict-hint">
+                  {portConflict.kind === 'project'
+                    ? `「${portConflict.name}」也登记了这个端口，启动时会撞车`
+                    : '电脑上有程序正在使用这个端口'}
+                </span>
+              )}
+              {init.portSource && (
+                <span className="form-hint">修改后会直接替换项目源代码里写死的端口</span>
+              )}
             </label>
           )}
 

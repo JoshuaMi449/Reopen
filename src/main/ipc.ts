@@ -1,10 +1,17 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
-import { networkInterfaces } from 'os'
-import { join } from 'path'
-import type { EnvCheckItem, NewProjectInput, Project, Settings, UpdateInfo } from '../shared/types'
+import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { connect } from 'net'
+import { extname, join } from 'path'
+import type {
+  EnvCheckItem,
+  NewProjectInput,
+  PortSource,
+  Project,
+  Settings,
+  UpdateInfo
+} from '../shared/types'
 import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
@@ -12,6 +19,8 @@ import {
   installProjectDeps,
   killResidualAndStart,
   openProjectBrowser,
+  rehostProject,
+  reprobeAllLan,
   startProject,
   stopProject
 } from './projectManager'
@@ -26,6 +35,8 @@ import {
   updateProject
 } from './store'
 import { appQuit, refreshTray } from './tray'
+import { invalidateGifCache } from './gifFrames'
+import { getLanIp } from './lan'
 import { showMainWindow } from './window'
 
 /** 设置变化广播给所有窗口（主窗口/托盘面板同步） */
@@ -35,7 +46,7 @@ function broadcastSettings(settings: Settings): void {
   }
 }
 
-/** 常见浏览器 .app 名单（显示名：去 .app 后缀，2026-08-24 拍板"自动检索电脑有哪些浏览器"） */
+/** 常见浏览器 .app 名单（显示名：去 .app 后缀"自动检索电脑有哪些浏览器"） */
 const KNOWN_BROWSERS = [
   'Safari',
   'Google Chrome',
@@ -85,16 +96,6 @@ function listBrowsers(): string[] {
   return Array.from(found)
 }
 
-/** 本机局域网 IPv4 地址（第一个非内环网卡；没有返回空串，2026-08-24 局域网访问） */
-function getLanIp(): string {
-  for (const list of Object.values(networkInterfaces())) {
-    for (const ni of list ?? []) {
-      if (ni.family === 'IPv4' && !ni.internal) return ni.address
-    }
-  }
-  return ''
-}
-
 /** 跑一个命令拿版本（没装返回 null；Windows 用 where 探测） */
 function runVersion(cmd: string): string | null {
   try {
@@ -108,7 +109,7 @@ function runVersion(cmd: string): string | null {
   }
 }
 
-/** 环境监测（2026-08-24 拍板：设置-关于组下方；项目要什么运行时一目了然，没装给安装官网+一键安装） */
+/** 环境监测（设置-关于组下方；项目要什么运行时一目了然，没装给安装官网+一键安装） */
 function checkEnvironment(): EnvCheckItem[] {
   const items: EnvCheckItem[] = []
   const node = runVersion('node')
@@ -166,7 +167,7 @@ function checkEnvironment(): EnvCheckItem[] {
   return items
 }
 
-/** 正在安装的进程（key → child；取消与防重复，2026-08-24 拍板：进度+取消） */
+/** 正在安装的进程（key → child；取消与防重复：进度+取消） */
 const envInstallChildren = new Map<string, ChildProcess>()
 
 function broadcastEnvInstall(e: {
@@ -180,7 +181,7 @@ function broadcastEnvInstall(e: {
   }
 }
 
-/** 一键安装环境运行时（2026-08-24 拍板：Cakebrew 式流式输出——spawn 实时推日志，
+/** 一键安装环境运行时（Cakebrew 式流式输出——spawn 实时推日志，
  *  取消=掐进程；HOMEBREW_NO_AUTO_UPDATE 跳过 brew 自更新刷屏/拖时间） */
 function installEnvTool(key: string): void {
   const cmd =
@@ -222,7 +223,7 @@ function installEnvTool(key: string): void {
   })
 }
 
-/** 取消安装：掐整个进程组（2026-08-24 拍板：再点一次=取消） */
+/** 取消安装：掐整个进程组（再点一次=取消） */
 function cancelEnvInstall(key: string): void {
   const child = envInstallChildren.get(key)
   if (!child?.pid) return
@@ -248,7 +249,7 @@ function cancelEnvInstall(key: string): void {
   broadcastEnvInstall({ key, ok: false, error: '已取消' })
 }
 
-/** 版本比较：1.2.3 式逐段比（tag 的 v 前缀去掉；2026-08-24 更新检查用） */
+/** 版本比较：1.2.3 式逐段比（tag 的 v 前缀去掉；更新检查用） */
 function compareVersions(a: string, b: string): number {
   const pa = a
     .replace(/^v/, '')
@@ -265,7 +266,7 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** 检查更新：GitHub Releases 拿最新正式版（2026-08-24 拍板：发现新版本弹窗 Proma 式，
+/** 检查更新：GitHub Releases 拿最新正式版（发现新版本弹窗 ，
  *  弹窗里渲染 Release 正文=git 更新内容，链接与按钮跳发布页） */
 async function checkUpdate(): Promise<UpdateInfo> {
   const currentVersion = app.getVersion()
@@ -295,7 +296,7 @@ async function checkUpdate(): Promise<UpdateInfo> {
   }
 }
 
-/** 已有项目 → 更新用的完整输入（手动成组/解散组时改 parentId 用，2026-08-24） */
+/** 已有项目 → 更新用的完整输入（手动成组/解散组时改 parentId 用）*/
 function toProjectInput(p: Project): NewProjectInput {
   return {
     name: p.name,
@@ -328,24 +329,38 @@ export function registerIpc(): void {
     return res.filePaths[0]
   })
   ipcMain.handle('project:add', async (_e, input: NewProjectInput) => {
+    // 组重名禁止：顶层列表里两个同名组会分不清（用户要求；项目和组同名不拦）
+    if (
+      input.type === 'group' &&
+      listProjects().some((p) => p.type === 'group' && p.name === input.name)
+    ) {
+      throw new Error('已经有同名项目组了，换个名字吧')
+    }
     const project = addProject(input)
     // 登记时检测：项目其实已经在跑（端口有响应）就直接显示运行中
     adoptRunning(project)
     return project
   })
-  ipcMain.handle('project:update', (_e, id: string, input: NewProjectInput) =>
-    updateProject(id, input)
-  )
+  ipcMain.handle('project:update', (_e, id: string, input: NewProjectInput) => {
+    // 组重名禁止（排除自己）
+    if (
+      input.type === 'group' &&
+      listProjects().some((p) => p.id !== id && p.type === 'group' && p.name === input.name)
+    ) {
+      throw new Error('已经有同名项目组了，换个名字吧')
+    }
+    return updateProject(id, input)
+  })
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
 
-  // 手动成组 / 解散组（2026-08-24 拍板：框选右键"添加成组"；组右键"解散组"）
-  ipcMain.handle('project:create-group', (_e, ids: string[]) => {
+  // 手动成组 / 解散组（框选右键"添加成组"；组右键"解散组"）
+  ipcMain.handle('project:create-group', (_e, ids: string[], name?: string) => {
     const items = listProjects().filter(
       (p) => ids.includes(p.id) && !p.parentId && p.type !== 'group'
     )
     if (items.length < 2) throw new Error('成组至少需要两个顶层项目（组和组内子项不算）')
     const group = addProject({
-      name: '新建项目组',
+      name: (name ?? '').trim() || '新建项目组',
       type: 'group',
       path: items[0].path,
       openBrowser: false,
@@ -365,6 +380,56 @@ export function registerIpc(): void {
     }
     deleteProject(id)
   })
+  // 改端口直接改写项目源文件（只动文件不动档案——档案由调用方在改写成功后落新端口，
+  //  保证「源码改不动时档案也不会记成新端口」，两边永不打架）
+  ipcMain.handle(
+    'project:rewrite-port-file',
+    (_e, path: string, src: PortSource, newPort: number) => {
+      const file = join(path, src.file)
+      try {
+        const content = readFileSync(file, 'utf-8')
+        if (!content.includes(src.find)) {
+          return {
+            ok: false,
+            reason: `在 ${src.file} 里没找到原端口片段（文件可能被改过），已保持项目端口不变，请手动修改`
+          }
+        }
+        // 把片段里的端口数字换成新端口（portLen=0 表示原片段没数字，直接插进去）
+        const newFind =
+          src.find.slice(0, src.portAt) + String(newPort) + src.find.slice(src.portAt + src.portLen)
+        writeFileSync(file, content.replace(src.find, newFind), 'utf-8')
+        // 返回新片段：调用方把它连同新端口一起写进档案（下次再改还能找到）
+        return {
+          ok: true,
+          source: { ...src, find: newFind, portLen: String(newPort).length }
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          reason: `改写失败：${err instanceof Error ? err.message : String(err)}`
+        }
+      }
+    }
+  )
+  // 端口输入实时查重：先查 Reopen 档案里其他项目登记的端口，再探测本机 TCP 是否被监听
+  ipcMain.handle('project:check-port', async (_e, port: number, excludeId?: string) => {
+    const by = listProjects().find((p) => p.id !== excludeId && p.port === port)
+    if (by) return { inUse: true, byProject: by.name }
+    const system = await new Promise<boolean>((resolve) => {
+      const sock = connect({ port, host: '127.0.0.1' })
+      sock.setTimeout(600)
+      sock.on('connect', () => {
+        sock.destroy()
+        resolve(true)
+      })
+      sock.on('timeout', () => {
+        sock.destroy()
+        resolve(false)
+      })
+      sock.on('error', () => resolve(false))
+    })
+    return system ? { inUse: true, bySystem: true } : { inUse: false }
+  })
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
@@ -376,10 +441,60 @@ export function registerIpc(): void {
 
   // 设置
   ipcMain.handle('settings:get', () => getSettings())
+  // 自定义菜单栏图标：选图 → 检查大小 → 复制到 userData（原图移动/删除不影响显示）
+  ipcMain.handle('tray:pick-icon', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const res = await (win
+      ? dialog.showOpenDialog(win, {
+          title: '选择菜单栏图标',
+          filters: [{ name: '图片（PNG/JPG/GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
+          properties: ['openFile']
+        })
+      : dialog.showOpenDialog({
+          title: '选择菜单栏图标',
+          filters: [{ name: '图片（PNG/JPG/GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
+          properties: ['openFile']
+        }))
+    if (res.canceled || !res.filePaths[0]) return null
+    const f = res.filePaths[0]
+    if (statSync(f).size > 2 * 1024 * 1024) throw new Error('图片太大（最大 2MB），换一张小一点的')
+    const dest = join(
+      app.getPath('userData'),
+      `custom-tray-icon${extname(f).toLowerCase() || '.png'}`
+    )
+    copyFileSync(f, dest)
+    invalidateGifCache() // 换图后旧帧序列作废（同路径覆盖换文件）
+    return dest
+  })
+  // 当前自定义图标的预览（渲染层 <img> 显示；GIF 原样给，浏览器原生动画）；没设置返回 null
+  ipcMain.handle('tray:get-icon-preview', () => {
+    const { trayIcon, trayIconPath } = getSettings()
+    if (trayIcon !== 'custom' || !trayIconPath || !existsSync(trayIconPath)) return null
+    const ext = extname(trayIconPath).toLowerCase()
+    const mime = ext === '.gif' ? 'image/gif' : ext === '.png' ? 'image/png' : 'image/jpeg'
+    return {
+      dataUrl: `data:${mime};base64,${readFileSync(trayIconPath).toString('base64')}`,
+      isGif: mime === 'image/gif'
+    }
+  })
+  // 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用）
+  ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
+  // 改由本应用托管：停掉手动起的旧服务重新启动（对局域网开门）
+  ipcMain.handle('project:rehost', (_e, id: string) => rehostProject(id))
   ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => {
     const saved = saveSettings(patch)
-    // 托盘启用/图标样式变化 → 立即刷新托盘；快捷键变化 → 重新注册
-    if ('trayEnabled' in patch || 'trayIcon' in patch) refreshTray()
+    // 托盘启用/图标样式/速度/大小变化 → 立即刷新托盘；快捷键变化 → 重新注册
+    if (
+      'trayEnabled' in patch ||
+      'trayIcon' in patch ||
+      'trayIconPath' in patch ||
+      'trayIconSpeed' in patch ||
+      'trayIconSize' in patch
+    ) {
+      refreshTray()
+    }
+    // 开「允许局域网访问」→ 立即补探所有运行中项目（关则渲染层按门控隐藏）
+    if ('lanAccess' in patch && patch.lanAccess === true) reprobeAllLan()
     if ('hotkey' in patch || 'quickLaunch' in patch) refreshShortcuts()
     broadcastSettings(saved)
     return saved
@@ -400,7 +515,7 @@ export function registerIpc(): void {
     app.setLoginItemSettings({ openAtLogin: v })
   })
   ipcMain.handle('shell:open-external', (_e, url: string) => shell.openExternal(url))
-  // 在访达中显示（右键「访问项目原目录」、资料库路径跳转；2026-08-24 用户拍板）
+  // 在访达中显示（右键「访问项目原目录」、资料库路径跳转）
   ipcMain.handle('shell:reveal-in-folder', (_e, path: string) => shell.showItemInFolder(path))
 
   // 资料库：导出/导入 JSON

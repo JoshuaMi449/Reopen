@@ -223,6 +223,7 @@
 | 2026-08-19 | 文档 B（本文件）初版完成                                                                                                                                   | PRD+台账                                     |
 | 2026-08-19 | M1 完成：git 初始化、electron-vite 工程（Electron 39 + React 19 + TS）、依赖安装、GitHub 仓库创建并推送（61 文件）、npm run dev 空窗口跑通（用户肉眼确认） | https://github.com/JoshuaMi449/Reopen        |
 | 2026-08-20 | M2 完成：拖拽识别（四层端口读取）、确认表单（标签点选已有）、启停（30 秒健康检查+整树终止）、日志面板、网页临时服务（端口可指定）、失败标红+人话原因、接管运行中项目、右键菜单、删除确认、.app 解析、查重；验收 1-7 实测通过 | 功能可用 |
+| 2026-08-25 | M3 完成：退出确认体系（⌘Q 二次确认+项目去留开关+托盘右键直退）、菜单栏 GIF 动图（帧序列轮播+速度/大小设置+预览）、设置面板随窗口放大（内容不留白）、组右键菜单简化、端口安全（改端口先改源码成功才落档案）、局域网实测制（探测+三态显示+「由本应用托管」）；验收 8-15 实测通过 | M3 完工 |
 
 ### 9.2 待办
 
@@ -230,7 +231,7 @@
 - [x] M1：双文档入仓（知识库目录 + 本 PRD）
 - [x] M2：项目登记（拖拽识别、表单、全自动猜）
 - [x] M2：JSON 存储、启停进程、状态与日志面板
-- [ ] M3：自启项、菜单栏、偏好设置 6 组、三主题、双视图、标签、排序、快捷键、Onboarding、单例锁、登录项
+- [x] M3：自启项、菜单栏、偏好设置 6 组、三主题、双视图、标签、排序、快捷键、Onboarding、单例锁、登录项
 - [ ] M4：App 图标生成候选并挑选（lanzhuo-imageee）
 - [ ] M4：打包 dmg、README 中英双语、GitHub Release 发布
 
@@ -316,3 +317,5 @@ _本台账规则：每完成一步，在 9.1 加一行；每新增/修改决策�
 | 2026-08-24 | **拖入辨认小字补齐**（用户追问"单 html 当时怎么解释的，文件拉进来后要有小字显示 title，html 命名都是英文"→拍板"只要拖进来的项目都有小字"）：盘点发现 title 读取（readTitle 读 `<title>`）只落在多项目勾选弹窗（GroupPreviewModal）与项目文件夹（detectDirAsProject 读 index.html），**单 html 文件分支（detectPath）根本没读 title**——补上；登记弹窗名称框下加灰色小字：网页类有 title 显示「网站标题：xxx」（与名称重复不显示），无 title 的开发类显示「位置：文件夹完整路径」（用户拍板），编辑/手动模式不显示。实测真实文件 title 提取 3 例全对 | 用户追问+拍板 |
 | 2026-08-24 | **六项需求批次**（用户一轮提出）：①**全主题 Proma 化**（用户指正"浅色只改了背景，辅助色没改、位置也不一样；设置的左边不用辅助色纯色应该淡一点；不止浅色，所有主题色的搭配"）——提取 Proma 0.9.10 打包 CSS 全部 8 套变量（默认 light/dark + 3 浅 3 深特殊主题），六套映射：莫兰迪浅←slate-light（暖米灰底暖棕主色）/海洋浅←ocean-light/石墨浅←默认 light（白底黑主色）/莫兰迪深←slate-dark（紫灰黑）/海洋深←ocean-dark（深蓝黑）/石墨深←默认 dark（纯黑白主色）；新增 --primary-foreground/--accent-foreground 变量（shadcn 配对式）；--accent 语义改为强调色（浅色=主色、深色=主色亮版）；批量替换彩色文字/描边 primary→accent；按钮/badge/开关/分段控件底+字配对 foreground；**设置左侧与主界面侧栏激活项改淡色底+主色字**（用户点名"设置左边淡一点"）；六套特殊风格块同步补变量；②局域网地址点击=复制（三处 lan-link/drawer-lan，「已复制 ✓」1.5s 反馈，用户拍板"localhost 已能跳转，局域网地址只需复制"）；③右键菜单加「访问项目原目录」（shell:reveal-in-folder → showItemInFolder）；④资料库「项目源文件路径」每行点击在访达显示；⑤卡片失败提示最多两行省略（报错长文案把同网格行 4 卡全撑高）；⑥**发现新版本弹窗 Proma 式**（用户拍板"和 Proma 一模一样"）：GitHub Release latest 检查（update:check，404/失败静默），启动自动检查+设置关于组「检查更新」状态行，UpdateModal 照 Proma 结构（标题/描述 v 已发布/中间 max-h-256 圆角滚动区 ReactMarkdown 渲染 Release 正文=git 更新内容/「如果自动更新失败请前往 官网下载页↗」链接/「稍后再说」+「前往下载」按钮），mock 实测截图验收通过；装 react-markdown | 用户拍板+实施 |
 | 2026-08-24 | **组交互重设计 + 五项反馈修复**（用户一轮反馈）：①**组不再弹右侧抽屉**（用户拍板：点组跳侧栏「组」页面，平铺显示组内全部子项）——GroupRow 删展开箭头改 onOpen 跳转、CardView 组卡 onOpen 同跳、DetailDrawer 组视图分支（102 行）+groupChildren/onChild* props 全删、expandedGroups/toggleGroup 删、组筛选分支改 projects.filter(parentId===gid)、新登记组自动跳组页面（替代默认展开）；②**抽屉/自启面板闪烁根治**（width 0→456/224 动画让布局来回跳=闪）——动画改只做 opacity 淡入+transform 微移（0.18s），布局一次到位；③**复制反馈看不清**——IP 后面追加「已复制 ✓」绿标签（lan-copied-tag），原地址不动；④**报错点击查看**（用户拍板）：卡片/列表失败显示「启动失败 · 点击查看」（title 悬浮完整原因），点击开抽屉——抽屉里失败原因从 meta 区**移到日志上方**（含看成品/修复按钮）；⑤**50391「选择身份」页丢失破案+50392 带 index.html 打不开**：supos-free-site 主入口被最大的 factory/index.html 挤掉（findHtmlEntries 按文件大小排第一）→ 排序改根层 /index.html 优先当主入口 + 存量迁移 migrateRootEntry（entryPaths 含 /index.html 则修正 entryPath+preview mode.entryPath，一次性写回，实测迁移后 50391 返回「请选择您的身份」）；50392（app，Vite SPA）路由只认 / → openProjectBrowser 打开时 /index.html 归一为 / | 用户反馈+拍板 |
+| 2026-08-25 | **退出/托盘体系 + 菜单栏图标整改**：①⌘Q/应用菜单/Dock 退出弹二次确认框，托盘右键「退出」跳过确认（明确意图直接退）；红点关闭=最小化到托盘（closeToTray 默认开，不是 bug）；修复 Dock 点不开（activate 里 showMainWindow）；设置-通用新增「退出后项目继续运行」（keepProjectsOnQuit 默认关：不勾=退出时项目一并停止，勾=项目留在本地继续跑）；②菜单栏图标样式简化——只留「黑白」（模板图随系统深浅色反转）与「自定义」（PNG/JPG/GIF）；③**GIF 动图实现**——gifuct-js 解帧（≤60 帧、透明像素保留旧画面、disposal 2/3 处理）+pngjs 编码 PNG→nativeImage 缩 18px 定时换图轮播（调研 RunCat 同款「帧序列定时换图」原理）；「换一张图片…」旁 36px 当前图预览（GIF 原生动画）；④组右键菜单只有「编辑」/解散/删除（用户拍板「重命名和编辑是同一个东西」）；⑤设置面板随窗口放大（calc(100%-80px) 无上限）+ 内容区 width:100% 不留白；⑥端口安全：改端口先 rewrite-port-file 改源码成功才落档案（永不打架），输入 400ms 防抖查重标红 | 用户反馈+拍板 |
+| 2026-08-25 | **局域网实测制 + GIF 速度/大小设置**（用户五问排查 7100 打不开）：①**「实测制」**——项目 running 后主进程 probeLan 实测「局域网 IP:端口」通不通（TCP connect 800ms，延时 500ms 探测+失败 4s 重试），ProjectStatusEvent 带 lanIp/lanReachable/spawned；三处界面三态：通→可复制地址；不通→灰字「仅本机可访问」+ title 解释 + 「由本应用托管」按钮（rehostProject：lsof 查端口 PID→SIGTERM→等释放→Reopen 重起自动开门）；换 WiFi 旧 IP 问题→60s 轮询重探。**打不开的 6 种原因全探明**：接管的外部服务只绑本机（7100 案例）/dev server 默认只绑 localhost（vite 只认 --host CLI，Reopen 不乱拼参数）/「允许局域网访问」开关关/换网旧 IP（已修）/Mac 防火墙（hint 提示）/不同网络（管不了）。②GIF 播放速度（0.5/1/1.5/2×，delay/speed 下限 40ms）+ 图标大小（14~22 分段，缓存 key 含尺寸）；③sups-free-site 档案端口固定 7100（改 projects.json），python 停了 Reopen 用 7100 自己起 dist、python 在则直接认领 | 用户反馈+拍板 |

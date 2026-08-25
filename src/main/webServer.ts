@@ -29,12 +29,12 @@ export interface WebServeResult {
 }
 
 /** 起临时 http 服务：path 是文件则 serve 所在目录并默认打开该文件；是文件夹则 serve 该目录。
- *  entryPath（S3）：识别时找到的入口文件相对路径（如 /supos-case-anjia.html），请求 / 时优先返回它 */
+ *  entryPath（S3）：识别时找到的入口文件相对路径（如 /case-home.html），请求 / 时优先返回它 */
 export function startWebServer(
   projectPath: string,
   port?: number,
   entryPath?: string,
-  /** 绑定地址：默认 127.0.0.1 只接待本机；lanAccess 开启时 0.0.0.0 也接待局域网设备（2026-08-24 拍板） */
+  /** 绑定地址：默认 127.0.0.1 只接待本机；lanAccess 开启时 0.0.0.0 也接待局域网设备（ */
   host = '127.0.0.1'
 ): Promise<WebServeResult> {
   const isFile = existsSync(projectPath) && statSync(projectPath).isFile()
@@ -52,12 +52,12 @@ export function startWebServer(
       res.end('Forbidden')
       return
     }
-    // 目录 → 自动补 index.html（站内子页面导航如 /factory/ 或 /integrator/，2026-08-21 实测）
+    // 目录 → 自动补 index.html（站内子页面导航如 /factory/ 或 /integrator/，实测）
     if (existsSync(filePath) && statSync(filePath).isDirectory()) {
       filePath = join(filePath, 'index.html')
     }
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-      // 404 时把实际找的路径打到主进程日志，排查"打开是空的"这类问题不用盲猜（2026-08-21 教训）
+      // 404 时把实际找的路径打到主进程日志，排查"打开是空的"这类问题不用盲猜（教训）
       console.error('[webServer] 404:', filePath)
       res.writeHead(404)
       res.end('Not Found')
@@ -70,8 +70,7 @@ export function startWebServer(
   })
 
   return new Promise((resolvePromise, reject) => {
-    /** 监听：指定端口被占（EADDRINUSE）→ 自动让系统分配空闲端口重试一次（2026-08-24：
-     *  用户拖入 html 报 50882 被占标红——纯网页登记是自动上线的，不该因端口冲突失败） */
+    /** 监听：指定端口被占（EADDRINUSE）→ 自动让系统分配空闲端口重试一次（*  用户拖入 html 报 50882 被占标红——纯网页登记是自动上线的，不该因端口冲突失败） */
     const tryListen = (portToTry: number | undefined, usedFallback: boolean): void => {
       server.once('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE' && !usedFallback) {

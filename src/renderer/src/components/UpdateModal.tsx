@@ -7,7 +7,7 @@ interface Props {
   onClose(): void
 }
 
-/** 发现新版本弹窗（2026-08-24 用户拍板：与 Proma 一模一样——标题/描述、中间 git 更新内容
+/** 发现新版本弹窗（用户与参考主题一致——标题/描述、中间 git 更新内容
  *  （Release 正文 markdown 滚动区）、下方官网下载页链接、底部「稍后再说/前往下载」按钮） */
 export function UpdateModal({ info, onClose }: Props): React.JSX.Element {
   const url = info.htmlUrl ?? 'https://github.com/JoshuaMi449/Reopen/releases/latest'
@@ -27,7 +27,7 @@ export function UpdateModal({ info, onClose }: Props): React.JSX.Element {
           v{info.latestVersion} 已发布，请前往下载页面获取最新版本覆盖安装。
         </p>
 
-        {/* git 更新内容（Release 正文；空正文给斜体占位，与 Proma 一致） */}
+        {/* git 更新内容（Release 正文；空正文给斜体占位，与参考主题一致） */}
         <div className="update-body">
           {info.body ? (
             <ReactMarkdown
