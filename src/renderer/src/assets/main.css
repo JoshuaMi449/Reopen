@@ -3249,7 +3249,7 @@ html.dark .settings-card {
   align-items: flex-start;
 }
 
-/* 设置-菜单栏：选图按钮 + 当前角色预览（GIF 在 img 里原生动画；点击换图、拖放导入） */
+/* 设置-菜单栏：当前角色预览（GIF 在 img 里原生动画；点击弹角色列表、拖放导入）+ 从文件选择按钮 */
 .tray-icon-actions {
   display: flex;
   align-items: center;
@@ -3271,14 +3271,18 @@ html.dark .settings-card {
   border-color: var(--accent);
 }
 
-/* 设置-菜单栏：自定义样式的二级区（像一级标题下的二级标题，选黑白时整块不显示） */
-.tray-settings-sub {
-  margin-left: 18px;
-  padding-left: 14px;
-  border-left: 1px dashed var(--border);
+.tray-icon-add {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 设置-菜单栏：拖拽滑杆（图标大小/播放速度） */
+/* 设置-菜单栏：拖拽滑杆（播放速度，无级） */
 .settings-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -3300,6 +3304,121 @@ html.dark .settings-card {
   border: 3px solid var(--bg-card);
   box-shadow: 0 0 0 1px var(--border);
   cursor: grab;
+}
+
+/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 面板 + 网格列表 */
+.role-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-picker {
+  width: min(560px, calc(100% - 120px));
+  max-height: calc(100% - 160px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.role-picker-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.role-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.role-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.role-picker-item:hover {
+  background: var(--hover);
+}
+
+.role-picker-item.role-picker-on {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.role-picker-preview {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--input-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.role-picker-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.role-picker-check {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 50%;
+  padding: 2px;
+}
+
+.role-picker-name {
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.role-picker-switch-label {
+  font-size: 13px;
+  color: var(--text);
+  margin-left: 8px;
+}
+
+.role-picker-switch-label:first-child {
+  margin-left: 0;
 }
 
 /* 局域网地址不可达提示（服务只绑了本机时显示；附「由本应用托管」小按钮） */

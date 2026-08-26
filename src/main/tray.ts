@@ -3,14 +3,20 @@ import { app, BrowserWindow, Menu, nativeImage, Tray, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { existsSync } from 'fs'
 import { extname, join } from 'path'
-import { getSettings, saveSettings } from './store'
+import { getSettings } from './store'
 import { stopAllRuntimes } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
 import { markQuitConfirmed, showMainWindow } from './window'
-import { loadGifFrames, invalidateGifCache, type GifFrame } from './gifFrames'
-import { listCharacters, type TrayCharacter } from './trayCharacters'
+import { loadGifFrames, type GifFrame } from './gifFrames'
 import { getCpuUsage } from './cpuSampler'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
+
+/** 菜单栏图标固定大小（参考同类应用的菜单栏显示高度） */
+const ICON_SIZE = 22
+/** CPU 低于此值视为空闲：动画休息静止（忙起来才跑） */
+const REST_THRESHOLD = 0.05
+/** 休息时的醒来检查间隔 */
+const WAKE_CHECK_MS = 1000
 
 let tray: Tray | null = null
 let panel: BrowserWindow | null = null
@@ -20,17 +26,16 @@ let frameTimer: ReturnType<typeof setTimeout> | null = null
 let activeFrames: GifFrame[] | null = null
 
 /** 静态托盘图标：黑白=内置剪影转模板（系统自动随深浅色反转）；
- *  自定义=用户选的图片（复制在 userData，不反转；GIF 由轮播接管，这里只兜底第一帧）；统一缩放到 18px */
+ *  自定义=用户选的图片/动图第一帧（复制在 userData，不反转；GIF 由轮播接管，这里只兜底）；统一固定尺寸 */
 function staticTrayIcon(): Electron.NativeImage {
-  const { trayIcon, trayIconPath, trayIconSize } = getSettings()
-  const size = trayIconSize ?? 18
+  const { trayIcon, trayIconPath } = getSettings()
   let img: Electron.NativeImage
   if (trayIcon === 'custom' && trayIconPath && existsSync(trayIconPath)) {
     img = nativeImage.createFromPath(trayIconPath)
   } else {
     img = nativeImage.createFromPath(trayIconAsset)
   }
-  const sized = img.resize({ width: size, height: size })
+  const sized = img.resize({ width: ICON_SIZE, height: ICON_SIZE })
   if (trayIcon === 'mono') sized.setTemplateImage(true)
   return sized
 }
@@ -42,25 +47,14 @@ function stopTrayAnimation(): void {
 }
 
 /** 自定义图是 GIF → 解码成帧按各自时长循环换图（模拟动图）；否则挂静态图。
- *  变速两档：基准倍率（设置滑杆）× CPU 因子（cpuFollow 开时 CPU 忙跑得快、空闲跑得慢，不只因同款） */
+ *  cpuFollow 开：CPU 忙时按使用率加速（0.5×~2.5×），空闲时休息静止（不换帧），每秒醒来检查；关：固定速度 */
 function applyTrayIcon(): void {
   if (!tray) return
-  const {
-    trayIcon,
-    trayIconPath,
-    trayIconSpeed,
-    trayIconSize,
-    cpuFollow,
-    trayAutoReverse,
-    trayMonoGif
-  } = getSettings()
+  const { trayIcon, trayIconPath, trayIconSpeed, cpuFollow, trayAutoReverse } = getSettings()
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   if (isGif) {
-    const frames = loadGifFrames(trayIconPath as string, trayIconSize ?? 18, {
-      mirror: trayAutoReverse,
-      mono: trayMonoGif
-    })
+    const frames = loadGifFrames(trayIconPath as string, ICON_SIZE, { mirror: trayAutoReverse })
     if (frames) {
       stopTrayAnimation()
       activeFrames = frames
@@ -68,10 +62,23 @@ function applyTrayIcon(): void {
       const step = (i: number): void => {
         if (activeFrames !== frames || !tray) return // 期间换图/关托盘了，旧循环作废
         tray.setImage(frames[i].image)
-        // CPU 因子：空闲 0.5×（放慢）→ 满载 2.5×（加速）；采样有 2s 缓存，每帧调不费电
-        const cpuFactor = cpuFollow ? 0.5 + getCpuUsage() * 2 : 1
+        const usage = getCpuUsage()
+        if (cpuFollow && usage < REST_THRESHOLD) {
+          // 空闲休息：停在当前帧，每秒检查是否忙起来
+          frameTimer = setTimeout(() => wakeCheck(frames, i), WAKE_CHECK_MS)
+          return
+        }
+        const cpuFactor = cpuFollow ? 0.5 + usage * 2 : 1
         const d = Math.max(40, Math.round(frames[i].delay / (speed * cpuFactor)))
         frameTimer = setTimeout(() => step((i + 1) % frames.length), d)
+      }
+      const wakeCheck = (frames: GifFrame[], i: number): void => {
+        if (activeFrames !== frames || !tray) return
+        if (cpuFollow && getCpuUsage() < REST_THRESHOLD) {
+          frameTimer = setTimeout(() => wakeCheck(frames, i), WAKE_CHECK_MS)
+        } else {
+          step(i) // 忙起来了，从当前帧继续跑
+        }
       }
       step(0)
       return
@@ -143,44 +150,6 @@ function showContextMenu(): void {
   tray?.popUpContextMenu(menu)
 }
 
-/** 角色菜单缩略图：GIF 取第一帧缩到 16px（菜单里只是认个脸，不用整段解码） */
-function characterMenuIcon(path: string): Electron.NativeImage | undefined {
-  try {
-    return nativeImage.createFromPath(path).resize({ width: 16, height: 16 })
-  } catch {
-    return undefined
-  }
-}
-
-/** 点选一个角色：清旧帧缓存 → 记入设置（样式切到自定义）→ 立即换图标 */
-function selectCharacter(c: TrayCharacter): void {
-  invalidateGifCache()
-  saveSettings({ trayIcon: 'custom', trayIconPath: c.path })
-  refreshTray()
-}
-
-/** 左键点击托盘：弹出角色下拉菜单（不只因同款——角色平铺可选，下面跟常用功能） */
-function showCharacterMenu(): void {
-  const { trayIconPath } = getSettings()
-  const items: Electron.MenuItemConstructorOptions[] = listCharacters().map((c) => ({
-    label: c.label,
-    type: 'checkbox' as const,
-    checked: trayIconPath === c.path,
-    icon: characterMenuIcon(c.path),
-    click: () => selectCharacter(c)
-  }))
-  const menu = Menu.buildFromTemplate([
-    ...items,
-    { type: 'separator' },
-    { label: '项目面板…', click: () => togglePanel() },
-    { label: '打开主窗口', click: () => showMainWindow() },
-    { label: '偏好设置…', click: () => openSettingsWindow() },
-    { type: 'separator' },
-    { label: '退出 Reopen', click: () => appQuit() }
-  ])
-  tray?.popUpContextMenu(menu)
-}
-
 /** 按设置刷新托盘（启用开关/图标样式变化时调用） */
 export function refreshTray(): void {
   const { trayEnabled } = getSettings()
@@ -193,7 +162,7 @@ export function refreshTray(): void {
   }
   if (!tray) {
     tray = new Tray(staticTrayIcon())
-    tray.on('click', showCharacterMenu)
+    tray.on('click', togglePanel)
     tray.on('right-click', showContextMenu)
   }
   applyTrayIcon()

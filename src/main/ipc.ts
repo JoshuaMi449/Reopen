@@ -493,8 +493,21 @@ export function registerIpc(): void {
     invalidateGifCache()
     return dest
   })
-  // 托盘角色清单：内置角色 + 用户导入素材（点托盘下拉/设置页展示用）
-  ipcMain.handle('tray:list-characters', () => listCharacters())
+  // 托盘角色清单：内置角色 + 用户导入素材，带预览 dataURL（设置页角色弹窗用）
+  ipcMain.handle('tray:list-characters', () =>
+    listCharacters().map((c) => {
+      const ext = extname(c.path).toLowerCase()
+      const mime = ext === '.gif' ? 'image/gif' : ext === '.png' ? 'image/png' : 'image/jpeg'
+      return {
+        key: c.key,
+        label: c.label,
+        path: c.path,
+        builtin: c.builtin,
+        dataUrl: `data:${mime};base64,${readFileSync(c.path).toString('base64')}`,
+        isGif: mime === 'image/gif'
+      }
+    })
+  )
   // 当前自定义图标的预览（渲染层 <img> 显示；GIF 原样给，浏览器原生动画）；没设置返回 null
   ipcMain.handle('tray:get-icon-preview', () => {
     const { trayIcon, trayIconPath } = getSettings()
@@ -518,10 +531,8 @@ export function registerIpc(): void {
       'trayIcon' in patch ||
       'trayIconPath' in patch ||
       'trayIconSpeed' in patch ||
-      'trayIconSize' in patch ||
       'cpuFollow' in patch ||
-      'trayAutoReverse' in patch ||
-      'trayMonoGif' in patch
+      'trayAutoReverse' in patch
     ) {
       refreshTray()
     }

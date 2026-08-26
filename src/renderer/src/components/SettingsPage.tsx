@@ -4,6 +4,7 @@ import type { EnvCheckItem, Project, Settings, UpdateInfo } from '../../../share
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
 import { UpdateModal } from './UpdateModal'
+import { RolePickerModal } from './RolePickerModal'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
 
@@ -94,6 +95,8 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
 
   /** 当前自定义图标的预览（dataURL；GIF 在 <img> 里原生动画） */
   const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
+  /** 角色选择弹窗开关（点预览图弹出） */
+  const [showRolePicker, setShowRolePicker] = useState(false)
   useEffect(() => {
     if (settings.trayIcon === 'custom' && settings.trayIconPath) {
       let live = true
@@ -291,17 +294,11 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const menubar = (
     <div className="settings-group">
       <div className="settings-card">
-        <SettingRow
-          label="显示菜单栏图标"
-          hint="右上角顶栏的 Reopen 图标（点击弹出角色下拉菜单，右键弹出功能菜单）"
-        >
+        <SettingRow label="显示菜单栏图标">
           <Switch checked={settings.trayEnabled} onChange={(v) => update({ trayEnabled: v })} />
         </SettingRow>
 
-        <SettingRow
-          label="图标样式"
-          hint="黑白：内置剪影，随系统深浅色自动变色；自定义：角色库动图（内置角色 + 你拖进来的素材）"
-        >
+        <SettingRow label="图标样式">
           <div className="settings-tray-icon-ctrl">
             <div className="settings-seg">
               <button
@@ -320,80 +317,42 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           </div>
         </SettingRow>
 
-        {/* 二级：只对「自定义」展开（像一级标题下的二级标题；选黑白时这整块不出现） */}
+        {/* 仅自定义出现：当前角色（点预览弹角色列表，＋从文件选）+ 播放速度（无级） */}
         {settings.trayIcon === 'custom' && (
-          <div className="tray-settings-sub">
-            <SettingRow
-              label="当前角色"
-              hint="点预览图换一张；把 GIF/PNG 直接拖到预览图上=导入角色库（之后点托盘图标的下拉里也能选到它）"
-            >
+          <>
+            <SettingRow label="当前角色">
               <div className="tray-icon-actions">
                 {iconPreview && (
                   <img
                     className="tray-icon-preview"
                     src={iconPreview.dataUrl}
-                    alt="当前图标预览"
-                    title="点击换图 / 拖放导入"
-                    onClick={() => void pickTrayIcon()}
+                    alt="当前角色预览"
+                    title="选择角色"
+                    onClick={() => setShowRolePicker(true)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => void handleTrayDrop(e)}
                   />
                 )}
-                {!iconPreview && (
-                  <button className="btn-secondary" onClick={() => void pickTrayIcon()}>
-                    选择图片…
-                  </button>
-                )}
+                <button
+                  className="btn-secondary tray-icon-add"
+                  onClick={() => void pickTrayIcon()}
+                  title="从文件选择"
+                >
+                  ＋
+                </button>
               </div>
             </SettingRow>
 
-            <SettingRow
-              label="图标大小"
-              hint={`当前 ${settings.trayIconSize} 像素（拖拽调整，黑白样式同样生效）`}
-            >
-              <SliderControl
-                value={settings.trayIconSize}
-                min={14}
-                max={32}
-                step={1}
-                onChange={(v) => update({ trayIconSize: v })}
-              />
-            </SettingRow>
-
-            <SettingRow
-              label="播放速度"
-              hint={`当前 ${settings.trayIconSpeed}× 基准倍率（拖拽调整；动图轮播用）`}
-            >
+            <SettingRow label="播放速度">
               <SliderControl
                 value={settings.trayIconSpeed}
                 min={0.25}
                 max={3}
-                step={0.25}
+                step={0.01}
                 onChange={(v) => update({ trayIconSpeed: v })}
               />
             </SettingRow>
-
-            <SettingRow
-              label="随 CPU 变速"
-              hint="开：CPU 忙时动画跑得快、空闲时跑得慢（不只因/RunCat 同款玩法）；关：按上面的基准倍率匀速"
-            >
-              <Switch checked={settings.cpuFollow} onChange={(v) => update({ cpuFollow: v })} />
-            </SettingRow>
-
-            <SettingRow label="左右翻转" hint="角色朝向镜像翻转（跑步方向反过来）">
-              <Switch
-                checked={settings.trayAutoReverse}
-                onChange={(v) => update({ trayAutoReverse: v })}
-              />
-            </SettingRow>
-
-            <SettingRow
-              label="跟随菜单栏变色"
-              hint="开：图标变单色，浅色菜单栏显示深色、深色菜单栏显示浅色（macOS 模板图自动上色）；关：显示素材原色"
-            >
-              <Switch checked={settings.trayMonoGif} onChange={(v) => update({ trayMonoGif: v })} />
-            </SettingRow>
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -700,6 +659,20 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
       {showUpdate && updateInfo && (
         <UpdateModal info={updateInfo} onClose={() => setShowUpdate(false)} />
       )}
+      {showRolePicker && (
+        <RolePickerModal
+          currentPath={settings.trayIconPath ?? ''}
+          cpuFollow={settings.cpuFollow}
+          autoReverse={settings.trayAutoReverse}
+          onSelect={(c) => {
+            update({ trayIcon: 'custom', trayIconPath: c.path })
+            setShowRolePicker(false)
+          }}
+          onCpuFollow={(v) => update({ cpuFollow: v })}
+          onAutoReverse={(v) => update({ trayAutoReverse: v })}
+          onClose={() => setShowRolePicker(false)}
+        />
+      )}
     </div>
   )
 }
@@ -799,7 +772,7 @@ function TypeOrderList({
   )
 }
 
-/** 拖拽滑杆：拖动过程只改本地草稿（避免每一步都写盘+重解码动图），松手/键盘松开才提交 */
+/** 拖拽滑杆：拖动过程实时显示（不松手也变），写盘走 200ms 防抖（拖动中只落最后一次），松手立即提交 */
 function SliderControl({
   value,
   min,
@@ -814,8 +787,20 @@ function SliderControl({
   onChange(v: number): void
 }): React.JSX.Element {
   const [draft, setDraft] = useState<number | null>(null)
-  const commit = (): void => {
-    if (draft !== null && draft !== value) onChange(draft)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const schedule = (v: number): void => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      onChange(v)
+    }, 200)
+  }
+  const flush = (): void => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+      if (draft !== null && draft !== value) onChange(draft)
+    }
     setDraft(null)
   }
   return (
@@ -826,10 +811,14 @@ function SliderControl({
       max={max}
       step={step}
       value={draft ?? value}
-      onChange={(e) => setDraft(Number(e.target.value))}
-      onPointerUp={commit}
-      onKeyUp={commit}
-      onBlur={commit}
+      onChange={(e) => {
+        const v = Number(e.target.value)
+        setDraft(v)
+        schedule(v)
+      }}
+      onPointerUp={flush}
+      onKeyUp={flush}
+      onBlur={flush}
     />
   )
 }
@@ -840,14 +829,14 @@ function SettingRow({
   children
 }: {
   label: string
-  hint: string
+  hint?: string
   children: React.ReactNode
 }): React.JSX.Element {
   return (
     <div className="settings-row">
       <div className="settings-row-text">
         <div className="settings-row-label">{label}</div>
-        <div className="settings-row-hint">{hint}</div>
+        {hint && <div className="settings-row-hint">{hint}</div>}
       </div>
       <div className="settings-row-control">{children}</div>
     </div>

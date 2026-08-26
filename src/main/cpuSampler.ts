@@ -1,5 +1,5 @@
-// CPU 使用率采样：os.cpus() 两次采样差分（RunCat 的 host_statistics tick 差分的 Node 等价物）。
-// 用途：菜单栏动图「随 CPU 变速」——CPU 忙动画跑得快、空闲跑得慢（不只因/RunCat 同款玩法）。
+// CPU 使用率采样：os.cpus() 两次采样差分（系统 tick 差分的 Node 等价物）。
+// 用途：菜单栏动图「随 CPU 变速」——CPU 忙动画跑得快、空闲休息静止。
 import { cpus } from 'os'
 
 /** 采样间隔：低于此窗口直接返回缓存，避免每帧都算（帧间隔几十 ms，算一次 CPU 不划算） */
