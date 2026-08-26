@@ -8,6 +8,7 @@ import { stopAllRuntimes } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
 import { markQuitConfirmed, showMainWindow } from './window'
 import { loadGifFrames, type GifFrame } from './gifFrames'
+import { listCharacters } from './trayCharacters'
 import { getCpuUsage } from './cpuSampler'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
@@ -54,7 +55,12 @@ function applyTrayIcon(): void {
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   if (isGif) {
-    const frames = loadGifFrames(trayIconPath as string, ICON_SIZE, { mirror: trayAutoReverse })
+    // 官方模板素材角色（随菜单栏深浅自动变色）按角色属性转模板图
+    const mono = listCharacters().find((c) => c.path === trayIconPath)?.mono
+    const frames = loadGifFrames(trayIconPath as string, ICON_SIZE, {
+      mirror: trayAutoReverse,
+      mono
+    })
     if (frames) {
       stopTrayAnimation()
       activeFrames = frames

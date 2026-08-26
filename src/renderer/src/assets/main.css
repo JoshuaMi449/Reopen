@@ -3306,12 +3306,12 @@ html.dark .settings-card {
   cursor: grab;
 }
 
-/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 面板 + 网格列表 */
+/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 毛玻璃面板 + 网格列表（滚轮滑动，无滚动条） */
 .role-picker-overlay {
   position: fixed;
   inset: 0;
   z-index: 300;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3322,7 +3322,10 @@ html.dark .settings-card {
   max-height: calc(100% - 160px);
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  /* 半透明毛玻璃：透出底下主界面的颜色，再模糊 */
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
@@ -3341,6 +3344,12 @@ html.dark .settings-card {
   gap: 10px;
   overflow-y: auto;
   padding-right: 2px;
+  /* 滚轮可滑动但不显示滚动条（与官方一致） */
+  scrollbar-width: none;
+}
+
+.role-picker-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .role-picker-item {
