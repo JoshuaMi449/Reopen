@@ -3271,17 +3271,6 @@ html.dark .settings-card {
   border-color: var(--accent);
 }
 
-.tray-icon-add {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* 设置-菜单栏：拖拽滑杆（播放速度，无级） */
 .settings-slider {
   -webkit-appearance: none;
@@ -3306,21 +3295,18 @@ html.dark .settings-card {
   cursor: grab;
 }
 
-/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 毛玻璃竖窄窗（宽 300）——
- * 左侧动图/图片书签 + 右侧竖排角色列表（滚轮滑动无滚动条）+ 「＋1只」+ 底部设置区 */
+/* 角色选择弹窗（点设置里的预览图弹出，锚定预览图下方）：轻遮罩 + 毛玻璃竖窄窗（宽 300）——
+ * 左侧动图/图片书签 + 右侧竖排角色列表（滚轮滑动无滚动条）+ 底部设置区 + 最底部添加入口 */
 .role-picker-overlay {
   position: fixed;
   inset: 0;
   z-index: 300;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .role-picker {
+  position: absolute;
   width: 300px;
-  max-height: min(520px, calc(100% - 120px));
   display: flex;
   flex-direction: column;
   /* 半透明毛玻璃：透出底下主界面的颜色，再模糊 */
@@ -3390,10 +3376,13 @@ html.dark .settings-card {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 6px;
-  border-radius: 7px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 2px solid transparent;
   cursor: pointer;
-  transition: background 0.15s;
+  /* 未选中整体缩小（照参考实现 0.86），选中放大还原 */
+  transform: scale(0.86);
+  transition: transform 0.18s, background 0.15s, border-color 0.15s;
 }
 
 .role-picker-item:hover {
@@ -3402,13 +3391,21 @@ html.dark .settings-card {
 
 .role-picker-item.role-picker-on {
   background: var(--hover);
+  border-color: var(--accent);
+  transform: scale(1);
 }
 
+/* 选中 icon 放大 1.5 倍（照参考实现） */
 .role-picker-item-icon {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
   flex-shrink: 0;
+  transition: transform 0.18s;
+}
+
+.role-picker-item.role-picker-on .role-picker-item-icon {
+  transform: scale(1.5);
 }
 
 .role-picker-item-name {
@@ -3424,6 +3421,29 @@ html.dark .settings-card {
   flex-shrink: 0;
 }
 
+/* 选中行改名：铅笔按钮 + 内联输入框 */
+.role-picker-edit {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.role-picker-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+}
+
 .role-picker-empty {
   padding: 16px 0;
   font-size: 12px;
@@ -3431,12 +3451,14 @@ html.dark .settings-card {
   text-align: center;
 }
 
-/* 「＋1只」添加按钮 */
+/* 添加入口（弹窗最底部）：和角色行同款方框——左边虚线空框 + 右边文字（按书签变「选择GIF.../选择图片...」） */
 .role-picker-add {
-  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px;
-  border: 1px dashed var(--border);
-  border-radius: 7px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
   background: transparent;
   color: var(--text-dim);
   font-size: 13px;
@@ -3447,6 +3469,14 @@ html.dark .settings-card {
 .role-picker-add:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+.role-picker-add-box {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
 }
 
 /* 底部设置区：自动反转播放 / 速度正比CPU / 只因速 */

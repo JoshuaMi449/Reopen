@@ -1,35 +1,46 @@
-// 角色选择弹窗：点设置里的预览图弹出（竖窄窗，宽 300）。
-// 左侧两个书签：动图（GIF 角色）/ 图片（静态图片素材）；右侧竖排角色列表（icon+名字+当前打勾）；
-// 列表底部「＋1只」从文件添加；最底部设置区：自动反转播放 / 速度正比CPU 开关 + 只因速无级滑杆（无数字）。
+// 角色选择弹窗：点设置里的预览图弹出，面板锚定在预览图正下方（放不下则向上翻）。
+// 左侧动图/图片书签；右侧竖排角色列表——选中项 icon 放大 1.5 倍+主色描边、未选中缩小（照参考实现）；
+// 选中的自定义素材显示铅笔可改名；最底部添加入口（虚线空框+选择GIF.../选择图片...）；
+// 设置区：自动反转播放/速度正比CPU 开关 + 只因速无级滑杆（0~1 无数字）。
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Pencil } from 'lucide-react'
 import type { TrayCharacterItem } from '../../../shared/types'
+
+const PANEL_W = 300
 
 export function RolePickerModal({
   currentPath,
   cpuFollow,
   autoReverse,
   speed,
+  anchor,
   onSelect,
   onCpuFollow,
   onAutoReverse,
   onSpeed,
   onImport,
+  onRename,
   onClose
 }: {
   currentPath: string
   cpuFollow: boolean
   autoReverse: boolean
   speed: number
+  anchor: { x: number; y: number; width: number } | null
   onSelect(c: TrayCharacterItem): void
   onCpuFollow(v: boolean): void
   onAutoReverse(v: boolean): void
   onSpeed(v: number): void
-  onImport(): Promise<void>
+  onImport(filter: 'gif' | 'image'): Promise<void>
+  onRename(newPath: string): void
   onClose(): void
 }): React.JSX.Element {
   const [tab, setTab] = useState<'gif' | 'image'>('gif')
   const [chars, setChars] = useState<TrayCharacterItem[]>([])
+  /** 当前选中角色（本地镜像：点选/改名即时反映，不用等设置回传） */
+  const [current, setCurrent] = useState(currentPath)
+  /** 正在改名的素材 path（名字变输入框） */
+  const [editingPath, setEditingPath] = useState<string | null>(null)
   const [speedDraft, setSpeedDraft] = useState<number | null>(null)
   const speedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -41,8 +52,22 @@ export function RolePickerModal({
   const visible = tab === 'gif' ? chars.filter((c) => c.isGif) : chars.filter((c) => !c.isGif)
 
   const handleImport = async (): Promise<void> => {
-    await onImport()
+    await onImport(tab)
     loadChars()
+  }
+
+  const doRename = async (c: TrayCharacterItem, name: string): Promise<void> => {
+    setEditingPath(null)
+    try {
+      const np = await window.api.renameTrayIcon(c.path, name)
+      if (np) {
+        setCurrent(np)
+        onRename(np)
+        loadChars()
+      }
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   // 只因速：拖动实时显示，写盘 200ms 防抖（拖动中只落最后一次），松手立即提交
@@ -62,9 +87,24 @@ export function RolePickerModal({
     setSpeedDraft(null)
   }
 
+  // 面板定位：锚在预览图正下方居中；下方放不下（<200px）则向上翻
+  const panelStyle = (() => {
+    if (!anchor) return undefined
+    const left = Math.min(
+      Math.max(anchor.x + anchor.width / 2 - PANEL_W / 2, 8),
+      window.innerWidth - PANEL_W - 8
+    )
+    const spaceBelow = window.innerHeight - anchor.y - 16
+    if (spaceBelow >= 200) {
+      return { left, top: anchor.y + 8, maxHeight: Math.min(520, spaceBelow) }
+    }
+    const h = Math.min(520, Math.max(200, anchor.y - 24))
+    return { left, top: anchor.y - h - 8, maxHeight: h }
+  })()
+
   return (
     <div className="role-picker-overlay" onClick={onClose}>
-      <div className="role-picker" onClick={(e) => e.stopPropagation()}>
+      <div className="role-picker" style={panelStyle} onClick={(e) => e.stopPropagation()}>
         <div className="role-picker-body">
           <aside className="role-picker-tabs">
             <button
@@ -81,25 +121,55 @@ export function RolePickerModal({
             </button>
           </aside>
           <div className="role-picker-list">
-            {visible.map((c) => (
-              <div
-                key={c.key}
-                className={`role-picker-item ${c.path === currentPath ? 'role-picker-on' : ''}`}
-                onClick={() => onSelect(c)}
-              >
-                <img className="role-picker-item-icon" src={c.dataUrl} alt={c.label} />
-                <span className="role-picker-item-name">{c.label}</span>
-                {c.path === currentPath && <Check size={12} className="role-picker-check" />}
-              </div>
-            ))}
+            {visible.map((c) => {
+              const selected = c.path === current
+              return (
+                <div
+                  key={c.key}
+                  className={`role-picker-item ${selected ? 'role-picker-on' : ''}`}
+                  onClick={() => {
+                    setCurrent(c.path)
+                    onSelect(c)
+                  }}
+                >
+                  <img className="role-picker-item-icon" src={c.dataUrl} alt={c.label} />
+                  {editingPath === c.path ? (
+                    <input
+                      className="role-picker-rename-input"
+                      defaultValue={c.label}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter')
+                          void doRename(c, (e.target as HTMLInputElement).value)
+                        if (e.key === 'Escape') setEditingPath(null)
+                      }}
+                      onBlur={() => setEditingPath(null)}
+                    />
+                  ) : (
+                    <span className="role-picker-item-name">{c.label}</span>
+                  )}
+                  {selected && !c.builtin && (
+                    <button
+                      className="role-picker-edit"
+                      title="改名"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingPath(c.path)
+                      }}
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  )}
+                  {selected && <Check size={12} className="role-picker-check" />}
+                </div>
+              )
+            })}
             {visible.length === 0 && (
               <div className="role-picker-empty">{tab === 'gif' ? '还没有动图' : '还没有图片'}</div>
             )}
           </div>
         </div>
-        <button className="role-picker-add" onClick={() => void handleImport()}>
-          ＋1只
-        </button>
         <div className="role-picker-settings">
           <div className="role-picker-setting-row">
             <span className="role-picker-setting-label">自动反转播放</span>
@@ -124,8 +194,8 @@ export function RolePickerModal({
             <input
               type="range"
               className="settings-slider"
-              min={0.25}
-              max={3}
+              min={0}
+              max={1}
               step={0.01}
               value={speedDraft ?? speed}
               onChange={(e) => {
@@ -139,6 +209,12 @@ export function RolePickerModal({
             />
           </div>
         </div>
+        <button className="role-picker-add" onClick={() => void handleImport()}>
+          <span className="role-picker-add-box" />
+          <span className="role-picker-add-text">
+            {tab === 'gif' ? '选择GIF...' : '选择图片...'}
+          </span>
+        </button>
       </div>
     </div>
   )

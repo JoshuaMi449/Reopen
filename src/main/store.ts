@@ -136,6 +136,8 @@ export function getSettings(): Settings {
   if (!settings) settings = { ...DEFAULT_SETTINGS }
   // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
+  // 旧数据迁移：动图速度语义重做（倍率 0.25~3 → 只因速 0~1），老值超出范围回落默认 0.5
+  if (settings.trayIconSpeed > 1 || settings.trayIconSpeed < 0) settings.trayIconSpeed = 0.5
   // 旧数据迁移：彩色托盘图标选项已删除 → 回落黑白（用户要求只留黑白/自定义）
   if ((settings.trayIcon as string) === 'color') settings.trayIcon = 'mono'
   // 旧数据迁移：特殊风格七套改名换代为 六套主题（磷光→森息夜语最接近）

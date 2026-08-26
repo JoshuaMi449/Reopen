@@ -12,12 +12,16 @@ import { listCharacters } from './trayCharacters'
 import { getCpuUsage } from './cpuSampler'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
-/** 菜单栏图标固定大小（参考同类应用的菜单栏显示高度） */
-const ICON_SIZE = 22
+/** 黑白（主题）图标大小：菜单栏标准高度 */
+const MONO_SIZE = 18
+/** 自定义角色图标大小 */
+const CUSTOM_SIZE = 22
 /** CPU 低于此值视为空闲：动画休息静止（忙起来才跑） */
 const REST_THRESHOLD = 0.05
 /** 休息时的醒来检查间隔 */
 const WAKE_CHECK_MS = 1000
+/** 帧间隔下限（防刷爆菜单栏） */
+const MIN_INTERVAL = 40
 
 let tray: Tray | null = null
 let panel: BrowserWindow | null = null
@@ -25,18 +29,23 @@ let panel: BrowserWindow | null = null
 let frameTimer: ReturnType<typeof setTimeout> | null = null
 /** 正在轮播的帧序列（作为轮播循环的身份标识，防止换图后旧循环还活着） */
 let activeFrames: GifFrame[] | null = null
+/** 轮播方向（1=正向；-1=倒播，自动反转播放的乒乓用） */
+let activeDir = 1
 
-/** 静态托盘图标：黑白=内置剪影转模板（系统自动随深浅色反转）；
- *  自定义=用户选的图片/动图第一帧（复制在 userData，不反转；GIF 由轮播接管，这里只兜底）；统一固定尺寸 */
+/** 静态托盘图标：主题=内置剪影转模板（系统自动随深浅色反转）；
+ *  自定义=用户选的图片/动图第一帧（复制在 userData，不反转；GIF 由轮播接管，这里只兜底） */
 function staticTrayIcon(): Electron.NativeImage {
   const { trayIcon, trayIconPath } = getSettings()
   let img: Electron.NativeImage
+  let size: number
   if (trayIcon === 'custom' && trayIconPath && existsSync(trayIconPath)) {
     img = nativeImage.createFromPath(trayIconPath)
+    size = CUSTOM_SIZE
   } else {
     img = nativeImage.createFromPath(trayIconAsset)
+    size = MONO_SIZE
   }
-  const sized = img.resize({ width: ICON_SIZE, height: ICON_SIZE })
+  const sized = img.resize({ width: size, height: size })
   if (trayIcon === 'mono') sized.setTemplateImage(true)
   return sized
 }
@@ -47,8 +56,9 @@ function stopTrayAnimation(): void {
   activeFrames = null
 }
 
-/** 自定义图是 GIF → 解码成帧按各自时长循环换图（模拟动图）；否则挂静态图。
- *  cpuFollow 开：CPU 忙时按使用率加速（0.5×~2.5×），空闲时休息静止（不换帧），每秒醒来检查；关：固定速度 */
+/** 自定义图是 GIF → 解码成帧循环换图（模拟动图）；否则挂静态图。
+ *  帧间隔照抄参考实现的公式：开 CPU 变速=(1-CPU)/5×(1.1-只因速)，关=CPU/5×(1.1-只因速)，下限 40ms；
+ *  自动反转播放=乒乓（播到末帧倒播回来）；cpuFollow 开且 CPU 空闲时休息静止，每秒醒来检查 */
 function applyTrayIcon(): void {
   if (!tray) return
   const { trayIcon, trayIconPath, trayIconSpeed, cpuFollow, trayAutoReverse } = getSettings()
@@ -57,14 +67,12 @@ function applyTrayIcon(): void {
   if (isGif) {
     // 模板素材角色（随菜单栏深浅自动变色）按角色属性转模板图
     const mono = listCharacters().find((c) => c.path === trayIconPath)?.mono
-    const frames = loadGifFrames(trayIconPath as string, ICON_SIZE, {
-      mirror: trayAutoReverse,
-      mono
-    })
+    const frames = loadGifFrames(trayIconPath as string, CUSTOM_SIZE, { mono })
     if (frames) {
       stopTrayAnimation()
       activeFrames = frames
-      const speed = trayIconSpeed ?? 1
+      activeDir = 1
+      const speed = trayIconSpeed ?? 0.5
       const step = (i: number): void => {
         if (activeFrames !== frames || !tray) return // 期间换图/关托盘了，旧循环作废
         tray.setImage(frames[i].image)
@@ -74,9 +82,24 @@ function applyTrayIcon(): void {
           frameTimer = setTimeout(() => wakeCheck(frames, i), WAKE_CHECK_MS)
           return
         }
-        const cpuFactor = cpuFollow ? 0.5 + usage * 2 : 1
-        const d = Math.max(40, Math.round(frames[i].delay / (speed * cpuFactor)))
-        frameTimer = setTimeout(() => step((i + 1) % frames.length), d)
+        // 帧间隔（秒）：开=(1-CPU)/5×(1.1-只因速)；关=CPU/5×(1.1-只因速)
+        const base = (cpuFollow ? 1.0001 - usage : usage) / 5
+        const d = Math.max(MIN_INTERVAL, Math.round(base * (1.1 - speed) * 1000))
+        // 乒乓反转：正向到头往回播、倒播到首帧再正向；关=单向循环
+        let next = i + activeDir
+        const last = frames.length - 1
+        if (next > last) {
+          if (trayAutoReverse && last > 0) {
+            activeDir = -1
+            next = last - 1
+          } else {
+            next = 0
+          }
+        } else if (next < 0) {
+          activeDir = 1
+          next = 1
+        }
+        frameTimer = setTimeout(() => step(next), d)
       }
       const wakeCheck = (frames: GifFrame[], i: number): void => {
         if (activeFrames !== frames || !tray) return

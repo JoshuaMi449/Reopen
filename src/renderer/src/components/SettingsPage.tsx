@@ -69,10 +69,10 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     setSettings(saved)
   }, [])
 
-  /** 自定义菜单栏图标：选图 → 复制到应用数据目录 → 立即生效 */
-  const pickTrayIcon = async (): Promise<void> => {
+  /** 自定义菜单栏图标：选图 → 复制到应用数据目录 → 立即生效（filter 按角色弹窗书签限定格式） */
+  const pickTrayIcon = async (filter?: 'gif' | 'image'): Promise<void> => {
     try {
-      const p = await window.api.pickTrayIcon()
+      const p = await window.api.pickTrayIcon(filter)
       if (p) update({ trayIcon: 'custom', trayIconPath: p })
     } catch (err) {
       console.error(err)
@@ -97,6 +97,12 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
   /** 角色选择弹窗开关（点预览图弹出） */
   const [showRolePicker, setShowRolePicker] = useState(false)
+  /** 弹窗锚点（预览图底边中点，弹窗贴它下方弹出） */
+  const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number; width: number } | null>(
+    null
+  )
+  /** 预览图元素（拿屏幕位置做弹窗锚点） */
+  const previewRef = useRef<HTMLImageElement>(null)
   useEffect(() => {
     if (settings.trayIcon === 'custom' && settings.trayIconPath) {
       let live = true
@@ -305,7 +311,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
                 className={`settings-seg-btn ${settings.trayIcon === 'mono' ? 'settings-seg-on' : ''}`}
                 onClick={() => update({ trayIcon: 'mono' })}
               >
-                黑白
+                主题
               </button>
               <button
                 className={`settings-seg-btn ${settings.trayIcon === 'custom' ? 'settings-seg-on' : ''}`}
@@ -317,28 +323,26 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           </div>
         </SettingRow>
 
-        {/* 仅自定义出现：当前角色（点预览弹角色列表，＋从文件选；弹窗里有只因速/开关等） */}
+        {/* 仅自定义出现：当前角色（点预览弹出角色列表，弹窗锚定预览图下方；弹窗里有只因速/开关/添加） */}
         {settings.trayIcon === 'custom' && (
           <SettingRow label="当前角色">
             <div className="tray-icon-actions">
               {iconPreview && (
                 <img
+                  ref={previewRef}
                   className="tray-icon-preview"
                   src={iconPreview.dataUrl}
                   alt="当前角色预览"
                   title="选择角色"
-                  onClick={() => setShowRolePicker(true)}
+                  onClick={() => {
+                    const r = previewRef.current?.getBoundingClientRect()
+                    if (r) setPickerAnchor({ x: r.left, y: r.bottom, width: r.width })
+                    setShowRolePicker(true)
+                  }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => void handleTrayDrop(e)}
                 />
               )}
-              <button
-                className="btn-secondary tray-icon-add"
-                onClick={() => void pickTrayIcon()}
-                title="从文件选择"
-              >
-                ＋
-              </button>
             </div>
           </SettingRow>
         )}
@@ -653,13 +657,15 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           cpuFollow={settings.cpuFollow}
           autoReverse={settings.trayAutoReverse}
           speed={settings.trayIconSpeed}
+          anchor={pickerAnchor}
           onSelect={(c) => update({ trayIcon: 'custom', trayIconPath: c.path })}
           onCpuFollow={(v) => update({ cpuFollow: v })}
           onAutoReverse={(v) => update({ trayAutoReverse: v })}
           onSpeed={(v) => update({ trayIconSpeed: v })}
-          onImport={async () => {
-            await pickTrayIcon()
+          onImport={async (filter) => {
+            await pickTrayIcon(filter)
           }}
+          onRename={(newPath) => update({ trayIcon: 'custom', trayIconPath: newPath })}
           onClose={() => setShowRolePicker(false)}
         />
       )}

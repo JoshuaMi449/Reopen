@@ -7,11 +7,12 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync
 } from 'fs'
 import { connect } from 'net'
-import { basename, extname, join } from 'path'
+import { basename, dirname, extname, join } from 'path'
 import type {
   EnvCheckItem,
   NewProjectInput,
@@ -450,20 +451,24 @@ export function registerIpc(): void {
 
   // 设置
   ipcMain.handle('settings:get', () => getSettings())
-  // 自定义菜单栏图标：选图 → 检查大小 → 复制到 userData（原图移动/删除不影响显示）
-  ipcMain.handle('tray:pick-icon', async () => {
+  // 自定义菜单栏图标：选图 → 检查大小 → 复制到 userData（原图移动/删除不影响显示）；
+  // filter='gif' 只选 GIF / 'image' 只选 PNG·JPG（角色弹窗按书签过滤）
+  ipcMain.handle('tray:pick-icon', async (_e, filter?: 'gif' | 'image') => {
+    const extensions =
+      filter === 'gif'
+        ? ['gif']
+        : filter === 'image'
+          ? ['png', 'jpg', 'jpeg']
+          : ['png', 'jpg', 'jpeg', 'gif']
     const win = BrowserWindow.getFocusedWindow()
-    const res = await (win
-      ? dialog.showOpenDialog(win, {
-          title: '选择菜单栏图标',
-          filters: [{ name: '图片（PNG/JPG/GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
-          properties: ['openFile']
-        })
-      : dialog.showOpenDialog({
-          title: '选择菜单栏图标',
-          filters: [{ name: '图片（PNG/JPG/GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
-          properties: ['openFile']
-        }))
+    const options = {
+      title: '选择菜单栏图标',
+      filters: [{ name: '图片', extensions }],
+      properties: ['openFile' as const]
+    }
+    const res = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
     if (res.canceled || !res.filePaths[0]) return null
     const f = res.filePaths[0]
     if (statSync(f).size > 2 * 1024 * 1024) throw new Error('图片太大（最大 2MB），换一张小一点的')
@@ -473,6 +478,26 @@ export function registerIpc(): void {
     )
     copyFileSync(f, dest)
     invalidateGifCache() // 换图后旧帧序列作废（同路径覆盖换文件）
+    return dest
+  })
+  // 重命名已导入的素材：改磁盘文件名+档案路径；当前角色同步刷新
+  ipcMain.handle('tray:rename-icon', (_e, path: string, newName: string) => {
+    const p = String(path ?? '')
+    const name = String(newName ?? '').trim()
+    if (!existsSync(p) || !name || /[/\\]/.test(name)) return null
+    const dir = dirname(p)
+    const ext = extname(p).toLowerCase()
+    const dest = join(dir, `${name}${ext}`)
+    if (dest === p) return p
+    if (existsSync(dest)) throw new Error('已经有同名素材了，换个名字')
+    renameSync(p, dest)
+    const s = getSettings()
+    saveSettings({
+      customTrayIcons: s.customTrayIcons.map((c) => (c === p ? dest : c)),
+      trayIconPath: s.trayIconPath === p ? dest : s.trayIconPath
+    })
+    invalidateGifCache()
+    refreshTray()
     return dest
   })
   // 导入菜单栏素材（设置页拖放的 GIF/PNG）：复制到 userData/tray-icons/ 保原名并加入角色库

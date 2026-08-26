@@ -39,32 +39,16 @@ function downscale(
   return out
 }
 
-/** 水平镜像（角色左右翻转开关用） */
-function mirrorPixels(src: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(src.length)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const s = (y * w + x) * 4
-      const d = (y * w + (w - 1 - x)) * 4
-      out[d] = src[s]
-      out[d + 1] = src[s + 1]
-      out[d + 2] = src[s + 2]
-      out[d + 3] = src[s + 3]
-    }
-  }
-  return out
-}
-
 /** 把 gif 解码成帧序列（每帧合成到完整画布 → PNG → nativeImage，统一缩到 size px）。
- *  opts.mirror=水平镜像（角色左右翻转）；opts.mono=转模板图（随菜单栏深浅自动变色）。
+ *  opts.mono=转模板图（随菜单栏深浅自动变色）。
  *  解析失败 / 只有一帧 → 返回 null（调用方退回静态图） */
 export function loadGifFrames(
   path: string,
   size = 18,
-  opts: { mirror?: boolean; mono?: boolean } = {}
+  opts: { mono?: boolean } = {}
 ): GifFrame[] | null {
-  // 缓存 key 含尺寸/镜像/单色：设置变化后必须重新解码，不能命中旧帧
-  const key = `${path}:${size}${opts.mirror ? ':m' : ''}${opts.mono ? ':t' : ''}`
+  // 缓存 key 含尺寸/单色：设置变化后必须重新解码，不能命中旧帧
+  const key = `${path}:${size}${opts.mono ? ':t' : ''}`
   const hit = cache.get(key)
   if (hit) return hit
   // 编码前先缩到 2x（高清屏），上限 44 防大图标白费内存
@@ -97,8 +81,7 @@ export function loadGifFrames(
           canvas[c + 3] = patch[p + 3]
         }
       }
-      let small = downscale(canvas, W, H, target, target)
-      if (opts.mirror) small = mirrorPixels(small, target, target)
+      const small = downscale(canvas, W, H, target, target)
       const frame = new PNG({ width: target, height: target })
       frame.data = Buffer.from(small.buffer)
       const png = PNG.sync.write(frame)

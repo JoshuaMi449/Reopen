@@ -225,11 +225,11 @@ export interface Settings {
   trayIcon: 'mono' | 'custom'
   /** 自定义托盘图标的文件路径（trayIcon=custom 时生效；内置角色或用户导入素材都指向这） */
   trayIconPath?: string
-  /** 菜单栏动图播放速度（无级滑杆 0.25~3，默认 1；动图角色的基准倍率） */
+  /** 菜单栏动图速度（无级滑杆 0~1，默认 0.5；越大越快，1=最快） */
   trayIconSpeed: number
-  /** 动画速度随 CPU 使用率波动（CPU 忙跑得快、空闲休息静止；默认开） */
+  /** 动画速度随 CPU 使用率波动（CPU 忙跑得快；默认开） */
   cpuFollow: boolean
-  /** 角色左右翻转（镜像显示；默认关） */
+  /** 自动反转播放：播到最后一帧倒着播回来（乒乓）；默认开 */
   trayAutoReverse: boolean
   /** 用户导入的托盘素材清单（复制在 userData/tray-icons/，角色列表里可选） */
   customTrayIcons: string[]
@@ -268,9 +268,9 @@ export const DEFAULT_SETTINGS: Settings = {
   specialStyle: '',
   closeToTray: true,
   trayIcon: 'mono',
-  trayIconSpeed: 1,
+  trayIconSpeed: 0.5,
   cpuFollow: true,
-  trayAutoReverse: false,
+  trayAutoReverse: true,
   customTrayIcons: [],
   trayEnabled: true,
   hotkey: 'Alt+R',
@@ -365,10 +365,12 @@ export interface ReopenApi {
     port: number,
     excludeId?: string
   ): Promise<{ inUse: boolean; byProject?: string; bySystem?: boolean }>
-  /** 选择自定义菜单栏图标（返回复制后的文件路径；取消返回 null） */
-  pickTrayIcon(): Promise<string | null>
+  /** 选择自定义菜单栏图标（filter='gif' 只选 GIF / 'image' 只选 PNG·JPG；返回复制后的文件路径；取消返回 null） */
+  pickTrayIcon(filter?: 'gif' | 'image'): Promise<string | null>
   /** 导入菜单栏素材（拖放/选择的 GIF/PNG 复制进 userData/tray-icons/ 并加入角色库，返回素材路径；取消返回 null） */
   importTrayIcon(filePath: string): Promise<string | null>
+  /** 重命名已导入的素材（改磁盘文件名+档案路径；当前角色同步；返回新路径，取消/失败返回 null） */
+  renameTrayIcon(path: string, newName: string): Promise<string | null>
   /** 托盘角色清单：内置角色 + 用户导入素材，带预览 dataURL（设置页角色弹窗用；GIF 原样给浏览器原生动画） */
   listTrayCharacters(): Promise<TrayCharacterItem[]>
   stopProject(id: string): Promise<void>
