@@ -103,6 +103,16 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   )
   /** 预览图元素（拿屏幕位置做弹窗锚点） */
   const previewRef = useRef<HTMLImageElement>(null)
+  // 弹窗打开期间窗口尺寸变化：锚点实时重算（预览图位置跟着变，弹窗贴着它走）
+  useEffect(() => {
+    if (!showRolePicker) return
+    const onResize = (): void => {
+      const r = previewRef.current?.getBoundingClientRect()
+      if (r) setPickerAnchor({ x: r.left, y: r.bottom, width: r.width })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [showRolePicker])
   useEffect(() => {
     if (settings.trayIcon === 'custom' && settings.trayIconPath) {
       let live = true

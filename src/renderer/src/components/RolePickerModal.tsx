@@ -49,6 +49,15 @@ export function RolePickerModal({
   }, [])
   useEffect(loadChars, [loadChars])
 
+  // 窗口尺寸变化：面板高度实时重算（panelStyle 按窗口高度现算——
+  // 窗口压矮时只收缩中间角色列表，底部设置区与添加入口始终可见）
+  const [, setResizeTick] = useState(0)
+  useEffect(() => {
+    const onResize = (): void => setResizeTick((t) => t + 1)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   const visible = tab === 'gif' ? chars.filter((c) => c.isGif) : chars.filter((c) => !c.isGif)
 
   const handleImport = async (): Promise<void> => {

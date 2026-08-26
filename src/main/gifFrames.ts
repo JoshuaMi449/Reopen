@@ -60,22 +60,71 @@ export function loadGifFrames(
     const W = parsed.lsd.width
     const H = parsed.lsd.height
     if (W === 0 || H === 0) return null
+    // gifuct-js 把 GCE 块与 image 块拆成独立元素（NETSCAPE 扩展还会把帧 0 的 GCE 吸走），
+    // decompressFrames 输出的帧可能丢 transparentIndex/disposal/delay（丢透明索引=整帧黑底）。
+    // 按 GIF 规范配对：每个 image 帧取「前面最近的 GCE」（注释/循环扩展等非渲染块不打断配对）
+    type GceInfo = {
+      disposal: number
+      transparentColorGiven: boolean
+      transparentColorIndex: number
+      delay: number
+    }
+    const gceByFrame: (GceInfo | undefined)[] = []
+    let pendingGce: GceInfo | undefined
+    for (const el of parsed.frames) {
+      if ('gce' in el && el.gce) {
+        pendingGce = {
+          disposal: el.gce.extras.disposal,
+          transparentColorGiven: el.gce.extras.transparentColorGiven,
+          transparentColorIndex: el.gce.transparentColorIndex,
+          delay: el.gce.delay
+        }
+      }
+      if ('image' in el && el.image) gceByFrame.push(pendingGce)
+    }
     const frames = decompressFrames(parsed, true).slice(0, MAX_FRAMES)
     if (frames.length === 0) return null
-    // 全画布：逐帧独立解码——每帧先清成全透明，再只画该帧自己的 patch。
-    // 帧外区域透明，不残留上一帧像素（照参考实现"每帧独立解出完整图"的做法，
-    // 叠加上一帧会让局部帧把上一帧内容带进帧外区域，菜单栏上显示成黑块）
+    // 补回丢失的 GCE 信息（透明索引/disposal/帧时长）
+    frames.forEach((raw, i) => {
+      const f = raw as ParsedFrame
+      const gce = gceByFrame[i]
+      if (!gce) return
+      f.disposalType = gce.disposal
+      if (gce.transparentColorGiven) {
+        f.transparentIndex = gce.transparentColorIndex
+        // patch 是补丁前生成的（透明索引丢失时=全不透明黑底），按新透明索引重建：
+        // 像素索引经调色板转 RGBA，透明索引像素 alpha=0
+        const totalPixels = f.pixels.length
+        const patchData = new Uint8ClampedArray(totalPixels * 4)
+        for (let j = 0; j < totalPixels; j++) {
+          const pos = j * 4
+          const colorIndex = f.pixels[j]
+          const color = f.colorTable[colorIndex] || [0, 0, 0]
+          patchData[pos] = color[0]
+          patchData[pos + 1] = color[1]
+          patchData[pos + 2] = color[2]
+          patchData[pos + 3] = colorIndex !== f.transparentIndex ? 255 : 0
+        }
+        f.patch = patchData
+      }
+      if (f.delay === undefined) f.delay = (gce.delay || 10) * 10
+    })
+    // 全画布：按 GIF 标准语义合成——画布跨帧保留（局部帧依赖上一帧在画布上的残留），
+    // 每帧输出=当前画布快照（完整合成帧，参考实现 CGImageSourceCreateImageAtIndex 同款）。
+    // 透明像素（帧的透明索引）不修改画布；disposal 只影响下一帧：
+    //   2=帧区域清屏、3=恢复上一帧前画布。帧外（逻辑画布外）始终透明。
+    // 两种错误对照：每帧清空重画=残留丢失闪黑；不做 disposal 清屏=全黑残留
     const canvas = new Uint8ClampedArray(W * H * 4)
     const result: GifFrame[] = []
     for (const raw of frames) {
       const f = raw as ParsedFrame
-      canvas.fill(0)
+      const prev = f.disposalType === 3 ? canvas.slice() : null // disposal 3=显示后恢复上一帧
       const { width, height, top, left } = f.dims
       const patch = f.patch
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const p = (y * width + x) * 4
-          if (patch[p + 3] === 0) continue
+          if (patch[p + 3] === 0) continue // 透明像素：保留画布原值
           const c = ((top + y) * W + left + x) * 4
           canvas[c] = patch[p]
           canvas[c + 1] = patch[p + 1]
@@ -93,6 +142,25 @@ export function loadGifFrames(
         image: img,
         delay: Math.max(f.delay || 100, 100)
       })
+      // disposal 影响下一帧前的画布状态：
+      //  2=帧区域清屏——规范：帧有透明索引 → 清成透明；没有 → 铺 GIF 背景色（不透明）
+      if (f.disposalType === 2) {
+        const bgColor =
+          f.transparentIndex === undefined
+            ? (parsed.gct[parsed.lsd.backgroundColorIndex] ?? null)
+            : null
+        const [r, g, b, a] = bgColor ? [bgColor[0], bgColor[1], bgColor[2], 255] : [0, 0, 0, 0]
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const c = ((top + y) * W + left + x) * 4
+            canvas[c] = r
+            canvas[c + 1] = g
+            canvas[c + 2] = b
+            canvas[c + 3] = a
+          }
+        }
+      }
+      if (prev) canvas.set(prev)
     }
     if (result.length === 0) return null
     cache.set(key, result)
