@@ -91,7 +91,8 @@ export function loadGifFrames(
         image: img,
         delay: Math.max(f.delay || 100, 100)
       })
-      if (f.disposalType === 2) canvas.fill(0) // 显示后清屏，下一帧画在空白上
+      // 注意：disposal=2（显示后清屏）不清空画布——角色素材几乎全是局部帧，
+      // 清屏会让帧外区域变透明（深色菜单栏上闪黑边），保留上一帧叠加才不闪
       if (prev) canvas.set(prev)
     }
     if (result.length === 0) return null

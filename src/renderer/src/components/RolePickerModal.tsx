@@ -87,7 +87,8 @@ export function RolePickerModal({
     setSpeedDraft(null)
   }
 
-  // 面板定位：锚在预览图正下方居中；下方放不下（<200px）则向上翻
+  // 面板定位：锚在预览图正下方居中；下方放不下（<200px）则向上翻。
+  // 高度固定值（非 maxHeight）：窗口小时收缩的是中间角色列表（内部滚动），底部设置区与添加入口始终可见
   const panelStyle = (() => {
     if (!anchor) return undefined
     const left = Math.min(
@@ -96,10 +97,10 @@ export function RolePickerModal({
     )
     const spaceBelow = window.innerHeight - anchor.y - 16
     if (spaceBelow >= 200) {
-      return { left, top: anchor.y + 8, maxHeight: Math.min(520, spaceBelow) }
+      return { left, top: anchor.y + 8, height: Math.min(520, spaceBelow) }
     }
     const h = Math.min(520, Math.max(200, anchor.y - 24))
-    return { left, top: anchor.y - h - 8, maxHeight: h }
+    return { left, top: anchor.y - h - 8, height: h }
   })()
 
   return (

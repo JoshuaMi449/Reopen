@@ -3463,6 +3463,7 @@ html.dark .settings-card {
   color: var(--text-dim);
   font-size: 13px;
   cursor: pointer;
+  flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -3479,13 +3480,14 @@ html.dark .settings-card {
   border-radius: 6px;
 }
 
-/* 底部设置区：自动反转播放 / 速度正比CPU / 只因速 */
+/* 底部设置区：自动反转播放 / 速度正比CPU / 只因速（窗口小时不被压缩） */
 .role-picker-settings {
   border-top: 1px solid var(--border);
   padding-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .role-picker-setting-row {
