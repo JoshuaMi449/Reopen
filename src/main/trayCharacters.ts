@@ -7,16 +7,16 @@ import { getSettings } from './store'
 
 export interface TrayCharacter {
   key: string
-  /** 显示名（内置=官方中文名；用户导入=文件名去后缀） */
+  /** 显示名（内置=内置角色中文名；用户导入=文件名去后缀） */
   label: string
   /** 素材文件绝对路径 */
   path: string
   builtin: boolean
-  /** 模板角色：转模板图随菜单栏深浅自动变色（官方即模板图素材） */
+  /** 模板角色：转模板图随菜单栏深浅自动变色（素材本身是模板图） */
   mono?: boolean
 }
 
-/** 内置角色的中文显示名（与官方角色名一致） */
+/** 内置角色的中文显示名 */
 const LABELS: Record<string, string> = {
   '3body': '金凯瑞摇🤘',
   baby_circle: '可爱小圈圈😲',
@@ -39,10 +39,10 @@ const LABELS: Record<string, string> = {
   zhiyin_basketball: '只因篮球🏀'
 }
 
-/** 官方模板素材角色（菜单栏随深浅自动变色） */
+/** 模板素材角色（菜单栏随深浅自动变色） */
 const MONO_ROLES = new Set(['zhiyin', 'zhiyin_basketball', 'dogeza'])
 
-/** 不进入角色列表的内置 GIF（官方素材里的功能动画，不是角色） */
+/** 不进入角色列表的内置 GIF（功能动画素材，不是角色） */
 const EXCLUDED = new Set(['add_zhiyin.gif'])
 
 /** 内置角色目录：dev=项目根 resources/animations；打包后 electron-builder 的 asarUnpack 保证实体文件可读 */

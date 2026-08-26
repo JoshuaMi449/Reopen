@@ -3306,7 +3306,8 @@ html.dark .settings-card {
   cursor: grab;
 }
 
-/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 毛玻璃面板 + 网格列表（滚轮滑动，无滚动条） */
+/* 角色选择弹窗（点设置里的预览图弹出）：遮罩 + 毛玻璃竖窄窗（宽 300）——
+ * 左侧动图/图片书签 + 右侧竖排角色列表（滚轮滑动无滚动条）+ 「＋1只」+ 底部设置区 */
 .role-picker-overlay {
   position: fixed;
   inset: 0;
@@ -3318,8 +3319,8 @@ html.dark .settings-card {
 }
 
 .role-picker {
-  width: min(560px, calc(100% - 120px));
-  max-height: calc(100% - 160px);
+  width: 300px;
+  max-height: min(520px, calc(100% - 120px));
   display: flex;
   flex-direction: column;
   /* 半透明毛玻璃：透出底下主界面的颜色，再模糊 */
@@ -3328,40 +3329,71 @@ html.dark .settings-card {
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px;
+  padding: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
 
-.role-picker-title {
-  font-size: 15px;
+.role-picker-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+/* 左侧两个书签：动图 / 图片（竖排） */
+.role-picker-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 64px;
+  flex-shrink: 0;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+
+.role-picker-tab {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.role-picker-tab:hover {
+  background: var(--hover);
+}
+
+.role-picker-tab.role-picker-tab-on {
+  background: var(--hover);
+  color: var(--primary-strong);
   font-weight: 600;
-  margin-bottom: 12px;
 }
 
-.role-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+/* 右侧角色列表：竖排（icon+名字+打勾），滚轮滑动无滚动条 */
+.role-picker-list {
+  flex: 1;
   overflow-y: auto;
-  padding-right: 2px;
-  /* 滚轮可滑动但不显示滚动条（与官方一致） */
+  padding: 2px 2px 2px 10px;
   scrollbar-width: none;
+  min-height: 0;
 }
 
-.role-picker-grid::-webkit-scrollbar {
+.role-picker-list::-webkit-scrollbar {
   display: none;
 }
 
 .role-picker-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 8px 4px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s;
 }
 
 .role-picker-item:hover {
@@ -3369,65 +3401,77 @@ html.dark .settings-card {
 }
 
 .role-picker-item.role-picker-on {
-  border-color: var(--accent);
   background: var(--hover);
 }
 
-.role-picker-preview {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--input-bg);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.role-picker-preview img {
-  max-width: 100%;
-  max-height: 100%;
+.role-picker-item-icon {
+  width: 32px;
+  height: 32px;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
-.role-picker-check {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  color: #fff;
-  background: var(--accent);
-  border-radius: 50%;
-  padding: 2px;
-}
-
-.role-picker-name {
-  font-size: 11px;
-  color: var(--text-dim);
-  max-width: 100%;
+.role-picker-item-name {
+  flex: 1;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.role-picker-footer {
+.role-picker-check {
+  color: var(--primary-strong);
+  flex-shrink: 0;
+}
+
+.role-picker-empty {
+  padding: 16px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* 「＋1只」添加按钮 */
+.role-picker-add {
+  margin: 8px 0;
+  padding: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.role-picker-add:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* 底部设置区：自动反转播放 / 速度正比CPU / 只因速 */
+.role-picker-settings {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.role-picker-setting-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
 }
 
-.role-picker-switch-label {
+.role-picker-setting-label {
+  flex: 1;
   font-size: 13px;
-  color: var(--text);
-  margin-left: 8px;
 }
 
-.role-picker-switch-label:first-child {
-  margin-left: 0;
+.role-picker-setting-row .settings-slider {
+  width: 120px;
+  flex-shrink: 0;
 }
 
 /* 局域网地址不可达提示（服务只绑了本机时显示；附「由本应用托管」小按钮） */

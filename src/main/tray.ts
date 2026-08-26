@@ -55,7 +55,7 @@ function applyTrayIcon(): void {
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   if (isGif) {
-    // 官方模板素材角色（随菜单栏深浅自动变色）按角色属性转模板图
+    // 模板素材角色（随菜单栏深浅自动变色）按角色属性转模板图
     const mono = listCharacters().find((c) => c.path === trayIconPath)?.mono
     const frames = loadGifFrames(trayIconPath as string, ICON_SIZE, {
       mirror: trayAutoReverse,

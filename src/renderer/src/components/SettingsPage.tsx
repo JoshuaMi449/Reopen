@@ -317,42 +317,30 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           </div>
         </SettingRow>
 
-        {/* 仅自定义出现：当前角色（点预览弹角色列表，＋从文件选）+ 播放速度（无级） */}
+        {/* 仅自定义出现：当前角色（点预览弹角色列表，＋从文件选；弹窗里有只因速/开关等） */}
         {settings.trayIcon === 'custom' && (
-          <>
-            <SettingRow label="当前角色">
-              <div className="tray-icon-actions">
-                {iconPreview && (
-                  <img
-                    className="tray-icon-preview"
-                    src={iconPreview.dataUrl}
-                    alt="当前角色预览"
-                    title="选择角色"
-                    onClick={() => setShowRolePicker(true)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => void handleTrayDrop(e)}
-                  />
-                )}
-                <button
-                  className="btn-secondary tray-icon-add"
-                  onClick={() => void pickTrayIcon()}
-                  title="从文件选择"
-                >
-                  ＋
-                </button>
-              </div>
-            </SettingRow>
-
-            <SettingRow label="播放速度">
-              <SliderControl
-                value={settings.trayIconSpeed}
-                min={0.25}
-                max={3}
-                step={0.01}
-                onChange={(v) => update({ trayIconSpeed: v })}
-              />
-            </SettingRow>
-          </>
+          <SettingRow label="当前角色">
+            <div className="tray-icon-actions">
+              {iconPreview && (
+                <img
+                  className="tray-icon-preview"
+                  src={iconPreview.dataUrl}
+                  alt="当前角色预览"
+                  title="选择角色"
+                  onClick={() => setShowRolePicker(true)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => void handleTrayDrop(e)}
+                />
+              )}
+              <button
+                className="btn-secondary tray-icon-add"
+                onClick={() => void pickTrayIcon()}
+                title="从文件选择"
+              >
+                ＋
+              </button>
+            </div>
+          </SettingRow>
         )}
       </div>
     </div>
@@ -664,12 +652,14 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           currentPath={settings.trayIconPath ?? ''}
           cpuFollow={settings.cpuFollow}
           autoReverse={settings.trayAutoReverse}
-          onSelect={(c) => {
-            update({ trayIcon: 'custom', trayIconPath: c.path })
-            setShowRolePicker(false)
-          }}
+          speed={settings.trayIconSpeed}
+          onSelect={(c) => update({ trayIcon: 'custom', trayIconPath: c.path })}
           onCpuFollow={(v) => update({ cpuFollow: v })}
           onAutoReverse={(v) => update({ trayAutoReverse: v })}
+          onSpeed={(v) => update({ trayIconSpeed: v })}
+          onImport={async () => {
+            await pickTrayIcon()
+          }}
           onClose={() => setShowRolePicker(false)}
         />
       )}
@@ -769,57 +759,6 @@ function TypeOrderList({
         </div>
       ))}
     </div>
-  )
-}
-
-/** 拖拽滑杆：拖动过程实时显示（不松手也变），写盘走 200ms 防抖（拖动中只落最后一次），松手立即提交 */
-function SliderControl({
-  value,
-  min,
-  max,
-  step,
-  onChange
-}: {
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange(v: number): void
-}): React.JSX.Element {
-  const [draft, setDraft] = useState<number | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const schedule = (v: number): void => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null
-      onChange(v)
-    }, 200)
-  }
-  const flush = (): void => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-      if (draft !== null && draft !== value) onChange(draft)
-    }
-    setDraft(null)
-  }
-  return (
-    <input
-      type="range"
-      className="settings-slider"
-      min={min}
-      max={max}
-      step={step}
-      value={draft ?? value}
-      onChange={(e) => {
-        const v = Number(e.target.value)
-        setDraft(v)
-        schedule(v)
-      }}
-      onPointerUp={flush}
-      onKeyUp={flush}
-      onBlur={flush}
-    />
   )
 }
 
