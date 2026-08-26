@@ -132,7 +132,7 @@ export function DetailDrawer({
                   }}
                 >
                   局域网 {status?.lanIp ?? lanIp}:{status?.port ?? project.port}
-                  {lanCopied && <span className="lan-copied-tag">已复制 ✓</span>}
+                  {lanCopied && <span className="lan-copied-tag">已复制</span>}
                 </span>
               )}
               {status?.lanReachable === false && (

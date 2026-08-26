@@ -304,7 +304,7 @@ export function CardView({
                           }}
                         >
                           {cardLan}:{port}
-                          {lanCopiedId === p.id && <span className="lan-copied-tag">已复制 ✓</span>}
+                          {lanCopiedId === p.id && <span className="lan-copied-tag">已复制</span>}
                         </a>
                       )}
                       {lanBlocked && (

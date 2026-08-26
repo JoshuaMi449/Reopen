@@ -412,7 +412,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
                         update({ quickLaunch: ql })
                       }}
                     >
-                      ✕
+                      <X size={13} />
                     </button>
                   </span>
                 ) : (
@@ -548,7 +548,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
               <div className="settings-row-text">
                 <div className="settings-row-label">
                   <span className={`env-dot ${item.ok ? 'env-dot-ok' : 'env-dot-miss'}`}>
-                    {item.ok ? '✓' : '!'}
+                    {item.ok ? <Check size={9} strokeWidth={3} /> : <X size={9} strokeWidth={3} />}
                   </span>
                   {item.name}
                 </div>

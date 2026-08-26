@@ -34,6 +34,7 @@ import {
   stopProject
 } from './projectManager'
 import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
+import { checkFolderAccess, getPlatform, requestPermissions } from './perm'
 import { refreshShortcuts } from './shortcuts'
 import {
   addProject,
@@ -572,6 +573,10 @@ export function registerIpc(): void {
   ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
   ipcMain.handle('window:open-settings', () => openSettingsWindow())
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
+  // 权限引导（新手引导第 5 步之后）：检测 / 请求（触发系统授权弹窗）
+  ipcMain.handle('perm:check', () => ({ folder: checkFolderAccess() }))
+  ipcMain.handle('perm:request', () => requestPermissions())
+  ipcMain.handle('app:platform', () => getPlatform())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())
   ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))

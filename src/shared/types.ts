@@ -403,6 +403,12 @@ export interface ReopenApi {
   onEnvInstallEvent(cb: (e: EnvInstallEvent) => void): () => void
   /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
   getLanIp(): Promise<string>
+  /** 权限检测：文件夹访问是否已授权（通知无检测 API，走测试通知确认） */
+  checkPermissions(): Promise<{ folder: boolean }>
+  /** 请求权限：触发系统授权弹窗+发测试通知+打开系统设置，返回请求后的检测结果 */
+  requestPermissions(): Promise<{ folder: boolean }>
+  /** 当前操作系统平台（非 darwin 跳过引导权限幕） */
+  getPlatform(): Promise<NodeJS.Platform>
   /** 当前自定义菜单栏图标的预览（base64 dataURL；GIF 原样返回，浏览器原生动画）；没设置返回 null */
   getTrayIconPreview(): Promise<{ dataUrl: string; isGif: boolean } | null>
   /** 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用，结果走 onStatus 事件） */

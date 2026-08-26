@@ -189,7 +189,7 @@ export function ProjectRow({
                   }}
                 >
                   {rowLan}:{port}
-                  {lanCopied && <span className="lan-copied-tag">已复制 ✓</span>}
+                  {lanCopied && <span className="lan-copied-tag">已复制</span>}
                 </a>
               )}
               {rowBlocked && (

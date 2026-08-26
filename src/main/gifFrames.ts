@@ -62,12 +62,14 @@ export function loadGifFrames(
     if (W === 0 || H === 0) return null
     const frames = decompressFrames(parsed, true).slice(0, MAX_FRAMES)
     if (frames.length === 0) return null
-    // 全画布：GIF 帧往往只覆盖局部（patch 是帧区域），透明像素保留旧画面
+    // 全画布：逐帧独立解码——每帧先清成全透明，再只画该帧自己的 patch。
+    // 帧外区域透明，不残留上一帧像素（照参考实现"每帧独立解出完整图"的做法，
+    // 叠加上一帧会让局部帧把上一帧内容带进帧外区域，菜单栏上显示成黑块）
     const canvas = new Uint8ClampedArray(W * H * 4)
     const result: GifFrame[] = []
     for (const raw of frames) {
       const f = raw as ParsedFrame
-      const prev = f.disposalType === 3 ? canvas.slice() : null // disposal 3=显示后恢复上一帧
+      canvas.fill(0)
       const { width, height, top, left } = f.dims
       const patch = f.patch
       for (let y = 0; y < height; y++) {
@@ -91,9 +93,6 @@ export function loadGifFrames(
         image: img,
         delay: Math.max(f.delay || 100, 100)
       })
-      // 注意：disposal=2（显示后清屏）不清空画布——角色素材几乎全是局部帧，
-      // 清屏会让帧外区域变透明（深色菜单栏上闪黑边），保留上一帧叠加才不闪
-      if (prev) canvas.set(prev)
     }
     if (result.length === 0) return null
     cache.set(key, result)

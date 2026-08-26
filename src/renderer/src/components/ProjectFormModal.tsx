@@ -46,22 +46,22 @@ function modeSummary(m: LaunchMode): string {
   switch (m.id) {
     case 'preview':
       return m.entryPath
-        ? '✓ 网页文件——登记后立刻在线，无需启动'
-        : '✓ 成品网页——登记后立刻在线，浏览器直接打开'
+        ? '网页文件——登记后立刻在线，无需启动'
+        : '成品网页——登记后立刻在线，浏览器直接打开'
     case 'dev':
-      return `✓ 需要激活：${m.command ?? '开发依赖'}`
+      return `需要激活：${m.command ?? '开发依赖'}`
     case 'python-dev':
-      return '✓ 需要激活：python 程序'
+      return '需要激活：python 程序'
     case 'python-static':
-      return '✓ 可用 python 打开成品'
+      return '可用 python 打开成品'
     case 'docker':
-      return '✓ 支持 Docker 启动'
+      return '支持 Docker 启动'
     case 'bun':
-      return '✓ 需要激活：bun/deno 服务'
+      return '需要激活：bun/deno 服务'
     case 'launch':
-      return '✓ 需要激活：启动脚本'
+      return '需要激活：启动脚本'
     default:
-      return `✓ ${m.label}`
+      return m.label
   }
 }
 
