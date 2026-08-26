@@ -1,9 +1,17 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync
+} from 'fs'
 import { connect } from 'net'
-import { extname, join } from 'path'
+import { basename, extname, join } from 'path'
 import type {
   EnvCheckItem,
   NewProjectInput,
@@ -36,6 +44,7 @@ import {
 } from './store'
 import { appQuit, refreshTray } from './tray'
 import { invalidateGifCache } from './gifFrames'
+import { listCharacters } from './trayCharacters'
 import { getLanIp } from './lan'
 import { showMainWindow } from './window'
 
@@ -466,6 +475,26 @@ export function registerIpc(): void {
     invalidateGifCache() // 换图后旧帧序列作废（同路径覆盖换文件）
     return dest
   })
+  // 导入菜单栏素材（设置页拖放的 GIF/PNG）：复制到 userData/tray-icons/ 保原名并加入角色库
+  ipcMain.handle('tray:import-icon', (_e, filePath: string) => {
+    const f = String(filePath ?? '')
+    const ext = extname(f).toLowerCase()
+    if (!['.gif', '.png', '.jpg', '.jpeg'].includes(ext) || !existsSync(f)) {
+      throw new Error('只支持 GIF/PNG/JPG 图片')
+    }
+    if (statSync(f).size > 2 * 1024 * 1024) throw new Error('图片太大（最大 2MB），换一张小一点的')
+    const dir = join(app.getPath('userData'), 'tray-icons')
+    mkdirSync(dir, { recursive: true })
+    const dest = join(dir, basename(f))
+    copyFileSync(f, dest)
+    const s = getSettings()
+    const list = s.customTrayIcons.filter((p) => p !== dest) // 同路径重导=覆盖文件，不重复记
+    saveSettings({ customTrayIcons: [...list, dest] })
+    invalidateGifCache()
+    return dest
+  })
+  // 托盘角色清单：内置角色 + 用户导入素材（点托盘下拉/设置页展示用）
+  ipcMain.handle('tray:list-characters', () => listCharacters())
   // 当前自定义图标的预览（渲染层 <img> 显示；GIF 原样给，浏览器原生动画）；没设置返回 null
   ipcMain.handle('tray:get-icon-preview', () => {
     const { trayIcon, trayIconPath } = getSettings()
@@ -489,7 +518,10 @@ export function registerIpc(): void {
       'trayIcon' in patch ||
       'trayIconPath' in patch ||
       'trayIconSpeed' in patch ||
-      'trayIconSize' in patch
+      'trayIconSize' in patch ||
+      'cpuFollow' in patch ||
+      'trayAutoReverse' in patch ||
+      'trayMonoGif' in patch
     ) {
       refreshTray()
     }

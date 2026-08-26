@@ -223,12 +223,20 @@ export interface Settings {
   closeToTray: boolean
   /** 托盘图标：黑白模板（随系统深浅自动反转） / 自定义图片（彩色已删，老数据迁移为黑白） */
   trayIcon: 'mono' | 'custom'
-  /** 自定义托盘图标的文件路径（trayIcon=custom 时生效） */
+  /** 自定义托盘图标的文件路径（trayIcon=custom 时生效；内置角色或用户导入素材都指向这） */
   trayIconPath?: string
-  /** 菜单栏动图播放速度倍率（GIF 轮播用；0.5=半速 / 1=原速 / 1.5 / 2=双倍快） */
+  /** 菜单栏动图播放速度倍率（基准倍率；0.25~3 滑杆，默认 1；cpuFollow 开时 CPU 变速在此基准上叠加） */
   trayIconSpeed: number
-  /** 菜单栏图标大小（像素 14~22，默认 18；黑白/自定义统一生效） */
+  /** 菜单栏图标大小（像素 14~32 滑杆，默认 18；黑白/自定义统一生效） */
   trayIconSize: number
+  /** 动画速度随 CPU 使用率波动（CPU 忙跑得快、空闲跑得慢，不只因/RunCat 同款；默认开） */
+  cpuFollow: boolean
+  /** 角色左右翻转（镜像显示，不只因 autoReverse 同款；默认关） */
+  trayAutoReverse: boolean
+  /** 自定义 GIF 单色化：转模板图随菜单栏深浅自动变色（浅色菜单栏=深色图标/深色=浅色；默认关=原色显示） */
+  trayMonoGif: boolean
+  /** 用户导入的托盘素材清单（复制在 userData/tray-icons/，点托盘下拉可选） */
+  customTrayIcons: string[]
   /** 菜单栏（托盘）启用，默认开（PRD 3.7） */
   trayEnabled: boolean
   /** 全局唤起窗口的快捷键（默认 ⌥+R） */
@@ -266,6 +274,10 @@ export const DEFAULT_SETTINGS: Settings = {
   trayIcon: 'mono',
   trayIconSpeed: 1,
   trayIconSize: 18,
+  cpuFollow: true,
+  trayAutoReverse: false,
+  trayMonoGif: false,
+  customTrayIcons: [],
   trayEnabled: true,
   hotkey: 'Alt+R',
   quickLaunch: {},
@@ -351,6 +363,10 @@ export interface ReopenApi {
   ): Promise<{ inUse: boolean; byProject?: string; bySystem?: boolean }>
   /** 选择自定义菜单栏图标（返回复制后的文件路径；取消返回 null） */
   pickTrayIcon(): Promise<string | null>
+  /** 导入菜单栏素材（拖放/选择的 GIF/PNG 复制进 userData/tray-icons/ 并加入角色库，返回素材路径；取消返回 null） */
+  importTrayIcon(filePath: string): Promise<string | null>
+  /** 托盘角色清单：内置角色 + 用户导入素材（设置页/托盘下拉用） */
+  listTrayCharacters(): Promise<{ key: string; label: string; path: string; builtin: boolean }[]>
   stopProject(id: string): Promise<void>
   /** 一键安装依赖：在项目目录跑 npm install，日志实时推项目日志面板（ */
   installProjectDeps(id: string): Promise<void>

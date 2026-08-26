@@ -78,6 +78,20 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     }
   }
 
+  /** 拖放导入素材：复制进角色库并设为当前角色（之后点托盘下拉也能选到它） */
+  const handleTrayDrop = async (e: React.DragEvent): Promise<void> => {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    try {
+      const p = window.api.getPathForFile(file)
+      const dest = await window.api.importTrayIcon(p)
+      if (dest) update({ trayIcon: 'custom', trayIconPath: dest })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   /** 当前自定义图标的预览（dataURL；GIF 在 <img> 里原生动画） */
   const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
   useEffect(() => {
@@ -277,13 +291,16 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const menubar = (
     <div className="settings-group">
       <div className="settings-card">
-        <SettingRow label="显示菜单栏图标" hint="右上角顶栏的 Reopen 图标（点击弹快速启停面板）">
+        <SettingRow
+          label="显示菜单栏图标"
+          hint="右上角顶栏的 Reopen 图标（点击弹出角色下拉菜单，右键弹出功能菜单）"
+        >
           <Switch checked={settings.trayEnabled} onChange={(v) => update({ trayEnabled: v })} />
         </SettingRow>
 
         <SettingRow
           label="图标样式"
-          hint="黑白：随系统深浅色自动反转；自定义：用你自己的图片（PNG/JPG/GIF，最大 2MB，自动缩放；GIF 会以动图轮播显示）"
+          hint="黑白：内置剪影，随系统深浅色自动变色；自定义：角色库动图（内置角色 + 你拖进来的素材）"
         >
           <div className="settings-tray-icon-ctrl">
             <div className="settings-seg">
@@ -300,46 +317,84 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
                 自定义
               </button>
             </div>
-            {settings.trayIcon === 'custom' && (
+          </div>
+        </SettingRow>
+
+        {/* 二级：只对「自定义」展开（像一级标题下的二级标题；选黑白时这整块不出现） */}
+        {settings.trayIcon === 'custom' && (
+          <div className="tray-settings-sub">
+            <SettingRow
+              label="当前角色"
+              hint="点预览图换一张；把 GIF/PNG 直接拖到预览图上=导入角色库（之后点托盘图标的下拉里也能选到它）"
+            >
               <div className="tray-icon-actions">
                 {iconPreview && (
-                  <img className="tray-icon-preview" src={iconPreview.dataUrl} alt="当前图标预览" />
+                  <img
+                    className="tray-icon-preview"
+                    src={iconPreview.dataUrl}
+                    alt="当前图标预览"
+                    title="点击换图 / 拖放导入"
+                    onClick={() => void pickTrayIcon()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => void handleTrayDrop(e)}
+                  />
                 )}
-                <button className="btn-secondary" onClick={() => void pickTrayIcon()}>
-                  {settings.trayIconPath ? '换一张图片…' : '选择图片…'}
-                </button>
+                {!iconPreview && (
+                  <button className="btn-secondary" onClick={() => void pickTrayIcon()}>
+                    选择图片…
+                  </button>
+                )}
               </div>
-            )}
-          </div>
-        </SettingRow>
+            </SettingRow>
 
-        <SettingRow label="播放速度" hint="动图轮播的快慢（仅自定义 GIF 图标生效）">
-          <div className="settings-seg">
-            {[0.5, 1, 1.5, 2].map((v) => (
-              <button
-                key={v}
-                className={`settings-seg-btn ${settings.trayIconSpeed === v ? 'settings-seg-on' : ''}`}
-                onClick={() => update({ trayIconSpeed: v })}
-              >
-                {v}×
-              </button>
-            ))}
-          </div>
-        </SettingRow>
+            <SettingRow
+              label="图标大小"
+              hint={`当前 ${settings.trayIconSize} 像素（拖拽调整，黑白样式同样生效）`}
+            >
+              <SliderControl
+                value={settings.trayIconSize}
+                min={14}
+                max={32}
+                step={1}
+                onChange={(v) => update({ trayIconSize: v })}
+              />
+            </SettingRow>
 
-        <SettingRow label="图标大小" hint="右上角菜单栏图标的大小（黑白和自定义统一生效）">
-          <div className="settings-seg">
-            {[14, 16, 18, 20, 22].map((v) => (
-              <button
-                key={v}
-                className={`settings-seg-btn ${settings.trayIconSize === v ? 'settings-seg-on' : ''}`}
-                onClick={() => update({ trayIconSize: v })}
-              >
-                {v}
-              </button>
-            ))}
+            <SettingRow
+              label="播放速度"
+              hint={`当前 ${settings.trayIconSpeed}× 基准倍率（拖拽调整；动图轮播用）`}
+            >
+              <SliderControl
+                value={settings.trayIconSpeed}
+                min={0.25}
+                max={3}
+                step={0.25}
+                onChange={(v) => update({ trayIconSpeed: v })}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="随 CPU 变速"
+              hint="开：CPU 忙时动画跑得快、空闲时跑得慢（不只因/RunCat 同款玩法）；关：按上面的基准倍率匀速"
+            >
+              <Switch checked={settings.cpuFollow} onChange={(v) => update({ cpuFollow: v })} />
+            </SettingRow>
+
+            <SettingRow label="左右翻转" hint="角色朝向镜像翻转（跑步方向反过来）">
+              <Switch
+                checked={settings.trayAutoReverse}
+                onChange={(v) => update({ trayAutoReverse: v })}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="跟随菜单栏变色"
+              hint="开：图标变单色，浅色菜单栏显示深色、深色菜单栏显示浅色（macOS 模板图自动上色）；关：显示素材原色"
+            >
+              <Switch checked={settings.trayMonoGif} onChange={(v) => update({ trayMonoGif: v })} />
+            </SettingRow>
           </div>
-        </SettingRow>
+        )}
       </div>
     </div>
   )
@@ -741,6 +796,41 @@ function TypeOrderList({
         </div>
       ))}
     </div>
+  )
+}
+
+/** 拖拽滑杆：拖动过程只改本地草稿（避免每一步都写盘+重解码动图），松手/键盘松开才提交 */
+function SliderControl({
+  value,
+  min,
+  max,
+  step,
+  onChange
+}: {
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange(v: number): void
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<number | null>(null)
+  const commit = (): void => {
+    if (draft !== null && draft !== value) onChange(draft)
+    setDraft(null)
+  }
+  return (
+    <input
+      type="range"
+      className="settings-slider"
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? value}
+      onChange={(e) => setDraft(Number(e.target.value))}
+      onPointerUp={commit}
+      onKeyUp={commit}
+      onBlur={commit}
+    />
   )
 }
 

@@ -3,11 +3,13 @@ import { app, BrowserWindow, Menu, nativeImage, Tray, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { existsSync } from 'fs'
 import { extname, join } from 'path'
-import { getSettings } from './store'
+import { getSettings, saveSettings } from './store'
 import { stopAllRuntimes } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
 import { markQuitConfirmed, showMainWindow } from './window'
-import { loadGifFrames, type GifFrame } from './gifFrames'
+import { loadGifFrames, invalidateGifCache, type GifFrame } from './gifFrames'
+import { listCharacters, type TrayCharacter } from './trayCharacters'
+import { getCpuUsage } from './cpuSampler'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
 let tray: Tray | null = null
@@ -39,14 +41,26 @@ function stopTrayAnimation(): void {
   activeFrames = null
 }
 
-/** 自定义图是 GIF → 解码成帧按各自时长循环换图（模拟动图）；否则挂静态图 */
+/** 自定义图是 GIF → 解码成帧按各自时长循环换图（模拟动图）；否则挂静态图。
+ *  变速两档：基准倍率（设置滑杆）× CPU 因子（cpuFollow 开时 CPU 忙跑得快、空闲跑得慢，不只因同款） */
 function applyTrayIcon(): void {
   if (!tray) return
-  const { trayIcon, trayIconPath, trayIconSpeed, trayIconSize } = getSettings()
+  const {
+    trayIcon,
+    trayIconPath,
+    trayIconSpeed,
+    trayIconSize,
+    cpuFollow,
+    trayAutoReverse,
+    trayMonoGif
+  } = getSettings()
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   if (isGif) {
-    const frames = loadGifFrames(trayIconPath as string, trayIconSize ?? 18)
+    const frames = loadGifFrames(trayIconPath as string, trayIconSize ?? 18, {
+      mirror: trayAutoReverse,
+      mono: trayMonoGif
+    })
     if (frames) {
       stopTrayAnimation()
       activeFrames = frames
@@ -54,8 +68,9 @@ function applyTrayIcon(): void {
       const step = (i: number): void => {
         if (activeFrames !== frames || !tray) return // 期间换图/关托盘了，旧循环作废
         tray.setImage(frames[i].image)
-        // 速度倍率：delay / speed；下限 40ms 防倍速刷爆
-        const d = Math.max(40, Math.round(frames[i].delay / speed))
+        // CPU 因子：空闲 0.5×（放慢）→ 满载 2.5×（加速）；采样有 2s 缓存，每帧调不费电
+        const cpuFactor = cpuFollow ? 0.5 + getCpuUsage() * 2 : 1
+        const d = Math.max(40, Math.round(frames[i].delay / (speed * cpuFactor)))
         frameTimer = setTimeout(() => step((i + 1) % frames.length), d)
       }
       step(0)
@@ -128,6 +143,44 @@ function showContextMenu(): void {
   tray?.popUpContextMenu(menu)
 }
 
+/** 角色菜单缩略图：GIF 取第一帧缩到 16px（菜单里只是认个脸，不用整段解码） */
+function characterMenuIcon(path: string): Electron.NativeImage | undefined {
+  try {
+    return nativeImage.createFromPath(path).resize({ width: 16, height: 16 })
+  } catch {
+    return undefined
+  }
+}
+
+/** 点选一个角色：清旧帧缓存 → 记入设置（样式切到自定义）→ 立即换图标 */
+function selectCharacter(c: TrayCharacter): void {
+  invalidateGifCache()
+  saveSettings({ trayIcon: 'custom', trayIconPath: c.path })
+  refreshTray()
+}
+
+/** 左键点击托盘：弹出角色下拉菜单（不只因同款——角色平铺可选，下面跟常用功能） */
+function showCharacterMenu(): void {
+  const { trayIconPath } = getSettings()
+  const items: Electron.MenuItemConstructorOptions[] = listCharacters().map((c) => ({
+    label: c.label,
+    type: 'checkbox' as const,
+    checked: trayIconPath === c.path,
+    icon: characterMenuIcon(c.path),
+    click: () => selectCharacter(c)
+  }))
+  const menu = Menu.buildFromTemplate([
+    ...items,
+    { type: 'separator' },
+    { label: '项目面板…', click: () => togglePanel() },
+    { label: '打开主窗口', click: () => showMainWindow() },
+    { label: '偏好设置…', click: () => openSettingsWindow() },
+    { type: 'separator' },
+    { label: '退出 Reopen', click: () => appQuit() }
+  ])
+  tray?.popUpContextMenu(menu)
+}
+
 /** 按设置刷新托盘（启用开关/图标样式变化时调用） */
 export function refreshTray(): void {
   const { trayEnabled } = getSettings()
@@ -140,7 +193,7 @@ export function refreshTray(): void {
   }
   if (!tray) {
     tray = new Tray(staticTrayIcon())
-    tray.on('click', togglePanel)
+    tray.on('click', showCharacterMenu)
     tray.on('right-click', showContextMenu)
   }
   applyTrayIcon()

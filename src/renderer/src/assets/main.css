@@ -3249,7 +3249,7 @@ html.dark .settings-card {
   align-items: flex-start;
 }
 
-/* 设置-菜单栏：选图按钮 + 当前图标预览（GIF 在 img 里原生动画） */
+/* 设置-菜单栏：选图按钮 + 当前角色预览（GIF 在 img 里原生动画；点击换图、拖放导入） */
 .tray-icon-actions {
   display: flex;
   align-items: center;
@@ -3257,11 +3257,49 @@ html.dark .settings-card {
 }
 
 .tray-icon-preview {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   object-fit: contain;
+  cursor: pointer;
+  background: var(--input-bg);
+  transition: border-color 0.15s;
+}
+
+.tray-icon-preview:hover {
+  border-color: var(--accent);
+}
+
+/* 设置-菜单栏：自定义样式的二级区（像一级标题下的二级标题，选黑白时整块不显示） */
+.tray-settings-sub {
+  margin-left: 18px;
+  padding-left: 14px;
+  border-left: 1px dashed var(--border);
+}
+
+/* 设置-菜单栏：拖拽滑杆（图标大小/播放速度） */
+.settings-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 220px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-card);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: grab;
 }
 
 /* 局域网地址不可达提示（服务只绑了本机时显示；附「由本应用托管」小按钮） */
