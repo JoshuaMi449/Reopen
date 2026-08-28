@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync
 } from 'fs'
@@ -35,6 +36,7 @@ import {
 } from './projectManager'
 import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
 import { checkFolderAccess, getPlatform, requestPermissions } from './perm'
+import { isMonoImage, listCharacters } from './trayCharacters'
 import { refreshShortcuts } from './shortcuts'
 import {
   addProject,
@@ -46,9 +48,18 @@ import {
 } from './store'
 import { appQuit, refreshTray } from './tray'
 import { invalidateGifCache } from './gifFrames'
-import { listCharacters } from './trayCharacters'
 import { getLanIp } from './lan'
 import { showMainWindow } from './window'
+
+/** 素材入库：登记进角色库 + 单色检测（单色→模板图随菜单栏深浅自动变色） */
+function registerTrayImport(dest: string): void {
+  const s = getSettings()
+  const monoSet = (s.customTrayIconMono ?? []).filter((p) => p !== dest)
+  saveSettings({
+    customTrayIcons: [...s.customTrayIcons.filter((p) => p !== dest), dest],
+    customTrayIconMono: isMonoImage(dest) ? [...monoSet, dest] : monoSet
+  })
+}
 
 /** 设置变化广播给所有窗口（主窗口/托盘面板同步） */
 function broadcastSettings(settings: Settings): void {
@@ -452,7 +463,7 @@ export function registerIpc(): void {
 
   // 设置
   ipcMain.handle('settings:get', () => getSettings())
-  // 自定义菜单栏图标：选图 → 检查大小 → 复制到 userData（原图移动/删除不影响显示）；
+  // 角色弹窗「选择GIF.../选择图片...」：选图 → 复制进 tray-icons/ 角色库（加档案末尾）；
   // filter='gif' 只选 GIF / 'image' 只选 PNG·JPG（角色弹窗按书签过滤）
   ipcMain.handle('tray:pick-icon', async (_e, filter?: 'gif' | 'image') => {
     const extensions =
@@ -461,7 +472,8 @@ export function registerIpc(): void {
         : filter === 'image'
           ? ['png', 'jpg', 'jpeg']
           : ['png', 'jpg', 'jpeg', 'gif']
-    const win = BrowserWindow.getFocusedWindow()
+    // 挂在发起请求的窗口（焦点不在设置窗口时 getFocusedWindow 会挂错窗口）
+    const win = BrowserWindow.fromWebContents(_e.sender)
     const options = {
       title: '选择菜单栏图标',
       filters: [{ name: '图片', extensions }],
@@ -473,13 +485,27 @@ export function registerIpc(): void {
     if (res.canceled || !res.filePaths[0]) return null
     const f = res.filePaths[0]
     if (statSync(f).size > 2 * 1024 * 1024) throw new Error('图片太大（最大 2MB），换一张小一点的')
-    const dest = join(
-      app.getPath('userData'),
-      `custom-tray-icon${extname(f).toLowerCase() || '.png'}`
-    )
+    const dir = join(app.getPath('userData'), 'tray-icons')
+    mkdirSync(dir, { recursive: true })
+    const dest = join(dir, basename(f))
     copyFileSync(f, dest)
-    invalidateGifCache() // 换图后旧帧序列作废（同路径覆盖换文件）
+    registerTrayImport(dest)
+    invalidateGifCache()
     return dest
+  })
+  // 删除用户导入的素材：删文件+移出角色库；若是当前角色则回到默认图标
+  ipcMain.handle('tray:delete-icon', (_e, path: string) => {
+    const p = String(path ?? '')
+    if (!existsSync(p)) return
+    rmSync(p)
+    const s = getSettings()
+    saveSettings({
+      customTrayIcons: s.customTrayIcons.filter((c) => c !== p),
+      customTrayIconMono: (s.customTrayIconMono ?? []).filter((m) => m !== p),
+      trayIconPath: s.trayIconPath === p ? undefined : s.trayIconPath
+    })
+    invalidateGifCache()
+    refreshTray()
   })
   // 重命名已导入的素材：改磁盘文件名+档案路径；当前角色同步刷新
   ipcMain.handle('tray:rename-icon', (_e, path: string, newName: string) => {
@@ -495,6 +521,7 @@ export function registerIpc(): void {
     const s = getSettings()
     saveSettings({
       customTrayIcons: s.customTrayIcons.map((c) => (c === p ? dest : c)),
+      customTrayIconMono: (s.customTrayIconMono ?? []).map((m) => (m === p ? dest : m)),
       trayIconPath: s.trayIconPath === p ? dest : s.trayIconPath
     })
     invalidateGifCache()
@@ -513,9 +540,7 @@ export function registerIpc(): void {
     mkdirSync(dir, { recursive: true })
     const dest = join(dir, basename(f))
     copyFileSync(f, dest)
-    const s = getSettings()
-    const list = s.customTrayIcons.filter((p) => p !== dest) // 同路径重导=覆盖文件，不重复记
-    saveSettings({ customTrayIcons: [...list, dest] })
+    registerTrayImport(dest)
     invalidateGifCache()
     return dest
   })

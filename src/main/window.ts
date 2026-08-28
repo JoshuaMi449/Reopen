@@ -59,14 +59,14 @@ export function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
+    showMainWindow()
   })
 
   // 关闭窗口 = 最小化到托盘（默认开；⌘Q 走 before-quit 不拦截）
   mainWindow.on('close', (e) => {
     if (!quitting && getSettings().closeToTray) {
       e.preventDefault()
-      mainWindow?.hide()
+      hideMainWindow()
     }
   })
 
@@ -84,7 +84,9 @@ export function createWindow(): void {
   }
 }
 
-/** 显示主窗口（托盘面板"打开主窗口"、⌥+R 等调用；可附带菜单动作） */
+/** 显示主窗口（托盘面板"打开主窗口"、⌥+R 等调用；可附带菜单动作）。
+ *  全程菜单栏应用身份（addon 固定，与 BuZhiYin/RunCat 同款）——主窗口可见时无 Dock
+ *  图标、不进 Cmd+Tab（身份切换成常规应用会破坏非活跃屏冻结，禁止动态 Dock） */
 export function showMainWindow(action?: string): void {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow()
   mainWindow?.show()
@@ -94,10 +96,15 @@ export function showMainWindow(action?: string): void {
   }
 }
 
+/** 隐藏主窗口：全程菜单栏应用身份下仅隐藏窗口（身份在 addon 固定，不切换） */
+export function hideMainWindow(): void {
+  mainWindow?.hide()
+}
+
 /** 全局快捷键：窗口可见且聚焦 → 隐藏；否则唤起（PRD 3.6 全局唤起窗口） */
 export function toggleMainWindow(): void {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused()) {
-    mainWindow.hide()
+    hideMainWindow()
     return
   }
   showMainWindow()

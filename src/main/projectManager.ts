@@ -1,7 +1,7 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, Notification, shell } from 'electron'
-import { chmodSync, existsSync, lstatSync, readdirSync } from 'fs'
+import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync } from 'fs'
 import { get } from 'http'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
@@ -96,9 +96,12 @@ function probeAndEmitLan(rt: Runtime, project: Project, port: number): void {
         spawned: !!rt.child?.pid
       })
       if (!ok && attempt === 0) {
+        // 文案按服务出身区分：自己起的没托管按钮（加 --host 才行），接管的外部服务才有
         emitLog(
           project.id,
-          `局域网探测失败：端口 ${port} 的服务只绑了本机，同一 Wi-Fi 的设备访问不了。想局域网访问的话，点「由本应用托管」停掉它重新启动`
+          rt.child?.pid
+            ? `局域网探测失败：端口 ${port} 的服务只绑了本机，同一 Wi-Fi 的设备访问不了。这个服务是本应用启动的，在项目的启动命令里加 --host 0.0.0.0 才能局域网访问`
+            : `局域网探测失败：端口 ${port} 的服务只绑了本机，同一 Wi-Fi 的设备访问不了。想局域网访问的话，点「由本应用托管」停掉它重新启动`
         )
         setTimeout(() => tryProbe(1), 4000)
       }
@@ -654,6 +657,43 @@ function missingDependencyHint(command: string): string | null {
   return rule.candidates.some(commandExists) ? null : rule.hint
 }
 
+/** 命令是不是 vite 启动：字面含 vite 直接认；npm run X / yarn X / pnpm run X 包装的读
+ *  cwd/package.json 的 scripts[X] 判定（读不到就按不是 vite 处理，宁可不加参数也别乱加） */
+function isViteCommand(command: string, cwd: string): boolean {
+  if (/\bvite\b/.test(command)) return true
+  const m = command.match(/^(?:npm run|pnpm run|yarn)\s+(\S+)/)
+  if (!m) return false
+  try {
+    const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+    return /\bvite\b/.test(String(pkg.scripts?.[m[1]] ?? ''))
+  } catch {
+    return false
+  }
+}
+
+/** 挑一个当前空闲的 TCP 端口（一次 lsof 拿全量占用）。
+ *  从 5174 开始扫：跳过 5173（vite 默认）、3000/8080（Mineradio 等写死端口的 app 常驻地址）
+ *  ——写死端口的 app 没跑时这些端口是空闲的，从它们开始挑必撞。
+ *  给「档案没配端口」的 vite 项目兜底 */
+function pickFreePortSync(): number | undefined {
+  const used = new Set<number>()
+  try {
+    const out = execSync('lsof -nP -iTCP -sTCP:LISTEN -F n', { encoding: 'utf8', timeout: 5000 })
+    for (const line of out.split('\n')) {
+      const m = line.match(/n\*:(\d+)/)
+      if (m) used.add(Number(m[1]))
+    }
+  } catch {
+    // 查不到占用列表就不过滤（仍给固定区间）
+  }
+  for (let p = 5174; p < 5174 + 100; p++) {
+    if (!used.has(p)) return p
+  }
+  return undefined
+}
+
 /** 起子进程（dev/python/docker 共用）：日志管道 + 退出处理 + 端口健康检查（无端口则存活即运行） */
 function spawnAndWatch(
   project: Project,
@@ -671,7 +711,28 @@ function spawnAndWatch(
     return { ok: false, reason: depHint }
   }
   setStatus(rt, project, 'starting')
-  const child = spawn(command, {
+  // vite 不认 PORT/HOST 环境变量，只认 CLI 参数（vite 默认只绑 localhost，
+  // 对外要 --host；默认端口 5173 会与开发环境撞车/与档案端口不符，要 --port）。
+  // 启动命令适配：vite 命令按需追加参数；npm/yarn/pnpm 包装的命令用 -- 透传。
+  // 包装命令（npm run dev）的字面不含 vite——穿透读 package.json scripts 判定
+  const isVite = isViteCommand(command, cwd)
+  const wrapped = /^(npm run \S+|yarn \S+|pnpm run \S+)\b/.test(command)
+  // vite 项目档案没配端口：自动挑一个当前空闲的端口（默认 5173 人人都抢，必撞）
+  const effectivePort = isVite && !port ? pickFreePortSync() : port
+  if (effectivePort && !port) {
+    emitLog(project.id, `档案没配端口，自动挑了一个空闲端口 ${effectivePort}`)
+  }
+  let finalCommand = command
+  if (isVite) {
+    const flags = [
+      getSettings().lanAccess ? '--host' : '',
+      effectivePort ? `--port ${effectivePort}` : ''
+    ]
+      .filter(Boolean)
+      .join(' ')
+    if (flags) finalCommand = `${command}${wrapped ? ' -- ' : ' '}${flags}`
+  }
+  const child = spawn(finalCommand, {
     cwd,
     shell: true,
     detached: true, // 独立进程组：停止时整树终止
@@ -679,13 +740,12 @@ function spawnAndWatch(
       ...process.env,
       PATH: buildPath(),
       // 表单端口真正生效：注入 PORT，Next.js 等认这个变量的框架就真绑表单端口；
-      // vite 等不认的框架忽略，无害
-      ...(port ? { PORT: String(port) } : {})
-      // 局域网访问开 → 塞 HOST 让 vite 等框架也对外接待（不认这个变量的框架需要项目里自己配）...(getSettings().lanAccess ? { HOST: '0.0.0.0' } : {})
+      // vite 等不认的框架忽略（已用 --port 参数接管），无害
+      ...(effectivePort ? { PORT: String(effectivePort) } : {})
     }
   })
   rt.child = child
-  rt.port = port
+  rt.port = effectivePort
 
   child.stdout?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
   child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
@@ -697,7 +757,7 @@ function spawnAndWatch(
     // 直接执行无权限的可执行文件（罕见，一般走 exit 分支的 npm 路径）
     if (
       code === 'EACCES' &&
-      tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+      tryFixAndRetry(project, rt, command, cwd, effectivePort, missingHint, isRetry)
     ) {
       return
     }
@@ -710,14 +770,14 @@ function spawnAndWatch(
       // 权限病自动修复：日志出现 Permission denied → 补执行位自动重试一次
       if (
         hasPermissionDenied(project.id) &&
-        tryFixAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+        tryFixAndRetry(project, rt, command, cwd, effectivePort, missingHint, isRetry)
       ) {
         return
       }
       // 跨平台依赖病静默自愈（"静默直接做好"）：自动重装依赖+重启
       if (
         hasCrossPlatformDeps(project.id) &&
-        tryReinstallAndRetry(project, rt, command, cwd, port, missingHint, isRetry)
+        tryReinstallAndRetry(project, rt, command, cwd, effectivePort, missingHint, isRetry)
       ) {
         return
       }
@@ -728,11 +788,11 @@ function spawnAndWatch(
     }
   })
 
-  if (port) {
+  if (effectivePort) {
     // 端口健康检查：轮询直到就绪或超时
     rt.healthStart = Date.now()
     rt.healthTimer = setInterval(() => {
-      const checkPort = rt.port ?? port
+      const checkPort = rt.port ?? effectivePort
       checkPortOpen(checkPort).then((open) => {
         if (rt.status !== 'starting') return
         if (open) {

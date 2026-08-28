@@ -15,40 +15,104 @@ export interface GifFrame {
 const MAX_FRAMES = 60
 const cache = new Map<string, GifFrame[]>()
 
-/** 最近邻缩小：动图原尺寸可能上千像素，先缩到 TARGET 再编码 PNG，省内存省 CPU */
+/** 面积平均缩小（box filter，照系统原生高质量缩放原理——不只因/RunCat 清晰度的关键）：
+ *  每个目标像素对应源区域 [x·W/tw,(x+1)·W/tw) × [y·H/th,(y+1)·H/th)，区域内全部源像素
+ *  （premultiplied 域）按覆盖面积加权平均——4 倍缩小时 16 像素合成 1 个，细线密度保留；
+ *  双线性只取 2×2 邻域，大幅缩小会丢细节（只因篮球 180×210→44 糊的根因）。
+ *  默认等比缩放：高度=target、宽度随原比例；box=正方形拉伸缩放（照不只因
+ *  .frame(22,22)+.resizable() 显示规格：非正方形素材拉满方框）。
+ *  alpha 预乘域运算防透明渗色；unpremultiply：v 与 a 同处 0~255 域，结果 ×255/a（漏乘=全黑） */
 function downscale(
   src: Uint8ClampedArray,
   W: number,
   H: number,
-  tw: number,
-  th: number
-): Uint8ClampedArray {
+  target: number,
+  box = false
+): { data: Uint8ClampedArray; w: number; h: number } {
+  // 缩放尺寸：默认高度=target、宽度按原比例；box=target×target 方框（拉伸）
+  const scale = target / H
+  const tw = box ? target : Math.max(1, Math.round(W * scale))
+  const th = box ? target : Math.max(1, Math.round(H * scale))
+  // 转 premultiplied（RGB×alpha）
+  const pm = new Float32Array(W * H * 4)
+  for (let i = 0; i < W * H; i++) {
+    const a = src[i * 4 + 3] / 255
+    pm[i * 4] = src[i * 4] * a
+    pm[i * 4 + 1] = src[i * 4 + 1] * a
+    pm[i * 4 + 2] = src[i * 4 + 2] * a
+    pm[i * 4 + 3] = src[i * 4 + 3]
+  }
   const out = new Uint8ClampedArray(tw * th * 4)
   for (let y = 0; y < th; y++) {
-    const sy = Math.min(Math.floor((y * H) / th), H - 1)
+    const sy0 = (y * H) / th
+    const sy1 = ((y + 1) * H) / th
     for (let x = 0; x < tw; x++) {
-      const sx = Math.min(Math.floor((x * W) / tw), W - 1)
-      const s = (sy * W + sx) * 4
+      const sx0 = (x * W) / tw
+      const sx1 = ((x + 1) * W) / tw
+      // 累加覆盖的源像素：权重=行重叠×列重叠（边缘像素按部分面积计）
+      let r = 0
+      let g = 0
+      let b = 0
+      let a = 0
+      let weight = 0
+      const yStart = Math.max(0, Math.floor(sy0))
+      const yEnd = Math.min(H, Math.ceil(sy1))
+      const xStart = Math.max(0, Math.floor(sx0))
+      const xEnd = Math.min(W, Math.ceil(sx1))
+      for (let sy = yStart; sy < yEnd; sy++) {
+        const wy = Math.min(sy + 1, sy1) - Math.max(sy, sy0)
+        for (let sx = xStart; sx < xEnd; sx++) {
+          const wx = Math.min(sx + 1, sx1) - Math.max(sx, sx0)
+          const w = wx * wy
+          const i = (sy * W + sx) * 4
+          r += pm[i] * w
+          g += pm[i + 1] * w
+          b += pm[i + 2] * w
+          a += pm[i + 3] * w
+          weight += w
+        }
+      }
       const d = (y * tw + x) * 4
-      out[d] = src[s]
-      out[d + 1] = src[s + 1]
-      out[d + 2] = src[s + 2]
-      out[d + 3] = src[s + 3]
+      if (weight <= 0) continue // 无覆盖：全透明，RGB 置 0
+      const inv = 1 / weight
+      const aa = a * inv
+      out[d + 3] = Math.round(aa)
+      if (aa < 1) continue
+      out[d] = Math.min(255, Math.round((r * inv * 255) / aa)) // unpremultiply：×255/a
+      out[d + 1] = Math.min(255, Math.round((g * inv * 255) / aa))
+      out[d + 2] = Math.min(255, Math.round((b * inv * 255) / aa))
     }
   }
-  return out
+  return { data: out, w: tw, h: th }
+}
+
+/** 模板图编码（RGBA/BGRA buffer 原地改）：明暗深浅刻进 alpha——黑=镂实（前景色最浓）、
+ *  灰=镂浅（前景色半透明→阴影层次保留）、白=全透；RGB 置 0（模板只认 alpha）。
+ *  系统按每屏菜单栏实际外观渲染：浅色屏=黑+灰阴影、深色屏=白+灰阴影，双屏各自正确；
+ *  成品反转图只能一种颜色，双屏一深一浅时必有一屏错（图标颜色跟随另一屏的根因） */
+export function encodeTemplate(data: Uint8Array | Uint8ClampedArray): void {
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3]
+    if (a === 0) continue
+    const l = (data[i] + data[i + 1] + data[i + 2]) / 3
+    data[i] = 0
+    data[i + 1] = 0
+    data[i + 2] = 0
+    data[i + 3] = Math.round((a * (255 - l)) / 255)
+  }
 }
 
 /** 把 gif 解码成帧序列（每帧合成到完整画布 → PNG → nativeImage，统一缩到 size px）。
- *  opts.mono=转模板图（随菜单栏深浅自动变色）。
- *  解析失败 / 只有一帧 → 返回 null（调用方退回静态图） */
+ *  opts.template=模板图：明暗深浅刻进 alpha（黑=镂实、灰=镂浅），颜色交给系统按每屏菜单栏
+ *  实际外观渲染（浅色屏黑、深色屏白）——双屏一深一浅时各屏正确；成品反转图（固定白/黑）
+ *  在两屏外观不同时必有一屏颜色错。解析失败 / 只有一帧 → 返回 null（调用方退回静态图） */
 export function loadGifFrames(
   path: string,
   size = 18,
-  opts: { mono?: boolean } = {}
+  opts: { template?: boolean; box?: boolean } = {}
 ): GifFrame[] | null {
-  // 缓存 key 含尺寸/单色：设置变化后必须重新解码，不能命中旧帧
-  const key = `${path}:${size}${opts.mono ? ':t' : ''}`
+  // 缓存 key 含尺寸/模板/方框：设置变化后必须重新解码，不能命中旧帧
+  const key = `${path}:${size}${opts.template ? ':t' : ''}${opts.box ? ':b' : ''}`
   const hit = cache.get(key)
   if (hit) return hit
   // 编码前先缩到 2x（高清屏），上限 44 防大图标白费内存
@@ -132,12 +196,15 @@ export function loadGifFrames(
           canvas[c + 3] = patch[p + 3]
         }
       }
-      const small = downscale(canvas, W, H, target, target)
-      const frame = new PNG({ width: target, height: target })
+      const { data: small, w: fw, h: fh } = downscale(canvas, W, H, target, opts.box)
+      if (opts.template) encodeTemplate(small)
+      const frame = new PNG({ width: fw, height: fh })
       frame.data = Buffer.from(small.buffer)
       const png = PNG.sync.write(frame)
-      const img = nativeImage.createFromBuffer(png).resize({ width: size, height: size })
-      if (opts.mono) img.setTemplateImage(true)
+      // target=size×2 的像素按 2x 解码 = size pt 高清显示（Retina 屏不糊；
+      // 之前按 1x 解码再 resize 放大，像素被拉扯=马赛克）
+      const img = nativeImage.createFromBuffer(png, { scaleFactor: 2 })
+      if (opts.template) img.setTemplateImage(true)
       result.push({
         image: img,
         delay: Math.max(f.delay || 100, 100)

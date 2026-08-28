@@ -3,7 +3,7 @@
 // 选中的自定义素材显示铅笔可改名；最底部添加入口（虚线空框+选择GIF.../选择图片...）；
 // 设置区：自动反转播放/速度正比CPU 开关 + 只因速无级滑杆（0~1 无数字）。
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, Pencil } from 'lucide-react'
+import { Check, Pencil, Trash2 } from 'lucide-react'
 import type { TrayCharacterItem } from '../../../shared/types'
 
 const PANEL_W = 300
@@ -14,6 +14,7 @@ export function RolePickerModal({
   autoReverse,
   speed,
   anchor,
+  namingSeed,
   onSelect,
   onCpuFollow,
   onAutoReverse,
@@ -27,11 +28,14 @@ export function RolePickerModal({
   autoReverse: boolean
   speed: number
   anchor: { x: number; y: number; width: number } | null
+  /** 拖放导入成功后传入：打开弹窗直接弹命名窗口 */
+  namingSeed?: string | null
   onSelect(c: TrayCharacterItem): void
   onCpuFollow(v: boolean): void
   onAutoReverse(v: boolean): void
   onSpeed(v: number): void
-  onImport(filter: 'gif' | 'image'): Promise<void>
+  /** 选文件并入库，返回新素材路径（取消返回 null；随后弹命名窗口） */
+  onImport(filter: 'gif' | 'image'): Promise<string | null>
   onRename(newPath: string): void
   onClose(): void
 }): React.JSX.Element {
@@ -41,6 +45,17 @@ export function RolePickerModal({
   const [current, setCurrent] = useState(currentPath)
   /** 正在改名的素材 path（名字变输入框） */
   const [editingPath, setEditingPath] = useState<string | null>(null)
+  /** 添加素材后的命名窗口（新素材路径 → 输入框）；拖放导入的素材挂载即弹（初值=命名种子） */
+  const [namingPath, setNamingPath] = useState<string | null>(namingSeed ?? null)
+  const [namingValue, setNamingValue] = useState(
+    () =>
+      namingSeed
+        ?.split('/')
+        .pop()
+        ?.replace(/\.[^.]+$/, '') ?? ''
+  )
+  /** 待删除素材（二次确认弹窗） */
+  const [deleting, setDeleting] = useState<TrayCharacterItem | null>(null)
   const [speedDraft, setSpeedDraft] = useState<number | null>(null)
   const speedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -61,8 +76,56 @@ export function RolePickerModal({
   const visible = tab === 'gif' ? chars.filter((c) => c.isGif) : chars.filter((c) => !c.isGif)
 
   const handleImport = async (): Promise<void> => {
-    await onImport(tab)
-    loadChars()
+    const p = await onImport(tab)
+    if (p) {
+      // 入库成功 → 弹命名窗口（默认=文件名去后缀）
+      setNamingPath(p)
+      setNamingValue(
+        p
+          .split('/')
+          .pop()
+          ?.replace(/\.[^.]+$/, '') ?? ''
+      )
+      loadChars()
+    }
+  }
+
+  /** 命名确认：改名磁盘文件+档案 → 设为当前角色（新素材已在列表最下面，选中它） */
+  const confirmName = async (): Promise<void> => {
+    const p = namingPath
+    const name = namingValue.trim()
+    if (!p || !name) return
+    setNamingPath(null)
+    try {
+      const np = await window.api.renameTrayIcon(p, name)
+      if (np) {
+        setCurrent(np)
+        onRename(np)
+        loadChars()
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  /** 删除确认：删文件+移出角色库；删的是当前角色则自动选列表第一个 */
+  const doDelete = async (): Promise<void> => {
+    const c = deleting
+    if (!c) return
+    setDeleting(null)
+    try {
+      await window.api.deleteTrayIcon(c.path)
+      if (current === c.path) {
+        const first = visible.find((v) => v.path !== c.path)
+        if (first) {
+          setCurrent(first.path)
+          onSelect(first)
+        }
+      }
+      loadChars()
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const doRename = async (c: TrayCharacterItem, name: string): Promise<void> => {
@@ -171,6 +234,18 @@ export function RolePickerModal({
                       <Pencil size={11} />
                     </button>
                   )}
+                  {!c.builtin && (
+                    <button
+                      className="role-picker-delete"
+                      title="删除"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDeleting(c)
+                      }}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                   {selected && <Check size={12} className="role-picker-check" />}
                 </div>
               )
@@ -180,51 +255,98 @@ export function RolePickerModal({
             )}
           </div>
         </div>
-        <div className="role-picker-settings">
-          <div className="role-picker-setting-row">
-            <span className="role-picker-setting-label">自动反转播放</span>
-            <button
-              className={`settings-switch ${autoReverse ? 'settings-switch-on' : ''}`}
-              onClick={() => onAutoReverse(!autoReverse)}
-            >
-              <span className="settings-switch-knob" />
-            </button>
+        {tab === 'gif' && (
+          <div className="role-picker-settings">
+            <div className="role-picker-setting-row">
+              <span className="role-picker-setting-label">自动反转播放</span>
+              <button
+                className={`settings-switch ${autoReverse ? 'settings-switch-on' : ''}`}
+                onClick={() => onAutoReverse(!autoReverse)}
+              >
+                <span className="settings-switch-knob" />
+              </button>
+            </div>
+            <div className="role-picker-setting-row">
+              <span className="role-picker-setting-label">速度正比CPU</span>
+              <button
+                className={`settings-switch ${cpuFollow ? 'settings-switch-on' : ''}`}
+                onClick={() => onCpuFollow(!cpuFollow)}
+              >
+                <span className="settings-switch-knob" />
+              </button>
+            </div>
+            <div className="role-picker-setting-row">
+              <span className="role-picker-setting-label">速度</span>
+              <input
+                type="range"
+                className="settings-slider"
+                min={0}
+                max={1}
+                step={0.01}
+                value={speedDraft ?? speed}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setSpeedDraft(v)
+                  scheduleSpeed(v)
+                }}
+                onPointerUp={flushSpeed}
+                onKeyUp={flushSpeed}
+                onBlur={flushSpeed}
+              />
+            </div>
           </div>
-          <div className="role-picker-setting-row">
-            <span className="role-picker-setting-label">速度正比CPU</span>
-            <button
-              className={`settings-switch ${cpuFollow ? 'settings-switch-on' : ''}`}
-              onClick={() => onCpuFollow(!cpuFollow)}
-            >
-              <span className="settings-switch-knob" />
-            </button>
-          </div>
-          <div className="role-picker-setting-row">
-            <span className="role-picker-setting-label">只因速</span>
-            <input
-              type="range"
-              className="settings-slider"
-              min={0}
-              max={1}
-              step={0.01}
-              value={speedDraft ?? speed}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                setSpeedDraft(v)
-                scheduleSpeed(v)
-              }}
-              onPointerUp={flushSpeed}
-              onKeyUp={flushSpeed}
-              onBlur={flushSpeed}
-            />
-          </div>
-        </div>
+        )}
         <button className="role-picker-add" onClick={() => void handleImport()}>
           <span className="role-picker-add-box" />
           <span className="role-picker-add-text">
             {tab === 'gif' ? '选择GIF...' : '选择图片...'}
           </span>
         </button>
+        {/* 命名窗口 / 删除二次确认：盖在弹窗内容上 */}
+        {(namingPath || deleting) && (
+          <div className="role-picker-dialog">
+            {namingPath ? (
+              <>
+                <div className="role-picker-dialog-title">给新素材起个名字</div>
+                <input
+                  className="role-picker-dialog-input"
+                  value={namingValue}
+                  autoFocus
+                  onChange={(e) => setNamingValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void confirmName()
+                    if (e.key === 'Escape') setNamingPath(null)
+                  }}
+                />
+                <div className="role-picker-dialog-actions">
+                  <button className="btn-secondary" onClick={() => setNamingPath(null)}>
+                    取消
+                  </button>
+                  <button
+                    className="btn-primary"
+                    disabled={!namingValue.trim()}
+                    onClick={() => void confirmName()}
+                  >
+                    确定
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="role-picker-dialog-title">删除「{deleting?.label}」？</div>
+                <div className="role-picker-dialog-desc">删除后不可恢复，将从角色列表移除</div>
+                <div className="role-picker-dialog-actions">
+                  <button className="btn-secondary" onClick={() => setDeleting(null)}>
+                    取消
+                  </button>
+                  <button className="role-picker-delete-confirm" onClick={() => void doDelete()}>
+                    删除
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

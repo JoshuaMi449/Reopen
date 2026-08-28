@@ -4,3 +4,8 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# 编译产物（native addon 与 Swift dylib 构建输出）
+native/build/
+build/config.gypi
+*.tsbuildinfo

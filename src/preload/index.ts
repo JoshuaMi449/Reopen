@@ -32,6 +32,7 @@ const api: ReopenApi = {
   importTrayIcon: (filePath: string) => ipcRenderer.invoke('tray:import-icon', filePath),
   renameTrayIcon: (path: string, newName: string) =>
     ipcRenderer.invoke('tray:rename-icon', path, newName),
+  deleteTrayIcon: (path: string) => ipcRenderer.invoke('tray:delete-icon', path),
   listTrayCharacters: () => ipcRenderer.invoke('tray:list-characters'),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
   installProjectDeps: (id) => ipcRenderer.invoke('project:install-deps', id),

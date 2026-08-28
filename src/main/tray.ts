@@ -1,120 +1,151 @@
 // 托盘模块：右上角菜单栏图标 + 点击弹出小面板（PRD 3.7）
-import { app, BrowserWindow, Menu, nativeImage, Tray, screen } from 'electron'
+// 动画=SwiftUI 视图 + Swift 内部 .common Timer 换帧（严格照抄 BuZhiYin 机制，三图标对比
+// 实验定稿：只有 SwiftUI 管线能获得系统「非活跃屏冻结最后一帧」托管，NSImageView 换图/
+// 图层动画/button.image 换图全都不行）。JS 只负责解码帧序列与 CPU 变速间隔。
+import { app, BrowserWindow, nativeImage, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { existsSync } from 'fs'
-import { extname, join } from 'path'
+import { basename, extname, join } from 'path'
 import { getSettings } from './store'
 import { stopAllRuntimes } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
-import { markQuitConfirmed, showMainWindow } from './window'
-import { loadGifFrames, type GifFrame } from './gifFrames'
-import { listCharacters } from './trayCharacters'
+import { getMainWindow, hideMainWindow, markQuitConfirmed, showMainWindow } from './window'
+import { encodeTemplate, loadGifFrames } from './gifFrames'
+import { isBoxRole, listCharacters } from './trayCharacters'
 import { getCpuUsage } from './cpuSampler'
+import {
+  nativeCreateStatusItem,
+  nativeInitTrayRunner,
+  nativeSetFrames,
+  nativeSetInterval,
+  nativeGetFrame,
+  nativeSetPanelBehavior,
+  nativeDestroyStatusItem
+} from './nativeAddon'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
 /** 黑白（主题）图标大小：菜单栏标准高度 */
 const MONO_SIZE = 18
-/** 自定义角色图标大小 */
-const CUSTOM_SIZE = 22
-/** CPU 低于此值视为空闲：动画休息静止（忙起来才跑） */
-const REST_THRESHOLD = 0.05
-/** 休息时的醒来检查间隔 */
-const WAKE_CHECK_MS = 1000
+/** 角色图标默认高度 22pt（44px@2x）：不只因体系素材按不只因规格（历史 f6f8b32「固定22px」），宽度随原比例 */
+const DEFAULT_CUSTOM_SIZE = 22
+/** 个别角色特例：dogeza（日本人磕头）素材来自 RunCat，按 RunCat 显示规格 18pt（素材高 36px 按 2x） */
+const ROLE_SIZES: Record<string, number> = { dogeza: 18 }
+
+/** 按角色拿显示高度（pt）：dogeza=RunCat 规格 18pt；其余=不只因规格 22pt */
+function roleSize(path: string): number {
+  return ROLE_SIZES[basename(path, extname(path))] ?? DEFAULT_CUSTOM_SIZE
+}
 /** 帧间隔下限（防刷爆菜单栏） */
 const MIN_INTERVAL = 40
 
-let tray: Tray | null = null
 let panel: BrowserWindow | null = null
-/** 动图轮播定时器（切到静态图标时清掉） */
-let frameTimer: ReturnType<typeof setTimeout> | null = null
-/** 正在轮播的帧序列（作为轮播循环的身份标识，防止换图后旧循环还活着） */
-let activeFrames: GifFrame[] | null = null
-/** 轮播方向（1=正向；-1=倒播，自动反转播放的乒乓用） */
-let activeDir = 1
+let nativeCreated = false
+/** CPU 变速定时器（每 2s 采样一次，把换帧间隔传给 Swift 侧 Timer） */
+let cpuTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 静态托盘图标：主题=内置剪影转模板（系统自动随深浅色反转）；
- *  自定义=用户选的图片/动图第一帧（复制在 userData，不反转；GIF 由轮播接管，这里只兜底） */
-function staticTrayIcon(): Electron.NativeImage {
+/** 等比缩放到高度=size、宽度随原比例（图标高度统一、宽度随素材；
+ *  保留原比例——菜单栏图标不拉正方形，396×337 这类非正方形硬拉 1:1 会压扁变形） */
+function fitHeight(img: Electron.NativeImage, size: number): Electron.NativeImage {
+  const { width, height } = img.getSize()
+  if (width <= 0 || height <= 0) return img
+  const scale = size / height
+  const w = Math.max(1, Math.round(width * scale))
+  const h = Math.max(1, Math.round(height * scale))
+  if (w === width && h === height) return img
+  return img.resize({ width: w, height: h })
+}
+
+/** 静态托盘图标（2x 像素 PNG + 模板标记）：主题=内置剪影转模板（系统随每屏菜单栏外观着色，
+ *  双屏一深一浅各屏正确）；自定义=用户选的图片/动图第一帧（剪影角色转模板图；彩色原样；
+ *  GIF 走逐帧换图循环，不走这里） */
+function staticTrayIconPng(): { png: Buffer; template: boolean } {
   const { trayIcon, trayIconPath } = getSettings()
   let img: Electron.NativeImage
   let size: number
+  let mono = false
   if (trayIcon === 'custom' && trayIconPath && existsSync(trayIconPath)) {
     img = nativeImage.createFromPath(trayIconPath)
-    size = CUSTOM_SIZE
+    size = roleSize(trayIconPath)
+    mono = !!listCharacters().find((c) => c.path === trayIconPath)?.mono
   } else {
     img = nativeImage.createFromPath(trayIconAsset)
     size = MONO_SIZE
   }
-  const sized = img.resize({ width: size, height: size })
+  // 2x 像素（如 44px 高）：addon 端 NSImage 尺寸减半为 pt，Retina 不糊
+  const sized = fitHeight(img, size * 2)
   if (trayIcon === 'mono') sized.setTemplateImage(true)
-  return sized
+  let out = sized
+  if (mono) {
+    // 剪影角色：明暗刻进 alpha 的模板图，颜色系统按每屏菜单栏外观渲染（深浅双屏各屏正确）
+    const { width, height } = sized.getSize()
+    const bmp = sized.toBitmap()
+    encodeTemplate(bmp)
+    out = nativeImage.createFromBitmap(bmp, { width, height })
+    out.setTemplateImage(true)
+  }
+  return { png: out.toPNG(), template: mono || trayIcon === 'mono' }
 }
 
-function stopTrayAnimation(): void {
-  if (frameTimer) clearTimeout(frameTimer)
-  frameTimer = null
-  activeFrames = null
+/** 当前帧间隔（ms）：CPU 使用率换算（cpuSampler 内部缓存窗口 2s）。
+ *  公式照抄 BuZhiYin 🐔View.swift:126-128：开=(1-CPU)/5×(1.1-只因速)；关=CPU/5×(1.1-只因速），
+ *  下限 40ms（防刷爆菜单栏）。换帧本身由 Swift 侧 .common Timer 驱动（BuZhiYin 同款），
+ *  JS 只周期性把间隔传给 Swift。 */
+function frameInterval(): number {
+  const usage = getCpuUsage()
+  const { trayIconSpeed, cpuFollow } = getSettings()
+  const speed = trayIconSpeed ?? 0.5
+  const base = (cpuFollow ? 1.0001 - usage : usage) / 5
+  return Math.max(MIN_INTERVAL, Math.round(base * (1.1 - speed) * 1000))
 }
 
-/** 自定义图是 GIF → 解码成帧循环换图（模拟动图）；否则挂静态图。
- *  帧间隔照抄参考实现的公式：开 CPU 变速=(1-CPU)/5×(1.1-只因速)，关=CPU/5×(1.1-只因速)，下限 40ms；
- *  自动反转播放=乒乓（播到末帧倒播回来）；cpuFollow 开且 CPU 空闲时休息静止，每秒醒来检查 */
+/** CPU 变速：每 2s 采样（cpuSampler 内部缓存窗口同为 2s），把换帧间隔传给 Swift 侧 Timer */
+function startCpuFollow(): void {
+  stopCpuFollow()
+  const tick = (): void => {
+    nativeSetInterval(frameInterval())
+    cpuTimer = setTimeout(tick, 2000)
+  }
+  tick()
+}
+
+function stopCpuFollow(): void {
+  if (cpuTimer) clearTimeout(cpuTimer)
+  cpuTimer = null
+}
+
+/** 自定义图是 GIF → 解码成帧序列交给 SwiftUI 换帧模型（照抄 BuZhiYin：Swift 内部
+ *  .common Timer 换帧，系统托管非活跃屏冻结最后一帧）；否则挂静态图（=1 帧）。
+ *  剪影素材帧模板化（明暗刻进 alpha，167 级灰度细节保留，系统按每屏菜单栏外观着色）；
+ *  自动反转播放=乒乓（拼正向+反向帧序列，边界帧不重复，BuZhiYin autoReverse 同款） */
 function applyTrayIcon(): void {
-  if (!tray) return
-  const { trayIcon, trayIconPath, trayIconSpeed, cpuFollow, trayAutoReverse } = getSettings()
+  const { trayIcon, trayIconPath, trayAutoReverse } = getSettings()
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   if (isGif) {
-    // 模板素材角色（随菜单栏深浅自动变色）按角色属性转模板图
-    const mono = listCharacters().find((c) => c.path === trayIconPath)?.mono
-    const frames = loadGifFrames(trayIconPath as string, CUSTOM_SIZE, { mono })
+    const mono = !!listCharacters().find((c) => c.path === trayIconPath)?.mono
+    // box=方框拉伸显示（照不只因 .frame(22,22)+.resizable() 显示规格，只因篮球等与不只因同尺寸）
+    const frames = loadGifFrames(trayIconPath as string, roleSize(trayIconPath as string), {
+      template: mono,
+      box: isBoxRole(trayIconPath as string)
+    })
     if (frames) {
-      stopTrayAnimation()
-      activeFrames = frames
-      activeDir = 1
-      const speed = trayIconSpeed ?? 0.5
-      const step = (i: number): void => {
-        if (activeFrames !== frames || !tray) return // 期间换图/关托盘了，旧循环作废
-        tray.setImage(frames[i].image)
-        const usage = getCpuUsage()
-        if (cpuFollow && usage < REST_THRESHOLD) {
-          // 空闲休息：停在当前帧，每秒检查是否忙起来
-          frameTimer = setTimeout(() => wakeCheck(frames, i), WAKE_CHECK_MS)
-          return
-        }
-        // 帧间隔（秒）：开=(1-CPU)/5×(1.1-只因速)；关=CPU/5×(1.1-只因速)
-        const base = (cpuFollow ? 1.0001 - usage : usage) / 5
-        const d = Math.max(MIN_INTERVAL, Math.round(base * (1.1 - speed) * 1000))
-        // 乒乓反转：正向到头往回播、倒播到首帧再正向；关=单向循环
-        let next = i + activeDir
-        const last = frames.length - 1
-        if (next > last) {
-          if (trayAutoReverse && last > 0) {
-            activeDir = -1
-            next = last - 1
-          } else {
-            next = 0
-          }
-        } else if (next < 0) {
-          activeDir = 1
-          next = 1
-        }
-        frameTimer = setTimeout(() => step(next), d)
-      }
-      const wakeCheck = (frames: GifFrame[], i: number): void => {
-        if (activeFrames !== frames || !tray) return
-        if (cpuFollow && getCpuUsage() < REST_THRESHOLD) {
-          frameTimer = setTimeout(() => wakeCheck(frames, i), WAKE_CHECK_MS)
-        } else {
-          step(i) // 忙起来了，从当前帧继续跑
-        }
-      }
-      step(0)
+      const seq =
+        trayAutoReverse && frames.length > 1
+          ? [...frames, ...frames.slice(1, -1).reverse()]
+          : frames
+      // 帧序列一次性传给 Swift 换帧模型（BuZhiYin 同款：换帧在 Swift 内部 Timer 完成）
+      nativeSetFrames(
+        seq.map((f) => f.image.toPNG()),
+        mono,
+        frameInterval()
+      )
+      startCpuFollow()
       return
     }
   }
-  stopTrayAnimation()
-  tray.setImage(staticTrayIcon())
+  stopCpuFollow()
+  const { png, template } = staticTrayIconPng()
+  nativeSetFrames([png], template, 1000)
 }
 
 function createPanel(): BrowserWindow {
@@ -132,7 +163,22 @@ function createPanel(): BrowserWindow {
       sandbox: false
     }
   })
-  panel.on('blur', () => panel?.hide())
+  // blur 延迟 150ms 再关：点托盘图标会先 blur 后 click——立即 hide 会让 togglePanel
+  // 误判「面板已关」反向又弹出来
+  panel.on('blur', () => {
+    setTimeout(() => panel?.hide(), 150)
+  })
+  // 面板窗口设为跟随活跃 Space：每次弹出自动出现在当前桌面，不闪回创建时的旧桌面
+  try {
+    nativeSetPanelBehavior(panel.getNativeWindowHandle())
+  } catch {
+    /* no-op */
+  }
+  // 面板关闭不把主窗口带出来：主窗口本来不可见就保持不可见（点托盘第二下主界面弹出的根因）
+  panel.on('hide', () => {
+    const main = getMainWindow()
+    if (main && !main.isDestroyed() && !main.isVisible()) hideMainWindow()
+  })
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     panel.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/tray.html`)
   } else {
@@ -141,7 +187,13 @@ function createPanel(): BrowserWindow {
   return panel
 }
 
+/** 上次开合时间（防连续点击时 click 事件触发两遍造成开了又关） */
+let panelToggleAt = 0
+
 function togglePanel(): void {
+  const now = Date.now()
+  if (now - panelToggleAt < 250) return
+  panelToggleAt = now
   if (!panel || panel.isDestroyed()) createPanel()
   const p = panel
   if (!p) return
@@ -149,50 +201,56 @@ function togglePanel(): void {
     p.hide()
     return
   }
-  // 面板定位在托盘图标下方
-  const bounds = tray?.getBounds()
+  // 面板定位在托盘图标下方（原生 getFrame 顶部原点坐标）
+  const f = nativeGetFrame()
   const winBounds = p.getBounds()
   const display = screen.getDisplayNearestPoint(
-    bounds ? { x: bounds.x, y: bounds.y } : screen.getCursorScreenPoint()
+    f.w > 0 ? { x: f.x, y: f.y } : screen.getCursorScreenPoint()
   )
   const { workArea } = display
-  let x = bounds
-    ? Math.round(bounds.x + bounds.width / 2 - winBounds.width / 2)
-    : workArea.x + workArea.width - winBounds.width - 8
-  let y = bounds ? bounds.y + bounds.height + 6 : 30
+  let x =
+    f.w > 0
+      ? Math.round(f.x + f.w / 2 - winBounds.width / 2)
+      : workArea.x + workArea.width - winBounds.width - 8
+  let y = f.w > 0 ? f.y + f.h + 6 : 30
   x = Math.min(Math.max(x, workArea.x + 4), workArea.x + workArea.width - winBounds.width - 4)
   if (y + winBounds.height > workArea.y + workArea.height) {
-    y = (bounds ? bounds.y : workArea.y + workArea.height) - winBounds.height - 6
+    y = (f.w > 0 ? f.y : workArea.y + workArea.height) - winBounds.height - 6
   }
   p.setPosition(x, y)
-  p.show()
+  // 非激活弹出：不抢焦点、不激活应用、主窗口不被带前台（LookAway 同款；面板纯鼠标交互无输入框）
+  p.showInactive()
 }
 
-/** 右键菜单：打开主窗口 / 偏好设置 / 退出（验收整改） */
-function showContextMenu(): void {
-  const menu = Menu.buildFromTemplate([
-    { label: '打开主窗口', click: () => showMainWindow() },
-    { label: '偏好设置…', click: () => openSettingsWindow() },
-    { type: 'separator' },
-    { label: '退出 Reopen', click: () => appQuit() }
-  ])
-  tray?.popUpContextMenu(menu)
+/** 原生层事件：左键点击、右键菜单动作（右键菜单本体在 addon 原生 NSMenu 弹出；
+ *  模板图由系统按每屏菜单栏外观自动着色，无需处理外观事件） */
+function onNativeEvent(type: string, payload: string): void {
+  if (type === 'click') {
+    if (payload === 'left') togglePanel()
+  } else if (type === 'menu') {
+    if (payload === 'show-main') showMainWindow()
+    else if (payload === 'settings') openSettingsWindow()
+    else if (payload === 'quit') appQuit()
+  }
 }
 
 /** 按设置刷新托盘（启用开关/图标样式变化时调用） */
 export function refreshTray(): void {
   const { trayEnabled } = getSettings()
   if (!trayEnabled) {
-    tray?.destroy()
-    tray = null
+    stopCpuFollow()
+    nativeDestroyStatusItem()
+    nativeCreated = false
     panel?.destroy()
     panel = null
     return
   }
-  if (!tray) {
-    tray = new Tray(staticTrayIcon())
-    tray.on('click', togglePanel)
-    tray.on('right-click', showContextMenu)
+  if (!nativeCreated) {
+    nativeCreateStatusItem(onNativeEvent)
+    // SwiftUI 渲染模块（libtray_runner.dylib）：dev=项目 native/build/Release；打包后由
+    // electron-builder extraResources 处理（M4 发布时接 resourcesPath）
+    nativeInitTrayRunner(join(app.getAppPath(), 'native/build/Release/libtray_runner.dylib'))
+    nativeCreated = true
   }
   applyTrayIcon()
 }
@@ -204,9 +262,9 @@ export function initTray(): void {
 
 /** 退出前清理 */
 export function destroyTray(): void {
-  stopTrayAnimation()
-  tray?.destroy()
-  tray = null
+  stopCpuFollow()
+  nativeDestroyStatusItem()
+  nativeCreated = false
   panel?.destroy()
   panel = null
 }

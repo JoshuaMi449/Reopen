@@ -233,6 +233,8 @@ export interface Settings {
   trayAutoReverse: boolean
   /** 用户导入的托盘素材清单（复制在 userData/tray-icons/，角色列表里可选） */
   customTrayIcons: string[]
+  /** 用户导入素材里的单色素材（导入时自动检测：转模板图随菜单栏深浅自动变色） */
+  customTrayIconMono: string[]
   /** 菜单栏（托盘）启用，默认开（PRD 3.7） */
   trayEnabled: boolean
   /** 全局唤起窗口的快捷键（默认 ⌥+R） */
@@ -272,6 +274,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cpuFollow: true,
   trayAutoReverse: true,
   customTrayIcons: [],
+  customTrayIconMono: [],
   trayEnabled: true,
   hotkey: 'Alt+R',
   quickLaunch: {},
@@ -371,6 +374,8 @@ export interface ReopenApi {
   importTrayIcon(filePath: string): Promise<string | null>
   /** 重命名已导入的素材（改磁盘文件名+档案路径；当前角色同步；返回新路径，取消/失败返回 null） */
   renameTrayIcon(path: string, newName: string): Promise<string | null>
+  /** 删除用户导入的素材（删文件+移出角色库；若是当前角色回到默认图标） */
+  deleteTrayIcon(path: string): Promise<void>
   /** 托盘角色清单：内置角色 + 用户导入素材，带预览 dataURL（设置页角色弹窗用；GIF 原样给浏览器原生动画） */
   listTrayCharacters(): Promise<TrayCharacterItem[]>
   stopProject(id: string): Promise<void>

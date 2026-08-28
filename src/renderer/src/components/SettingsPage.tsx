@@ -28,9 +28,16 @@ const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
 ]
 
 /** 偏好设置（主窗口内浮层界面，非独立窗口——浮层交互）：左侧分组 + 右侧内容（PRD 3.6） */
-export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.Element {
+export function SettingsPage({
+  initialSettings,
+  onClose
+}: {
+  /** 主窗口传入已加载的设置：浮层打开瞬间用真值渲染（防「默认主题先渲染再换真主题」闪一下） */
+  initialSettings?: Settings | null
+  onClose?: () => void
+}): React.JSX.Element {
   const [group, setGroup] = useState<GroupKey>('general')
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<Settings>(initialSettings ?? DEFAULT_SETTINGS)
   const [projects, setProjects] = useState<Project[]>([])
   /** 环境监测结果（关于组下方） */
   const [envItems, setEnvItems] = useState<EnvCheckItem[]>([])
@@ -69,17 +76,7 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     setSettings(saved)
   }, [])
 
-  /** 自定义菜单栏图标：选图 → 复制到应用数据目录 → 立即生效（filter 按角色弹窗书签限定格式） */
-  const pickTrayIcon = async (filter?: 'gif' | 'image'): Promise<void> => {
-    try {
-      const p = await window.api.pickTrayIcon(filter)
-      if (p) update({ trayIcon: 'custom', trayIconPath: p })
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  /** 拖放导入素材：复制进角色库并设为当前角色（之后点托盘下拉也能选到它） */
+  /** 拖放导入素材：复制进角色库 → 打开角色弹窗并弹命名窗口（命名确认后设为当前角色） */
   const handleTrayDrop = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
@@ -87,7 +84,12 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
     try {
       const p = window.api.getPathForFile(file)
       const dest = await window.api.importTrayIcon(p)
-      if (dest) update({ trayIcon: 'custom', trayIconPath: dest })
+      if (dest) {
+        setNamingSeed(dest)
+        const r = previewRef.current?.getBoundingClientRect()
+        if (r) setPickerAnchor({ x: r.left, y: r.bottom, width: r.width })
+        setShowRolePicker(true)
+      }
     } catch (err) {
       console.error(err)
     }
@@ -101,6 +103,8 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number; width: number } | null>(
     null
   )
+  /** 拖放导入成功后的命名种子（打开角色弹窗时直接弹命名窗口） */
+  const [namingSeed, setNamingSeed] = useState<string | null>(null)
   /** 预览图元素（拿屏幕位置做弹窗锚点） */
   const previewRef = useRef<HTMLImageElement>(null)
   // 弹窗打开期间窗口尺寸变化：锚点实时重算（预览图位置跟着变，弹窗贴着它走）
@@ -668,15 +672,25 @@ export function SettingsPage({ onClose }: { onClose?: () => void }): React.JSX.E
           autoReverse={settings.trayAutoReverse}
           speed={settings.trayIconSpeed}
           anchor={pickerAnchor}
+          namingSeed={namingSeed}
           onSelect={(c) => update({ trayIcon: 'custom', trayIconPath: c.path })}
           onCpuFollow={(v) => update({ cpuFollow: v })}
           onAutoReverse={(v) => update({ trayAutoReverse: v })}
           onSpeed={(v) => update({ trayIconSpeed: v })}
           onImport={async (filter) => {
-            await pickTrayIcon(filter)
+            // 返回新素材路径（弹窗内随后弹命名窗口；pick-icon 已入库）
+            try {
+              return await window.api.pickTrayIcon(filter)
+            } catch (err) {
+              console.error(err)
+              return null
+            }
           }}
           onRename={(newPath) => update({ trayIcon: 'custom', trayIconPath: newPath })}
-          onClose={() => setShowRolePicker(false)}
+          onClose={() => {
+            setShowRolePicker(false)
+            setNamingSeed(null)
+          }}
         />
       )}
     </div>

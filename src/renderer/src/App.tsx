@@ -1918,7 +1918,7 @@ export default function App(): React.JSX.Element {
           }}
         >
           <div className="settings-panel">
-            <SettingsPage onClose={() => setSettingsOpen(false)} />
+            <SettingsPage initialSettings={settings} onClose={() => setSettingsOpen(false)} />
           </div>
         </div>
       )}
