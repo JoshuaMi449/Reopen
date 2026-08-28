@@ -29,6 +29,21 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
+/** LookAway 形态：主窗口可见 → Regular（Dock+应用菜单+可激活）；隐藏/销毁 → Accessory
+ *  （纯菜单栏，无 Dock 不抢焦点）。托盘关闭时钉死 Regular（Dock 是唯一入口，切
+ *  Accessory 会让应用彻底不可达）；非 macOS 跳过。实验已排除身份切换与非活跃屏
+ *  冻结的关联（41bf59c），动态切换安全。 */
+function setDockMode(docked: boolean): void {
+  if (process.platform !== 'darwin') return
+  if (docked) {
+    app.setActivationPolicy('regular')
+    // 身份切换会把 Dock 图标重置回 Electron 默认（createWindow 里那次 setIcon 被覆盖），补贴一次
+    app.dock?.setIcon(icon)
+  } else if (getSettings().trayEnabled) {
+    app.setActivationPolicy('accessory')
+  }
+}
+
 export function createWindow(): void {
   // 默认尺寸按主屏工作区 55% 宽、16:10 比例（默认再宽一点，比例=电脑屏幕比例）
   const { workArea } = screen.getPrimaryDisplay()
@@ -59,7 +74,8 @@ export function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    showMainWindow()
+    // 首启/重建自动显示：只 show 不抢焦点（开机自启不打断用户；activate=false 连 focus 都跳过）
+    showMainWindow(undefined, false)
   })
 
   // 关闭窗口 = 最小化到托盘（默认开；⌘Q 走 before-quit 不拦截）
@@ -69,6 +85,11 @@ export function createWindow(): void {
       hideMainWindow()
     }
   })
+
+  // LookAway 形态：窗口隐藏（hideMainWindow/Cmd+H 都汇聚到这里）或销毁（closeToTray 关）→
+  // 回 Accessory。最小化走 'minimize' 不触发 hide → 保持 Regular、Dock 保留（标准 macOS 行为）
+  mainWindow.on('hide', () => setDockMode(false))
+  mainWindow.on('closed', () => setDockMode(false))
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -85,18 +106,22 @@ export function createWindow(): void {
 }
 
 /** 显示主窗口（托盘面板"打开主窗口"、⌥+R 等调用；可附带菜单动作）。
- *  全程菜单栏应用身份（addon 固定，与 BuZhiYin/RunCat 同款）——主窗口可见时无 Dock
- *  图标、不进 Cmd+Tab（身份切换成常规应用会破坏非活跃屏冻结，禁止动态 Dock） */
-export function showMainWindow(action?: string): void {
+ *  LookAway 形态：显示即切 Regular（Dock 出现、应用可激活、左上角应用菜单）；
+ *  activate=false 用于首启/重建自动显示——只 show 不抢焦点（开机自启不打断用户） */
+export function showMainWindow(action?: string, activate = true): void {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+  setDockMode(true)
   mainWindow?.show()
-  mainWindow?.focus()
+  if (activate) {
+    app.focus({ steal: true })
+    mainWindow?.focus()
+  }
   if (action) {
     mainWindow?.webContents.send('app:menu-action', action)
   }
 }
 
-/** 隐藏主窗口：全程菜单栏应用身份下仅隐藏窗口（身份在 addon 固定，不切换） */
+/** 隐藏主窗口：hide 事件里切回 Accessory（LookAway 形态，见 createWindow 事件注册） */
 export function hideMainWindow(): void {
   mainWindow?.hide()
 }
