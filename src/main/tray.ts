@@ -10,16 +10,19 @@ import { getSettings } from './store'
 import { stopAllRuntimes } from './projectManager'
 import { openSettingsWindow } from './settingsWindow'
 import { getMainWindow, hideMainWindow, markQuitConfirmed, showMainWindow } from './window'
-import { encodeTemplate, loadGifFrames } from './gifFrames'
-import { isBoxRole, listCharacters } from './trayCharacters'
+import { loadGifFrames } from './gifFrames'
+import { invertOf, isBoxRole } from './trayCharacters'
 import { getCpuUsage } from './cpuSampler'
 import {
   nativeCreateStatusItem,
   nativeInitTrayRunner,
   nativeSetFrames,
   nativeSetInterval,
+  nativeSetInvert,
   nativeGetFrame,
   nativeSetPanelBehavior,
+  nativeStartGlobalClickMonitor,
+  nativeStopGlobalClickMonitor,
   nativeDestroyStatusItem
 } from './nativeAddon'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
@@ -55,18 +58,16 @@ function fitHeight(img: Electron.NativeImage, size: number): Electron.NativeImag
   return img.resize({ width: w, height: h })
 }
 
-/** 静态托盘图标（2x 像素 PNG + 模板标记）：主题=内置剪影转模板（系统随每屏菜单栏外观着色，
- *  双屏一深一浅各屏正确）；自定义=用户选的图片/动图第一帧（剪影角色转模板图；彩色原样；
- *  GIF 走逐帧换图循环，不走这里） */
+/** 静态托盘图标（2x 像素 PNG + 模板标记）：主题=内置黑白剪影转模板（系统随每屏菜单栏
+ *  外观着色）；自定义=用户选的图片/动图第一帧（原图直传，剪影角色的颜色反转由 Swift 侧
+ *  colorInvert 处理，2026-08-28 定稿；GIF 走逐帧换图循环，不走这里） */
 function staticTrayIconPng(): { png: Buffer; template: boolean } {
   const { trayIcon, trayIconPath } = getSettings()
   let img: Electron.NativeImage
   let size: number
-  let mono = false
   if (trayIcon === 'custom' && trayIconPath && existsSync(trayIconPath)) {
     img = nativeImage.createFromPath(trayIconPath)
     size = roleSize(trayIconPath)
-    mono = !!listCharacters().find((c) => c.path === trayIconPath)?.mono
   } else {
     img = nativeImage.createFromPath(trayIconAsset)
     size = MONO_SIZE
@@ -74,16 +75,7 @@ function staticTrayIconPng(): { png: Buffer; template: boolean } {
   // 2x 像素（如 44px 高）：addon 端 NSImage 尺寸减半为 pt，Retina 不糊
   const sized = fitHeight(img, size * 2)
   if (trayIcon === 'mono') sized.setTemplateImage(true)
-  let out = sized
-  if (mono) {
-    // 剪影角色：明暗刻进 alpha 的模板图，颜色系统按每屏菜单栏外观渲染（深浅双屏各屏正确）
-    const { width, height } = sized.getSize()
-    const bmp = sized.toBitmap()
-    encodeTemplate(bmp)
-    out = nativeImage.createFromBitmap(bmp, { width, height })
-    out.setTemplateImage(true)
-  }
-  return { png: out.toPNG(), template: mono || trayIcon === 'mono' }
+  return { png: sized.toPNG(), template: trayIcon === 'mono' }
 }
 
 /** 当前帧间隔（ms）：CPU 使用率换算（cpuSampler 内部缓存窗口 2s）。
@@ -115,18 +107,20 @@ function stopCpuFollow(): void {
 
 /** 自定义图是 GIF → 解码成帧序列交给 SwiftUI 换帧模型（照抄 BuZhiYin：Swift 内部
  *  .common Timer 换帧，系统托管非活跃屏冻结最后一帧）；否则挂静态图（=1 帧）。
- *  剪影素材帧模板化（明暗刻进 alpha，167 级灰度细节保留，系统按每屏菜单栏外观着色）；
+ *  原图直传（2026-08-28 定稿）：帧保持素材原样 RGB+alpha，剪影角色的颜色反转由
+ *  Swift 侧 RunnerView 按菜单栏外观做 colorInvert（不只因 AutoInvertImage 同款）——
+ *  活跃时=GIF 原图、非活跃屏=系统自动线条化，与不只因一致。
  *  自动反转播放=乒乓（拼正向+反向帧序列，边界帧不重复，BuZhiYin autoReverse 同款） */
 function applyTrayIcon(): void {
   const { trayIcon, trayIconPath, trayAutoReverse } = getSettings()
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
+  const invert = trayIconPath ? invertOf(trayIconPath) : { light: false, dark: false }
   if (isGif) {
-    const mono = !!listCharacters().find((c) => c.path === trayIconPath)?.mono
     // box=方框拉伸显示（照不只因 .frame(22,22)+.resizable() 显示规格，只因篮球等与不只因同尺寸）
+    const box = isBoxRole(trayIconPath as string)
     const frames = loadGifFrames(trayIconPath as string, roleSize(trayIconPath as string), {
-      template: mono,
-      box: isBoxRole(trayIconPath as string)
+      box
     })
     if (frames) {
       const seq =
@@ -136,16 +130,19 @@ function applyTrayIcon(): void {
       // 帧序列一次性传给 Swift 换帧模型（BuZhiYin 同款：换帧在 Swift 内部 Timer 完成）
       nativeSetFrames(
         seq.map((f) => f.image.toPNG()),
-        mono,
-        frameInterval()
+        false,
+        frameInterval(),
+        box
       )
+      nativeSetInvert(invert.light, invert.dark)
       startCpuFollow()
       return
     }
   }
   stopCpuFollow()
   const { png, template } = staticTrayIconPng()
-  nativeSetFrames([png], template, 1000)
+  nativeSetFrames([png], template, 1000, false)
+  nativeSetInvert(invert.light, invert.dark)
 }
 
 function createPanel(): BrowserWindow {
@@ -168,6 +165,21 @@ function createPanel(): BrowserWindow {
   panel.on('blur', () => {
     setTimeout(() => panel?.hide(), 150)
   })
+  // 面板显示期间挂全局左键监视：点击面板外任意处关闭（标准菜单栏交互，LookAway 同款）；
+  // 隐藏即摘除。点托盘图标本身走 button action 的 togglePanel，监视回调里坐标在图标
+  // 区内则忽略不误关（坐标已由原生侧转为 CG/Electron 系，原点主屏左上）
+  panel.on('show', () => {
+    nativeStartGlobalClickMonitor((type, payload) => {
+      if (type !== 'click' || !panel || panel.isDestroyed() || !panel.isVisible()) return
+      const [x, y] = payload.split(',').map(Number)
+      const b = panel.getBounds()
+      if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) return
+      const f = nativeGetFrame()
+      if (f.w > 0 && x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h) return
+      panel.hide()
+    })
+  })
+  panel.on('hide', () => nativeStopGlobalClickMonitor())
   // 面板窗口设为跟随活跃 Space：每次弹出自动出现在当前桌面，不闪回创建时的旧桌面
   try {
     nativeSetPanelBehavior(panel.getNativeWindowHandle())

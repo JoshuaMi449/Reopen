@@ -20,8 +20,9 @@ static Napi::ThreadSafeFunction gTsFn = nullptr;
 
 // Swift dylib 的 C 接口（native/src/tray_runner.swift）
 static void *(*pTrModelCreate)(void) = nullptr;
-static void (*pTrModelSetFrames)(void *, NSArray *, double) = nullptr;
+static void (*pTrModelSetFrames)(void *, NSArray *, double, bool) = nullptr;
 static void (*pTrModelSetInterval)(void *, double) = nullptr;
+static void (*pTrModelSetInvert)(void *, bool, bool) = nullptr;
 static void *(*pTrViewCreate)(void *) = nullptr;
 static void (*pTrDestroy)(void *) = nullptr;
 static void *gRunnerModel = nullptr;   // RunnerModel 指针
@@ -31,6 +32,45 @@ struct EventData {
   std::string type;  // "click" / "menu"
   std::string payload;
 };
+
+// 全局左键监视（面板显示期间启用：点击面板外任意处关闭面板，标准菜单栏交互）。
+// global monitor 只观察不拦截（无需辅助功能权限，BuZhiYin/LookAway 同款机制）。
+static id gClickMonitor = nil;
+static Napi::ThreadSafeFunction gClickTsFn = nullptr;
+
+Napi::Value StartGlobalClickMonitor(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (gClickMonitor || info.Length() < 1 || !info[0].IsFunction()) return env.Undefined();
+  gClickTsFn = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(),
+                                             "reopen-global-click", 0, 1);
+  gClickMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown
+                                                         handler:^(NSEvent *event) {
+    if (!gClickTsFn) return;
+    // mouseLocation 是 NS 屏幕坐标（原点主屏左下）→ 转 CG/Electron 系（原点主屏左上）
+    NSPoint p = [NSEvent mouseLocation];
+    CGFloat mainH = [NSScreen mainScreen].frame.size.height;
+    std::string payload = std::to_string(p.x) + "," + std::to_string(mainH - p.y);
+    auto *data = new EventData{"click", std::move(payload)};
+    gClickTsFn.BlockingCall(data, [](Napi::Env env, Napi::Function cb, EventData *d) {
+      cb.Call({Napi::String::New(env, d->type), Napi::String::New(env, d->payload)});
+      delete d;
+    });
+  }];
+  return env.Undefined();
+}
+
+Napi::Value StopGlobalClickMonitor(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (gClickMonitor) {
+    [NSEvent removeMonitor:gClickMonitor];
+    gClickMonitor = nil;
+  }
+  if (gClickTsFn) {
+    gClickTsFn.Release();
+    gClickTsFn = nullptr;
+  }
+  return env.Undefined();
+}
 
 // 回调 JS（主线程安全）
 static void EmitEvent(std::string type, std::string payload) {
@@ -95,7 +135,9 @@ Napi::Value CreateStatusItem(const Napi::CallbackInfo &info) {
     return env.Undefined();
   }
   gTsFn = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "reopen-tray-events", 0, 1);
-  gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
+  // 长度固定 22pt（BuZhiYin iconMinWidth 同款）：所有 GIF 占位一致；自适应长度算不出
+  //  addSubview 的 hostingView 宽度，会偏窄导致图标右边被相邻内容遮挡（裁剪根因）
+  gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:22];
   gStatusItem.button.title = @"";
   gTarget = [[StatusItemTarget alloc] init];
   gStatusItem.button.target = gTarget;
@@ -118,11 +160,13 @@ Napi::Value InitTrayRunner(const Napi::CallbackInfo &info) {
     return env.Undefined();
   }
   pTrModelCreate = reinterpret_cast<void *(*)(void)>(dlsym(handle, "tr_model_create"));
-  pTrModelSetFrames = reinterpret_cast<void (*)(void *, NSArray *, double)>(dlsym(handle, "tr_model_set_frames"));
+  pTrModelSetFrames = reinterpret_cast<void (*)(void *, NSArray *, double, bool)>(dlsym(handle, "tr_model_set_frames"));
   pTrModelSetInterval = reinterpret_cast<void (*)(void *, double)>(dlsym(handle, "tr_model_set_interval"));
+  pTrModelSetInvert = reinterpret_cast<void (*)(void *, bool, bool)>(dlsym(handle, "tr_model_set_invert"));
   pTrViewCreate = reinterpret_cast<void *(*)(void *)>(dlsym(handle, "tr_view_create"));
   pTrDestroy = reinterpret_cast<void (*)(void *)>(dlsym(handle, "tr_destroy"));
-  if (!pTrModelCreate || !pTrModelSetFrames || !pTrModelSetInterval || !pTrViewCreate || !pTrDestroy) {
+  if (!pTrModelCreate || !pTrModelSetFrames || !pTrModelSetInterval || !pTrModelSetInvert ||
+      !pTrViewCreate || !pTrDestroy) {
     NSLog(@"[reopen-native] dlsym failed: %s", dlerror());
     return env.Undefined();
   }
@@ -133,17 +177,19 @@ Napi::Value InitTrayRunner(const Napi::CallbackInfo &info) {
   return env.Undefined();
 }
 
-// setFrames(pngBuffers: Buffer[], isTemplate: boolean, intervalMs: number)：
-//   帧序列（JS 已解码/模板化/缩放到 2x 像素）→ NSImage 数组（尺寸减半为 pt）→
+// setFrames(pngBuffers: Buffer[], isTemplate: boolean, intervalMs: number, box: boolean)：
+//   帧序列（JS 已解码/缩放到 2x 像素）→ NSImage 数组（尺寸减半为 pt）→
 //   Swift 侧换帧模型。换帧由 Swift .common Timer 驱动（BuZhiYin 同款）。
+//   box=方框拉伸显示（只因/篮球等 BuZhiYin .resizable() 同款；否则保持原比例居中）。
 Napi::Value SetFrames(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
-  if (!gStatusItem || !gRunnerModel || !pTrModelSetFrames || info.Length() < 3 ||
-      !info[0].IsArray() || !info[1].IsBoolean() || !info[2].IsNumber())
+  if (!gStatusItem || !gRunnerModel || !pTrModelSetFrames || info.Length() < 4 ||
+      !info[0].IsArray() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsBoolean())
     return env.Undefined();
   Napi::Array arr = info[0].As<Napi::Array>();
   BOOL isTemplate = info[1].As<Napi::Boolean>().Value();
   double intervalMs = info[2].As<Napi::Number>().DoubleValue();
+  bool box = info[3].As<Napi::Boolean>().Value();
   NSMutableArray *images = [NSMutableArray array];
   for (uint32_t i = 0; i < arr.Length(); i++) {
     Napi::Value v = arr.Get(i);
@@ -159,8 +205,8 @@ Napi::Value SetFrames(const Napi::CallbackInfo &info) {
     [images addObject:img];
   }
   if (images.count == 0) return env.Undefined();
-  pTrModelSetFrames(gRunnerModel, images, intervalMs);
-  gStatusItem.length = NSVariableStatusItemLength;
+  pTrModelSetFrames(gRunnerModel, images, intervalMs, box);
+  gStatusItem.length = 22;  // 固定 22pt（BuZhiYin 同款，见 CreateStatusItem 注释）
   return env.Undefined();
 }
 
@@ -171,6 +217,19 @@ Napi::Value SetInterval(const Napi::CallbackInfo &info) {
     return env.Undefined();
   double ms = info[0].As<Napi::Number>().DoubleValue();
   pTrModelSetInterval(gRunnerModel, ms);
+  return env.Undefined();
+}
+
+// setInvert(light: boolean, dark: boolean)：反转配置（亮色反转/暗色反转，BuZhiYin 同款）——
+//   Swift 侧 RunnerView 按当前菜单栏外观决定 colorInvert，外观切换自动响应
+Napi::Value SetInvert(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (!gRunnerModel || !pTrModelSetInvert || info.Length() < 2 ||
+      !info[0].IsBoolean() || !info[1].IsBoolean())
+    return env.Undefined();
+  bool light = info[0].As<Napi::Boolean>().Value();
+  bool dark = info[1].As<Napi::Boolean>().Value();
+  pTrModelSetInvert(gRunnerModel, light, dark);
   return env.Undefined();
 }
 
@@ -227,6 +286,14 @@ Napi::Value DestroyStatusItem(const Napi::CallbackInfo &info) {
     pTrDestroy(gRunnerModel);
     gRunnerModel = nullptr;
   }
+  if (gClickMonitor) {
+    [NSEvent removeMonitor:gClickMonitor];
+    gClickMonitor = nil;
+  }
+  if (gClickTsFn) {
+    gClickTsFn.Release();
+    gClickTsFn = nullptr;
+  }
   return env.Undefined();
 }
 
@@ -235,8 +302,11 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("initTrayRunner", Napi::Function::New(env, InitTrayRunner));
   exports.Set("setFrames", Napi::Function::New(env, SetFrames));
   exports.Set("setInterval", Napi::Function::New(env, SetInterval));
+  exports.Set("setInvert", Napi::Function::New(env, SetInvert));
   exports.Set("getFrame", Napi::Function::New(env, GetFrame));
   exports.Set("setPanelBehavior", Napi::Function::New(env, SetPanelBehavior));
+  exports.Set("startGlobalClickMonitor", Napi::Function::New(env, StartGlobalClickMonitor));
+  exports.Set("stopGlobalClickMonitor", Napi::Function::New(env, StopGlobalClickMonitor));
   exports.Set("destroyStatusItem", Napi::Function::New(env, DestroyStatusItem));
   return exports;
 }

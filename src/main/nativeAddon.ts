@@ -6,10 +6,13 @@
 let native: {
   createStatusItem(cb: (type: string, payload: string) => void): void
   initTrayRunner(dylibPath: string): void
-  setFrames(pngs: Buffer[], isTemplate: boolean, intervalMs: number): void
+  setFrames(pngs: Buffer[], isTemplate: boolean, intervalMs: number, box: boolean): void
   setInterval(intervalMs: number): void
+  setInvert(light: boolean, dark: boolean): void
   getFrame(): { x: number; y: number; w: number; h: number }
   setPanelBehavior(handle: Buffer): void
+  startGlobalClickMonitor(cb: (type: string, payload: string) => void): void
+  stopGlobalClickMonitor(): void
   destroyStatusItem(): void
 } | null = null
 try {
@@ -35,9 +38,14 @@ export function nativeInitTrayRunner(dylibPath: string): void {
   }
 }
 
-export function nativeSetFrames(pngs: Buffer[], isTemplate: boolean, intervalMs: number): void {
+export function nativeSetFrames(
+  pngs: Buffer[],
+  isTemplate: boolean,
+  intervalMs: number,
+  box: boolean
+): void {
   try {
-    native?.setFrames(pngs, isTemplate, intervalMs)
+    native?.setFrames(pngs, isTemplate, intervalMs, box)
   } catch {
     /* no-op */
   }
@@ -46,6 +54,14 @@ export function nativeSetFrames(pngs: Buffer[], isTemplate: boolean, intervalMs:
 export function nativeSetInterval(intervalMs: number): void {
   try {
     native?.setInterval(intervalMs)
+  } catch {
+    /* no-op */
+  }
+}
+
+export function nativeSetInvert(light: boolean, dark: boolean): void {
+  try {
+    native?.setInvert(light, dark)
   } catch {
     /* no-op */
   }
@@ -62,6 +78,22 @@ export function nativeGetFrame(): { x: number; y: number; w: number; h: number }
 export function nativeSetPanelBehavior(handle: Buffer): void {
   try {
     native?.setPanelBehavior(handle)
+  } catch {
+    /* no-op */
+  }
+}
+
+export function nativeStartGlobalClickMonitor(cb: (type: string, payload: string) => void): void {
+  try {
+    native?.startGlobalClickMonitor(cb)
+  } catch {
+    /* no-op */
+  }
+}
+
+export function nativeStopGlobalClickMonitor(): void {
+  try {
+    native?.stopGlobalClickMonitor()
   } catch {
     /* no-op */
   }

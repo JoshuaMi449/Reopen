@@ -11,9 +11,16 @@ final class RunnerModel: ObservableObject {
     @Published var index: Int = 0
     var frames: [NSImage] = []
     var timer: Timer?
+    /// 反转配置（照 BuZhiYin ZhiyinEntity light_invert/dark_invert）：
+    ///   lightInvert=浅色菜单栏反转颜色；darkInvert=深色菜单栏反转颜色
+    var lightInvert = false
+    var darkInvert = false
+    /// 方框拉伸显示（BuZhiYin 同款：.resizable() 拉伸填满 22×22）；false=保持原比例居中
+    var box = false
 
-    func setFrames(_ images: [NSImage], intervalMs: Double) {
+    func setFrames(_ images: [NSImage], intervalMs: Double, box: Bool) {
         frames = images
+        self.box = box
         index = 0
         start(intervalMs: intervalMs)
     }
@@ -36,14 +43,33 @@ final class RunnerModel: ObservableObject {
     }
 }
 
-/// 图标视图：模板 NSImage 由系统按每屏菜单栏外观着色（深浅屏各自正确）
+/// 图标视图：普通图按当前菜单栏外观决定是否反转颜色（BuZhiYin AutoInvertImage 同款）。
+///   原图直传（2026-08-28 定稿）：活跃时显示 GIF 原样（白球+黑线），非活跃屏由系统
+///   自动压暗亮部/提亮暗部（实测只剩线条，与 BuZhiYin 一致）；不再做模板图编码。
+///   模板 NSImage（内置黑白主题图标）仍由系统按每屏菜单栏外观着色，不受反转影响。
+///   占位统一 22×22（BuZhiYin iconMinWidth=22 同款）：box 角色拉伸填满（只因/篮球，
+///   与 BuZhiYin .resizable() 分毫不差），其余保持原比例居中（占位一致、内容不变形）。
 struct RunnerView: View {
     @ObservedObject var model: RunnerModel
+    @Environment(\.colorScheme) var scheme
+
+    @ViewBuilder
     var body: some View {
-        Image(nsImage: model.frames[model.index])
-            .resizable()
-            .frame(width: model.frames[model.index].size.width,
-                   height: model.frames[model.index].size.height)
+        let invert = (scheme == .light && model.lightInvert) || (scheme == .dark && model.darkInvert)
+        let img = Image(nsImage: model.frames[model.index]).resizable()
+        if model.box {
+            if invert {
+                img.frame(width: 22, height: 22).colorInvert()
+            } else {
+                img.frame(width: 22, height: 22)
+            }
+        } else {
+            if invert {
+                img.aspectRatio(contentMode: .fit).frame(width: 22, height: 22).colorInvert()
+            } else {
+                img.aspectRatio(contentMode: .fit).frame(width: 22, height: 22)
+            }
+        }
     }
 }
 
@@ -55,19 +81,29 @@ public func tr_model_create() -> UnsafeMutableRawPointer {
     return Unmanaged.passRetained(m).toOpaque()
 }
 
-/// images: NSArray<NSImage>（addon 端已按 pt 尺寸+模板标记准备好）
+/// images: NSArray<NSImage>（addon 端已按 pt 尺寸+模板标记准备好）；box=方框拉伸显示
 @_cdecl("tr_model_set_frames")
 public func tr_model_set_frames(_ modelPtr: UnsafeMutableRawPointer,
                                 _ images: NSArray,
-                                _ intervalMs: Double) {
+                                _ intervalMs: Double,
+                                _ box: Bool) {
     let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
-    m.setFrames(images as! [NSImage], intervalMs: intervalMs)
+    m.setFrames(images as! [NSImage], intervalMs: intervalMs, box: box)
 }
 
 @_cdecl("tr_model_set_interval")
 public func tr_model_set_interval(_ modelPtr: UnsafeMutableRawPointer, _ intervalMs: Double) {
     let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
     m.setInterval(intervalMs)
+}
+
+/// 反转配置（浅色菜单栏反转 / 深色菜单栏反转，BuZhiYin 亮色反转/暗色反转同款）
+@_cdecl("tr_model_set_invert")
+public func tr_model_set_invert(_ modelPtr: UnsafeMutableRawPointer,
+                                _ light: Bool, _ dark: Bool) {
+    let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
+    m.lightInvert = light
+    m.darkInvert = dark
 }
 
 /// 返回 NSHostingView 裸指针（addon 挂到 status button 上，button 持有）

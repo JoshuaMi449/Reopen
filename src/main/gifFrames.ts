@@ -86,33 +86,17 @@ function downscale(
   return { data: out, w: tw, h: th }
 }
 
-/** 模板图编码（RGBA/BGRA buffer 原地改）：明暗深浅刻进 alpha——黑=镂实（前景色最浓）、
- *  灰=镂浅（前景色半透明→阴影层次保留）、白=全透；RGB 置 0（模板只认 alpha）。
- *  系统按每屏菜单栏实际外观渲染：浅色屏=黑+灰阴影、深色屏=白+灰阴影，双屏各自正确；
- *  成品反转图只能一种颜色，双屏一深一浅时必有一屏错（图标颜色跟随另一屏的根因） */
-export function encodeTemplate(data: Uint8Array | Uint8ClampedArray): void {
-  for (let i = 0; i < data.length; i += 4) {
-    const a = data[i + 3]
-    if (a === 0) continue
-    const l = (data[i] + data[i + 1] + data[i + 2]) / 3
-    data[i] = 0
-    data[i + 1] = 0
-    data[i + 2] = 0
-    data[i + 3] = Math.round((a * (255 - l)) / 255)
-  }
-}
-
 /** 把 gif 解码成帧序列（每帧合成到完整画布 → PNG → nativeImage，统一缩到 size px）。
- *  opts.template=模板图：明暗深浅刻进 alpha（黑=镂实、灰=镂浅），颜色交给系统按每屏菜单栏
- *  实际外观渲染（浅色屏黑、深色屏白）——双屏一深一浅时各屏正确；成品反转图（固定白/黑）
- *  在两屏外观不同时必有一屏颜色错。解析失败 / 只有一帧 → 返回 null（调用方退回静态图） */
+ *  原图直传（2026-08-28 定稿）：帧保持素材原样 RGB+alpha，剪影角色颜色反转由 Swift 侧
+ *  colorInvert 按菜单栏外观处理（不再做模板图编码——模板图把亮度折进 alpha 导致球身发虚、
+ *  非活跃时只剩白边）。解析失败 / 只有一帧 → 返回 null（调用方退回静态图） */
 export function loadGifFrames(
   path: string,
   size = 18,
-  opts: { template?: boolean; box?: boolean } = {}
+  opts: { box?: boolean } = {}
 ): GifFrame[] | null {
-  // 缓存 key 含尺寸/模板/方框：设置变化后必须重新解码，不能命中旧帧
-  const key = `${path}:${size}${opts.template ? ':t' : ''}${opts.box ? ':b' : ''}`
+  // 缓存 key 含尺寸/方框：设置变化后必须重新解码，不能命中旧帧
+  const key = `${path}:${size}${opts.box ? ':b' : ''}`
   const hit = cache.get(key)
   if (hit) return hit
   // 编码前先缩到 2x（高清屏），上限 44 防大图标白费内存
@@ -197,14 +181,12 @@ export function loadGifFrames(
         }
       }
       const { data: small, w: fw, h: fh } = downscale(canvas, W, H, target, opts.box)
-      if (opts.template) encodeTemplate(small)
       const frame = new PNG({ width: fw, height: fh })
       frame.data = Buffer.from(small.buffer)
       const png = PNG.sync.write(frame)
       // target=size×2 的像素按 2x 解码 = size pt 高清显示（Retina 屏不糊；
       // 之前按 1x 解码再 resize 放大，像素被拉扯=马赛克）
       const img = nativeImage.createFromBuffer(png, { scaleFactor: 2 })
-      if (opts.template) img.setTemplateImage(true)
       result.push({
         image: img,
         delay: Math.max(f.delay || 100, 100)
