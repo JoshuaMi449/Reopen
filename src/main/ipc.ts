@@ -570,6 +570,22 @@ export function registerIpc(): void {
       isGif: mime === 'image/gif'
     }
   })
+  // 面板图标④：打开 macOS 系统「活动监视器」（RunCat 同款行为）
+  ipcMain.handle('tray:open-activity-monitor', async () => {
+    await shell.openPath('/System/Applications/Utilities/Activity Monitor.app')
+  })
+  // 面板「切换动画」弹窗：点选角色 → 存设置并立即刷新托盘图标
+  ipcMain.handle('tray:switch-character', (_e, path: string) => {
+    const saved = saveSettings({ trayIcon: 'custom', trayIconPath: path })
+    refreshTray()
+    broadcastSettings(saved)
+  })
+  // 面板「切换动画」弹窗左下角主题按钮：切回内置 Reopen 黑白主题图标
+  ipcMain.handle('tray:switch-theme', () => {
+    const saved = saveSettings({ trayIcon: 'mono' })
+    refreshTray()
+    broadcastSettings(saved)
+  })
   // 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用）
   ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
   // 改由本应用托管：停掉手动起的旧服务重新启动（对局域网开门）

@@ -3,6 +3,8 @@
 //   照抄 BuZhiYin 机制）——三图标对比实验实锤：只有 SwiftUI 管线能获得系统
 //   「非活跃屏冻结最后一帧」托管。换帧由 Swift 内部 .common Timer 驱动（BuZhiYin 同款），
 //   JS 只传帧序列与换帧间隔（CPU 变速）。加载失败降级：全部 no-op（应用不崩，托盘功能缺失）。
+import type { SystemInfo } from '../shared/types'
+
 let native: {
   createStatusItem(cb: (type: string, payload: string) => void): void
   initTrayRunner(dylibPath: string): void
@@ -14,6 +16,7 @@ let native: {
   startGlobalClickMonitor(cb: (type: string, payload: string) => void): void
   stopGlobalClickMonitor(): void
   destroyStatusItem(): void
+  getSystemInfo(): SystemInfo
 } | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -104,5 +107,14 @@ export function nativeDestroyStatusItem(): void {
     native?.destroyStatusItem()
   } catch {
     /* no-op */
+  }
+}
+
+/** 面板系统信息采样（RunCat 面板同款数据：Mach/IOKit/getifaddrs，native addon 内实现） */
+export function nativeGetSystemInfo(): SystemInfo | null {
+  try {
+    return native?.getSystemInfo() ?? null
+  } catch {
+    return null
   }
 }

@@ -43,7 +43,7 @@ const LABELS: Record<string, string> = {
  *   未列出的角色/彩色素材=永不反转（原图显示，不只因绝大多数角色都是这个配置）。 */
 const INVERT_ROLES: Record<string, { light: boolean; dark: boolean }> = {
   zhiyin: { light: false, dark: true }, // 铁山靠：深色菜单栏黑剪影反转成白（不只因 0/1）
-  zhiyin_basketball: { light: false, dark: false }, // 篮球：永不反转（不只因 0/0，原图白球+黑线）
+  zhiyin_basketball: { light: false, dark: true }, // 篮球：深色反转（2026-08-31 用户拍板：暗色屏也要变白）
   dogeza: { light: false, dark: true } // 磕头（白底素材）：深色反转成黑底白线，黑底融入深菜单栏
 }
 

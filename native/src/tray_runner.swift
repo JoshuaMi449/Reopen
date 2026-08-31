@@ -17,6 +17,10 @@ final class RunnerModel: ObservableObject {
     var darkInvert = false
     /// 方框拉伸显示（BuZhiYin 同款：.resizable() 拉伸填满 22×22）；false=保持原比例居中
     var box = false
+    /// 菜单栏窗口外观深浅（RunCat window.effectiveAppearance 同款判定）：
+    ///   双屏一浅一暗时 colorScheme 是全局值会判错，此值由 native 侧 KVO 每屏推来；
+    ///   nil=未知（回退 colorScheme）
+    @Published var menuBarDark: Bool? = nil
 
     func setFrames(_ images: [NSImage], intervalMs: Double, box: Bool) {
         frames = images
@@ -43,10 +47,12 @@ final class RunnerModel: ObservableObject {
     }
 }
 
-/// 图标视图：普通图按当前菜单栏外观决定是否反转颜色（BuZhiYin AutoInvertImage 同款）。
+/// 图标视图（只服务双色 GIF 角色；mono 静态主题图标走 addon 系统模板图渲染，
+///   button.image=template NSImage，系统按每屏壁纸着色+非活跃自动灰，不经此视图）：
+///   普通图按当前菜单栏外观决定是否反转颜色（BuZhiYin AutoInvertImage 同款）。
 ///   原图直传（2026-08-28 定稿）：活跃时显示 GIF 原样（白球+黑线），非活跃屏由系统
-///   自动压暗亮部/提亮暗部（实测只剩线条，与 BuZhiYin 一致）；不再做模板图编码。
-///   模板 NSImage（内置黑白主题图标）仍由系统按每屏菜单栏外观着色，不受反转影响。
+///   自动压暗亮部/提亮暗部（实测只剩线条，与 BuZhiYin 一致）；软件不再叠任何变淡
+///   （系统灰×软件灰=双重变暗「很黑」根因，2026-08-31 删除）。
 ///   占位统一 22×22（BuZhiYin iconMinWidth=22 同款）：box 角色拉伸填满（只因/篮球，
 ///   与 BuZhiYin .resizable() 分毫不差），其余保持原比例居中（占位一致、内容不变形）。
 struct RunnerView: View {
@@ -55,19 +61,29 @@ struct RunnerView: View {
 
     @ViewBuilder
     var body: some View {
-        let invert = (scheme == .light && model.lightInvert) || (scheme == .dark && model.darkInvert)
-        let img = Image(nsImage: model.frames[model.index]).resizable()
-        if model.box {
-            if invert {
-                img.frame(width: 22, height: 22).colorInvert()
-            } else {
-                img.frame(width: 22, height: 22)
-            }
+        // mono 静态主题图标走 addon button.image 系统模板渲染，模型无帧：
+        //   hosting view 仍挂在按钮上（外观推送会触发刷新），空帧必须占位防越界
+        //   （2026-08-31 崩溃实锤：frames 空时 body 读 frames[index] → SIGTRAP）
+        if model.frames.isEmpty {
+            Color.clear.frame(width: 22, height: 22)
         } else {
-            if invert {
-                img.aspectRatio(contentMode: .fit).frame(width: 22, height: 22).colorInvert()
+            // 深浅判定用菜单栏窗口 effectiveAppearance（KVO 推来），未知时回退 colorScheme
+            let isDark = model.menuBarDark ?? (scheme == .dark)
+            let img = Image(nsImage: model.frames[model.index]).resizable()
+            let invert = (!isDark && model.lightInvert) || (isDark && model.darkInvert)
+            if model.box {
+                if invert {
+                    img.frame(width: 22, height: 22).colorInvert()
+                } else {
+                    img.frame(width: 22, height: 22)
+                }
             } else {
-                img.aspectRatio(contentMode: .fit).frame(width: 22, height: 22)
+                if invert {
+                    img.aspectRatio(contentMode: .fit)
+                        .frame(width: 22, height: 22).colorInvert()
+                } else {
+                    img.aspectRatio(contentMode: .fit).frame(width: 22, height: 22)
+                }
             }
         }
     }
@@ -81,7 +97,7 @@ public func tr_model_create() -> UnsafeMutableRawPointer {
     return Unmanaged.passRetained(m).toOpaque()
 }
 
-/// images: NSArray<NSImage>（addon 端已按 pt 尺寸+模板标记准备好）；box=方框拉伸显示
+/// images: NSArray<NSImage>（addon 端已按 pt 尺寸准备好）；box=方框拉伸显示
 @_cdecl("tr_model_set_frames")
 public func tr_model_set_frames(_ modelPtr: UnsafeMutableRawPointer,
                                 _ images: NSArray,
@@ -104,6 +120,13 @@ public func tr_model_set_invert(_ modelPtr: UnsafeMutableRawPointer,
     let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
     m.lightInvert = light
     m.darkInvert = dark
+}
+
+/// 菜单栏明暗（native 侧 KVO 按钮视图 effectiveAppearance 推来，替代全局 colorScheme 判定）
+@_cdecl("tr_model_set_dark")
+public func tr_model_set_dark(_ modelPtr: UnsafeMutableRawPointer, _ isDark: Bool) {
+    let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
+    m.menuBarDark = isDark
 }
 
 /// 返回 NSHostingView 裸指针（addon 挂到 status button 上，button 持有）

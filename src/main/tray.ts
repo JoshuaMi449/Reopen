@@ -23,7 +23,8 @@ import {
   nativeSetPanelBehavior,
   nativeStartGlobalClickMonitor,
   nativeStopGlobalClickMonitor,
-  nativeDestroyStatusItem
+  nativeDestroyStatusItem,
+  nativeGetSystemInfo
 } from './nativeAddon'
 import trayIconAsset from '../../resources/tray-icon.png?asset'
 
@@ -45,6 +46,8 @@ let panel: BrowserWindow | null = null
 let nativeCreated = false
 /** CPU 变速定时器（每 2s 采样一次，把换帧间隔传给 Swift 侧 Timer） */
 let cpuTimer: ReturnType<typeof setTimeout> | null = null
+/** 系统信息采样定时器（面板打开期间每 2s 推送一次；RunCat 面板默认 5s，我们更实时） */
+let sysTimer: ReturnType<typeof setInterval> | null = null
 
 /** 等比缩放到高度=size、宽度随原比例（图标高度统一、宽度随素材；
  *  保留原比例——菜单栏图标不拉正方形，396×337 这类非正方形硬拉 1:1 会压扁变形） */
@@ -105,6 +108,25 @@ function stopCpuFollow(): void {
   cpuTimer = null
 }
 
+/** 系统信息推送（面板打开期间）：立即推一帧 + 每 2s 采样（native getSystemInfo，
+ *  RunCat SystemInfoKit 同款口径）。第一帧 CPU/网速是差值可能为 0，第二帧起正常。 */
+function startSystemInfoFeed(): void {
+  stopSystemInfoFeed()
+  const push = (): void => {
+    const info = nativeGetSystemInfo()
+    if (info && panel && !panel.isDestroyed()) {
+      panel.webContents.send('tray:system-info', info)
+    }
+  }
+  push()
+  sysTimer = setInterval(push, 2000)
+}
+
+function stopSystemInfoFeed(): void {
+  if (sysTimer) clearInterval(sysTimer)
+  sysTimer = null
+}
+
 /** 自定义图是 GIF → 解码成帧序列交给 SwiftUI 换帧模型（照抄 BuZhiYin：Swift 内部
  *  .common Timer 换帧，系统托管非活跃屏冻结最后一帧）；否则挂静态图（=1 帧）。
  *  原图直传（2026-08-28 定稿）：帧保持素材原样 RGB+alpha，剪影角色的颜色反转由
@@ -147,14 +169,19 @@ function applyTrayIcon(): void {
 
 function createPanel(): BrowserWindow {
   panel = new BrowserWindow({
-    width: 300,
-    height: 400,
+    width: 360,
+    height: 500,
     show: false,
     frame: false,
     resizable: false,
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
+    // Liquid Glass 系统玻璃（macOS 26 材质，系统升级自动跟随新风格；RunCat 面板同款质感）。
+    // 透明窗口 + CSS 圆角面板，窗口边缘透出纯玻璃（.tray-panel margin 区）
+    ...(process.platform === 'darwin'
+      ? { vibrancy: 'sidebar' as const, visualEffectState: 'active' as const, transparent: true }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -169,6 +196,9 @@ function createPanel(): BrowserWindow {
   // 隐藏即摘除。点托盘图标本身走 button action 的 togglePanel，监视回调里坐标在图标
   // 区内则忽略不误关（坐标已由原生侧转为 CG/Electron 系，原点主屏左上）
   panel.on('show', () => {
+    // 每次弹出都回到默认界面（上次停留的项目列表/更多页不残留）
+    panel?.webContents.send('tray:reset-view')
+    startSystemInfoFeed()
     nativeStartGlobalClickMonitor((type, payload) => {
       if (type !== 'click' || !panel || panel.isDestroyed() || !panel.isVisible()) return
       const [x, y] = payload.split(',').map(Number)
@@ -179,7 +209,10 @@ function createPanel(): BrowserWindow {
       panel.hide()
     })
   })
-  panel.on('hide', () => nativeStopGlobalClickMonitor())
+  panel.on('hide', () => {
+    stopSystemInfoFeed()
+    nativeStopGlobalClickMonitor()
+  })
   // 面板窗口设为跟随活跃 Space：每次弹出自动出现在当前桌面，不闪回创建时的旧桌面
   try {
     nativeSetPanelBehavior(panel.getNativeWindowHandle())
@@ -275,6 +308,7 @@ export function initTray(): void {
 /** 退出前清理 */
 export function destroyTray(): void {
   stopCpuFollow()
+  stopSystemInfoFeed()
   nativeDestroyStatusItem()
   nativeCreated = false
   panel?.destroy()

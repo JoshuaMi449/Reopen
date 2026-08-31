@@ -6,7 +6,8 @@ import type {
   ProjectLogEvent,
   ProjectStatusEvent,
   ReopenApi,
-  Settings
+  Settings,
+  SystemInfo
 } from '../shared/types'
 
 // 渲染层可用的全部 API（contextBridge 安全暴露，类型见 shared/types.ts）
@@ -86,6 +87,19 @@ const api: ReopenApi = {
     const listener = (_e: Electron.IpcRendererEvent, event: ProjectLogEvent): void => cb(event)
     ipcRenderer.on('project:log', listener)
     return () => ipcRenderer.removeListener('project:log', listener)
+  },
+  onSystemInfo: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, s: SystemInfo): void => cb(s)
+    ipcRenderer.on('tray:system-info', listener)
+    return () => ipcRenderer.removeListener('tray:system-info', listener)
+  },
+  switchTrayCharacter: (path) => ipcRenderer.invoke('tray:switch-character', path),
+  switchTrayTheme: () => ipcRenderer.invoke('tray:switch-theme'),
+  openActivityMonitor: () => ipcRenderer.invoke('tray:open-activity-monitor'),
+  onTrayResetView: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('tray:reset-view', listener)
+    return () => ipcRenderer.removeListener('tray:reset-view', listener)
   }
 }
 

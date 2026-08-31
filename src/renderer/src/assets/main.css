@@ -2014,62 +2014,476 @@ html.dark .sidebar-logo-word,
 
 /* ---------- 托盘面板 ---------- */
 
+/* 玻璃材质变量（照 RunCat MaterialCellStyle 源码实锤，随深浅切换）：
+   --glass-cell=ultraThinMaterial 白浊近似（RunCat 是白浊玻璃，不是黑浊——浅色下黑浊会更暗更脏）；
+   --glass-cell-border=Color(.separatorColor)（浅色≈黑 12%）；
+   --card-shadow=SwiftUI .shadow(radius:2,y:2) 默认阴影色（黑 33%，暗色加深）；
+   --tray-accent=accentColor 系统蓝（RunCat 波形/进度条同款：浅 #007AFF、暗 #0A84FF）；
+   --glass-menu-bg=弹菜单不透明底色（不透出下层文字）；
+   hover=系统默认半透明灰高亮；--tray-text=面板统一文字色（跟系统外观，暗=白、浅=黑） */
+:root {
+  --glass-cell: rgba(255, 255, 255, 0.42);
+  --glass-cell-border: rgba(0, 0, 0, 0.12);
+  --glass-hover: rgba(0, 0, 0, 0.08);
+  --tray-text: rgba(0, 0, 0, 0.85);
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.33);
+  --tray-accent: #007aff;
+  --glass-menu-bg: rgba(246, 246, 246, 0.96);
+}
+
+:root.dark {
+  --glass-cell: rgba(255, 255, 255, 0.1);
+  --glass-cell-border: rgba(255, 255, 255, 0.16);
+  --glass-hover: rgba(255, 255, 255, 0.1);
+  --tray-text: rgba(255, 255, 255, 0.92);
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+  --tray-accent: #0a84ff;
+  --glass-menu-bg: rgba(28, 28, 30, 0.96);
+}
+
+/* ultraThinMaterial 灰底卡（照 RunCat MaterialCellStyle：圆角 12 + 细描边 + 轻阴影） */
+.material-cell {
+  background: var(--glass-cell);
+  border: 1px solid var(--glass-cell-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.1);
+}
+
 body.tray-window {
   background: transparent;
-}
-
-body.tray-window #root {
-  height: auto;
-}
-
-.tray-panel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin: 6px;
-  padding: 10px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  height: 376px;
   overflow: hidden;
 }
 
-.tray-head {
+body.tray-window #root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* RunCat 面板布局（2026-08-31 定稿，照 RunCat 面板贴满窗口）：
+   左大框顶格（上缘贴面板顶，与右上角文字 logo 顶对齐）；wordmark 浮右上角无底框；
+   右侧 5 功能格从 wordmark 下方开始、格子撑满右列宽。面板贴满窗口：无四周等宽玻璃边带 */
+.tray-panel {
+  position: relative;
+  background: transparent;
+  border-radius: 12px;
+  margin: 0;
+  padding: 10px;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2px 6px 8px;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--tray-text);
 }
 
-.tray-title {
-  font-weight: 600;
-  font-size: 13px;
+/* 右上角 wordmark 文字 logo（绝对定位浮右上角、无底框；暗色系统反白）。
+   宽度=下方格子列宽 76pt（与右列框左缘对齐），高度随原图 3:1 比例 ≈25pt */
+.tray-wordmark {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 76px;
+  height: auto;
+  cursor: pointer;
+  opacity: 0.85;
+  z-index: 10;
 }
 
-.tray-running {
-  font-size: 11px;
-  color: var(--text-dim);
+.tray-wordmark:hover {
+  opacity: 1;
 }
 
-.tray-list {
+:root.dark .tray-wordmark {
+  filter: invert(1);
+}
+
+/* 下方左右分栏：左大框 + 右侧功能格列 */
+.tray-main {
   flex: 1;
-  overflow-y: auto;
-  padding: 6px 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+/* 左侧灰底材质卡（RunCat ultraThinMaterial 同款：白浊玻璃+separatorColor 描边+shadow(2,2) 投影） */
+.tray-body {
+  flex: 1;
+  min-width: 0;
+  background: var(--glass-cell);
+  border: 1px solid var(--glass-cell-border);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 系统信息卡（RunCat SystemInfoView 同款结构：左大 icon + 右内容，卡间细分隔线）。
+   默认页不滚动：5 卡高度已按一屏排布（2026-08-31 重排定稿） */
+.tray-cards {
+  flex: 1;
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.sys-card {
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sys-card + .sys-card {
+  border-top: 1px solid var(--glass-cell-border);
+}
+
+/* RunCat SystemInfoView 同款：icon 与右侧内容整块垂直居中（HStack alignment: .center）；
+   icon 与文字间距 14pt，文字靠右舒展 */
+.sys-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sys-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+  margin-top: 1px;
+}
+
+/* 图标右侧内容列：摘要 + 详情（详情缩进 12px，RunCat SystemInfoView 同款） */
+.sys-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.sys-summary {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.sys-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11px;
+  padding-left: 12px;
+  opacity: 0.85;
+  line-height: 1.45;
+}
+
+/* CPU 蓝色柱状波形（RunCat 同款：每根柱子=一次采样，accentColor 系统蓝） */
+.sys-wave {
+  width: 100%;
+  height: 16px;
+  display: block;
+}
+
+/* 储存蓝色进度条（RunCat BarGraphView 同款：accentColor 填充） */
+.sys-bar {
+  height: 7px;
+  border-radius: 3.5px;
+  background: rgba(128, 128, 128, 0.2);
+  overflow: hidden;
+  margin: 2px 0 0;
+}
+
+:root.dark .sys-bar {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.sys-bar-fill {
+  height: 100%;
+  background: var(--tray-accent);
+  border-radius: 3.5px;
+  transition: width 0.8s ease;
+}
+
+/* 右侧 5 功能格（RunCat 面板同款：正方形格+格内下方小字，格子撑满右列宽，带同款投影）。
+   右列从 wordmark 下方开始（左框顶格与 wordmark 顶对齐，右列第一格让开 wordmark）；
+   格子间缝隙 gap 6 + 相邻阴影 ≈ 10pt 视觉=左右边距 10pt（间距视觉统一，2026-08-31 定稿） */
+.tray-side {
+  width: 76px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding-top: 38px; /* wordmark 高 25 + top 10 = 35，让开 3pt */
+  padding-bottom: 0;
+}
+
+/* 弹菜单定位父级是 .tray-panel（position:relative），此包装器不参与定位 */
+.tray-side-btn-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* 正方形格 84×84：icon 在上、文字在下，整体垂直居中（icon 上方与文字下方留白相等） */
+.tray-side-btn {
+  width: 100%; /* 格子撑满右列宽（占满右边） */
+  height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 10px;
+  background: var(--glass-cell);
+  border: 1px solid var(--glass-cell-border);
+  box-shadow: var(--card-shadow);
+  color: var(--tray-text);
+  cursor: pointer;
+}
+
+.tray-side-btn:hover {
+  background: var(--glass-hover);
+}
+
+.tray-side-btn.is-active {
+  background: var(--glass-hover);
+  border-color: var(--tray-accent);
+}
+
+.tray-side-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 72px;
+}
+
+/* 「项目状态」格子图标：用户素材黑白双版，随系统外观切换；
+   与 lucide 图标统一 28×28 尺寸 */
+.tray-projects-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.tray-projects-img-dark {
+  display: none;
+}
+
+:root.dark .tray-projects-img-light {
+  display: none;
+}
+
+:root.dark .tray-projects-img-dark {
+  display: block;
+}
+
+/* 切换动画弹窗（点③弹出）：顶部从「切换动画」格顶开始往下铺到面板底上方，
+   不透明底色；左列=动图/图片（左上角竖排）+主题（左下角），右区=角色滚动列表。
+   选中 tab 与右侧列表块连成一体（同背景、右缘相连），主题按钮不参与选中态 */
+.tray-char-menu {
+  position: absolute;
+  right: 96px; /* 左框右缘=面板右-10-76-10=96：与左框右边界对齐，不压左框 */
+  top: 226px; /* 「切换动画」格顶：padding 10 + 右列 padding-top 38 + 2×(84+5) */
+  bottom: 10px;
+  width: 240px;
+  background: var(--glass-menu-bg);
+  border: 1px solid var(--glass-cell-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: row;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+
+/* 左列：动图/图片 tab 竖排靠上 + 主题贴底 */
+.tray-char-side {
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.tray-char-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 连体标签：选中 tab 右缘与列表块相连（左圆角右直角、同背景） */
+.tray-char-tab {
+  font-size: 11px;
+  padding: 5px 0;
+  margin-left: 6px;
+  border-radius: 6px 0 0 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tray-text);
+  opacity: 0.7;
+  cursor: pointer;
+  text-align: center;
+}
+
+.tray-char-tab:hover {
+  background: var(--glass-hover);
+  opacity: 1;
+}
+
+.tray-char-tab.is-active {
+  background: var(--glass-hover);
+  border-color: var(--glass-cell-border);
+  border-right-color: transparent;
+  opacity: 1;
+}
+
+/* 左下角主题按钮（点击直接切回内置 Reopen 黑白主题图标） */
+.tray-char-theme {
+  margin-top: auto;
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 5px 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tray-text);
+  opacity: 0.7;
+  cursor: pointer;
+  text-align: center;
+}
+
+.tray-char-theme:hover {
+  background: var(--glass-hover);
+  opacity: 1;
+}
+
+/* 角色滚动列表（点选跳转切换 icon）：与 active tab 连体的背景块 */
+.tray-char-list {
+  flex: 1;
+  min-width: 0;
+  margin: 6px 6px 6px 0;
+  background: var(--glass-hover);
+  border-radius: 0 6px 6px 0;
+  overflow-y: auto;
+  scrollbar-width: none; /* 无滚动条；WebKit 见下方 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px;
+}
+
+.tray-char-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tray-char-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--tray-text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tray-char-item:hover {
+  background: var(--glass-hover);
+}
+
+.tray-char-thumb {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.tray-char-thumb-empty {
+  width: 26px;
+  height: 26px;
+}
+
+/* 项目状态页：顶部运行计数 + 网页/服务两组只读列表 + 底部打开主窗口 */
+.tray-projects {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.tray-projects-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 4px 10px;
+}
+
+.tray-projects-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #30d158;
+}
+
+.tray-projects-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tray-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.55;
+  padding: 8px 8px 3px;
+}
+
+/* 面板内复用主窗口 .icon-btn 也统一菜单栏文字色 */
+.tray-panel .icon-btn {
+  color: var(--tray-text);
+}
+
+.tray-panel .icon-btn:hover {
+  background: var(--glass-hover);
+  color: var(--tray-text);
+}
+
+/* 玻璃上的细滚动条（卡片区/项目列表共用） */
+.tray-cards::-webkit-scrollbar,
+.tray-projects-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.tray-cards::-webkit-scrollbar-thumb,
+.tray-projects-list::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.45);
+  border-radius: 3px;
+}
+
+.tray-cards::-webkit-scrollbar-track,
+.tray-projects-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .tray-empty {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--tray-text);
   text-align: center;
   padding: 24px 12px;
   line-height: 1.6;
 }
 
+/* 项目行（只读：点行在浏览器打开） */
 .tray-item {
   display: flex;
   align-items: center;
@@ -2081,15 +2495,15 @@ body.tray-window #root {
 }
 
 .tray-item:hover {
-  background: var(--hover);
+  background: var(--glass-hover);
 }
 
 .tray-item-failed {
-  color: var(--danger);
+  color: var(--tray-text);
 }
 
 .tray-item-icon {
-  color: var(--primary-strong);
+  color: var(--tray-text);
   display: flex;
 }
 
@@ -2101,29 +2515,20 @@ body.tray-window #root {
 }
 
 .tray-item-port {
-  color: var(--text-dim);
+  color: var(--tray-text);
   font-size: 11px;
-}
-
-.tray-item-fail-icon {
-  flex-shrink: 0;
-}
-
-.tray-item-browser {
-  width: 22px;
-  height: 22px;
 }
 
 .tray-item-action {
   flex-shrink: 0;
-  color: var(--text-dim);
+  color: var(--tray-text);
 }
 
 .tray-foot {
   display: flex;
   gap: 4px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--glass-cell-border);
 }
 
 .tray-foot-btn {
@@ -2132,16 +2537,116 @@ body.tray-window #root {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-cell-border);
   background: transparent;
   border-radius: 6px;
   padding: 5px 2px;
-  color: var(--text);
+  color: var(--tray-text);
   font-size: 11px;
+  cursor: pointer;
 }
 
 .tray-foot-btn:hover {
-  background: var(--hover);
+  background: var(--glass-hover);
+}
+
+/* 更多页（RunCat 更多菜单同款行式菜单） */
+.tray-more {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 6px;
+  gap: 2px;
+}
+
+.tray-more-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--tray-text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tray-more-row:hover {
+  background: var(--glass-hover);
+}
+
+/* 关于页（RunCat 关于弹窗同款布局：图标+名字+版本、简介、版权） */
+.tray-about {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.tray-about-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--tray-text);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  align-self: flex-start;
+}
+
+.tray-about-back:hover {
+  background: var(--glass-hover);
+}
+
+.tray-about-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 0 22px 10px;
+}
+
+.tray-about-logo {
+  width: 48px;
+  height: 42px;
+  margin-bottom: 10px;
+  opacity: 0.9;
+}
+
+.tray-about-logo .tray-projects-img {
+  width: 100%;
+  height: 100%;
+}
+
+.tray-about-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tray-about-version {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.tray-about-desc {
+  font-size: 11px;
+  line-height: 1.7;
+  opacity: 0.8;
+  margin-top: 6px;
+}
+
+.tray-about-copy {
+  font-size: 10px;
+  opacity: 0.55;
+  margin-top: 10px;
 }
 
 /* ---------- 偏好设置窗口 ---------- */

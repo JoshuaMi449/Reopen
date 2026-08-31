@@ -340,6 +340,32 @@ export interface TrayCharacterItem {
   isGif: boolean
 }
 
+/** 面板系统信息卡数据（native addon getSystemInfo 采集，口径与 RunCat 面板一致：
+ *  SystemInfoKit 同款 API——Mach host_statistics64 / IOKit AppleSmartBattery / getifaddrs；
+ *  比例均为 0-1，字节为 bytes，速度 bps） */
+export interface SystemInfo {
+  cpu: { percent: number; system: number; user: number; idle: number }
+  memory: {
+    percent: number
+    /** 压力=(联动+已压缩)/物理内存（RunCat 自创口径，非活动监视器的压力等级） */
+    pressure: number
+    appBytes: number
+    wiredBytes: number
+    compressedBytes: number
+  }
+  storage: { percent: number; totalBytes: number; usedBytes: number }
+  battery: {
+    installed: boolean
+    percent: number
+    maxCapacity: number
+    cycleCount: number
+    temperature: number
+    charging: boolean
+    adapterName: string
+  }
+  network: { type: string; ip: string; downloadBps: number; uploadBps: number }
+}
+
 /** 渲染层可用的全部 API（preload 通过 contextBridge 暴露为 window.api） */
 export interface ReopenApi {
   /** 拖拽的 File 对象 → 磁盘路径（Electron 32+ 需 webUtils） */
@@ -439,4 +465,14 @@ export interface ReopenApi {
   onStatus(cb: (e: ProjectStatusEvent) => void): () => void
   /** 订阅日志，返回取消订阅函数 */
   onLog(cb: (e: ProjectLogEvent) => void): () => void
+  /** 订阅面板系统信息推送（面板打开期间每 2s 一次），返回取消订阅函数 */
+  onSystemInfo(cb: (s: SystemInfo) => void): () => void
+  /** 切换菜单栏动画角色（面板「切换动画」弹菜单用；与设置页同一入口） */
+  switchTrayCharacter(path: string): Promise<void>
+  /** 切回内置 Reopen 黑白主题图标（「切换动画」弹窗左下角主题按钮） */
+  switchTrayTheme(): Promise<void>
+  /** 打开 macOS 系统「活动监视器」App（面板图标④，RunCat 同款行为） */
+  openActivityMonitor(): Promise<void>
+  /** 面板每次弹出前重置回默认界面，返回取消订阅函数 */
+  onTrayResetView(cb: () => void): () => void
 }
