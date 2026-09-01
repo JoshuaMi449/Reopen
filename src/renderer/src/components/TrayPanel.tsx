@@ -551,7 +551,7 @@ function AboutView(props: { onBack: () => void }): React.JSX.Element {
         <div className="tray-about-desc">
           本地项目启动器：一键复活你的开发服务。 菜单栏常驻，端口状态一目了然，退出即止。
         </div>
-        <div className="tray-about-copy">© 2026 蓝卓</div>
+        <div className="tray-about-copy">© 2026 HanYu</div>
       </div>
     </div>
   )
