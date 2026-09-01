@@ -27,6 +27,7 @@ import {
   adoptAllRunning,
   adoptRunning,
   installProjectDeps,
+  isProjectRunning,
   killResidualAndStart,
   openProjectBrowser,
   rehostProject,
@@ -457,6 +458,16 @@ export function registerIpc(): void {
   })
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
+  // 切换启动方式：更新存档；运行中=停掉按新方式重启（停止态只改默认，下次启动生效）
+  ipcMain.handle('project:set-active-mode', async (_e, id: string, modeId: string) => {
+    const p = listProjects().find((x) => x.id === id)
+    if (!p) return { ok: false, reason: '项目不存在' }
+    if (!p.launchModes?.some((m) => m.id === modeId)) return { ok: false, reason: '启动方式不存在' }
+    updateProject(id, { activeMode: modeId })
+    if (!isProjectRunning(id)) return { ok: true }
+    await stopProject(id)
+    return startProject(id, modeId)
+  })
   ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
   ipcMain.handle('project:kill-residual', (_e, id: string) => killResidualAndStart(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())

@@ -799,6 +799,29 @@ html.dark .sidebar-logo-word,
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* ---------- 抽屉启动方式切换 ---------- */
+
+.drawer-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 2px;
+}
+
+.drawer-mode-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.drawer-mode-btns .btn-mini {
+  margin-left: 0;
+}
+
+.drawer-mode-btns .btn-mini.mode-active {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ---------- 右侧详情抽屉（点击项目从右侧滑出预览） ---------- */
 
 /* 抽屉槽位：常驻 DOM，宽度 0↔456 平滑过渡——中间栏每帧跟着收缩，

@@ -412,6 +412,8 @@ export interface ReopenApi {
     port: number
   ): Promise<{ ok: boolean; reason?: string; source?: PortSource }>
   startProject(id: string, modeId?: string): Promise<StartResult>
+  /** 切换启动方式：更新存档；运行中=停掉按新方式重启，停止态=只改默认 */
+  setActiveMode(id: string, modeId: string): Promise<StartResult>
   /** 端口查重：档案里其他项目登记的端口 + 本机 TCP 监听探测（表单输入时实时调用） */
   checkPortInUse(
     port: number,

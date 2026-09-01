@@ -1072,6 +1072,14 @@ export default function App(): React.JSX.Element {
     if (!res.ok) toast(res.reason ?? '切换失败', 'error')
   }
 
+  /** 切换启动方式：主进程改存档（运行中自动重启到新方式）；同步本地方案清单 */
+  const handleSwitchMode = async (p: Project, modeId: string): Promise<void> => {
+    if (p.activeMode === modeId) return
+    const res = await window.api.setActiveMode(p.id, modeId)
+    if (!res.ok) toast(res.reason ?? '切换失败', 'error')
+    else setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, activeMode: modeId } : x)))
+  }
+
   /** 启动失败后的「看成品」兜底（以成品预览方式打开 */
   const handleViewPreview = async (p: Project): Promise<void> => {
     const res = await window.api.startProject(p.id, 'preview')
@@ -1831,6 +1839,7 @@ export default function App(): React.JSX.Element {
                 }
                 lanIp={settings.lanAccess ? lanIp : ''}
                 onRehost={() => handleRehost(drawerProject)}
+                onSwitchMode={(modeId) => handleSwitchMode(drawerProject, modeId)}
               />
             )}
           </div>

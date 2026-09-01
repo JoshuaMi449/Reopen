@@ -73,6 +73,12 @@ function getRuntime(id: string): Runtime {
   return rt
 }
 
+/** 项目是否正在运行（切换启动方式时判断：运行中=停掉按新方式重启；停止态=只改存档） */
+export function isProjectRunning(id: string): boolean {
+  const st = runtimes.get(id)?.status
+  return st === 'running' || st === 'starting'
+}
+
 function emit(event: ProjectStatusEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('project:status', event)

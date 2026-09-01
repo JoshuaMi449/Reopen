@@ -251,10 +251,6 @@ export function SettingsPage({
           />
         </SettingRow>
 
-        <SettingRow label="语言" hint="中英切换随 M4 发布里程碑上线">
-          <span className="settings-static">简体中文</span>
-        </SettingRow>
-
         <SettingRow label="启动失败通知" hint="项目启动失败时发系统通知（右上角弹窗）">
           <Switch checked={settings.notifyOnFail} onChange={(v) => update({ notifyOnFail: v })} />
         </SettingRow>
