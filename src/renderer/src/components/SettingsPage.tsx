@@ -220,6 +220,18 @@ export function SettingsPage({
         </SettingRow>
 
         <SettingRow
+          label="统一入口"
+          hint="访客用一个端口+导航页访问所有运行中的项目（需开启上方「允许局域网访问」）。项目不适合子路由时自动降级为独立端口，全程自动"
+        >
+          <Switch
+            checked={settings.gatewayEnabled}
+            onChange={(v) => update({ gatewayEnabled: v })}
+          />
+        </SettingRow>
+
+        <GatewayPortRow port={settings.gatewayPort} onChange={(v) => update({ gatewayPort: v })} />
+
+        <SettingRow
           label="退出后项目继续运行"
           hint="勾选后，⌘Q 彻底退出 Reopen 时，正在运行的项目保持本地运行；不勾选则退出时一并停止。点红叉关窗口只是收到托盘，项目始终在跑，不受影响"
         >
@@ -809,6 +821,48 @@ function SettingRow({
       </div>
       <div className="settings-row-control">{children}</div>
     </div>
+  )
+}
+
+/** 统一入口端口输入：本地 state 编辑、失焦/回车才提交（每按键提交会反复重启网关） */
+function GatewayPortRow({
+  port,
+  onChange
+}: {
+  port: number
+  onChange(v: number): void
+}): React.JSX.Element {
+  const [text, setText] = useState(String(port))
+  // 外部端口变化（如被占用自动换端口）时同步回编辑框：渲染期间调整 state（React 官方 pattern，
+  // 端口变化本就会触发重渲染，不产生级联）
+  const [prevPort, setPrevPort] = useState(port)
+  if (prevPort !== port) {
+    setPrevPort(port)
+    setText(String(port))
+  }
+  const commit = (): void => {
+    const v = Number(text)
+    if (Number.isInteger(v) && v >= 1024 && v <= 65535 && v !== port) onChange(v)
+    else setText(String(port))
+  }
+  return (
+    <SettingRow
+      label="统一入口端口"
+      hint="访客入口的端口号（默认 8088）；被占用时自动改用相邻空闲端口，日志里会说明"
+    >
+      <input
+        className="settings-port-input"
+        type="number"
+        min={1024}
+        max={65535}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+    </SettingRow>
   )
 }
 

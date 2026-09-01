@@ -56,7 +56,6 @@ const api: ReopenApi = {
     return () => ipcRenderer.removeListener('system:env-install-event', listener)
   },
   getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
-  checkPermissions: () => ipcRenderer.invoke('perm:check'),
   requestPermissions: () => ipcRenderer.invoke('perm:request'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
   getTrayIconPreview: () => ipcRenderer.invoke('tray:get-icon-preview'),

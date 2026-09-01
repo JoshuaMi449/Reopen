@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle2, FolderOpen } from 'lucide-react'
+import { Bell, CheckCircle2 } from 'lucide-react'
 import logo from '../assets/reopen-logo.png'
 
 interface TourStep {
@@ -57,11 +57,8 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
   const [step, setStep] = useState(0)
   /** 当前平台是不是 Mac（未知时先按 Mac 渲染权限幕，检测完非 Mac 自动跳过） */
   const [isMac, setIsMac] = useState<boolean | null>(null)
-  /** 权限幕状态：folder=文件夹访问已授权（真检测）；requested=已触发系统授权弹窗+测试通知 */
-  const [perm, setPerm] = useState<{ folder: boolean | null; requested: boolean }>({
-    folder: null,
-    requested: false
-  })
+  /** 权限幕状态：requested=已触发系统授权弹窗+测试通知（通知无检测 API，以测试通知送达为准） */
+  const [perm, setPerm] = useState<{ requested: boolean }>({ requested: false })
   /** 权限幕已结束（继续/跳过/非 Mac 平台自动） */
   const [permDone, setPermDone] = useState(false)
   const [pos, setPos] = useState<CardPos | null>(null)
@@ -76,18 +73,6 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
       if (p !== 'darwin') setPermDone(true)
     })
   }, [])
-
-  // 权限幕期间监听窗口焦点：用户从系统授权弹窗/系统设置切回来（窗口重获焦点）自动检测授权结果
-  useEffect(() => {
-    if (!welcomeDone || step !== STEPS.length || isMac !== true || permDone) return
-    const check = (): void => {
-      void window.api.checkPermissions().then((r) => {
-        setPerm((p) => (p.folder ? p : { ...p, folder: r.folder }))
-      })
-    }
-    window.addEventListener('focus', check)
-    return () => window.removeEventListener('focus', check)
-  }, [welcomeDone, step, isMac, permDone])
 
   // 高亮当前步骤指向的界面元素（同一步可以圈多个，如 localhost 链接 + 局域网链接）：
   // 目标元素浮起到蒙层上 + 描边框合并成包围盒；引导卡定位在包围盒旁。
@@ -190,26 +175,20 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
   }, [step, welcomeDone])
 
   // 权限幕（第 5 步之后、收尾幕之前）：macOS 显示；非 Mac 平台自动跳过进收尾幕。
-  // 「去跳转」=触发两个系统授权弹窗（文件夹访问/通知）+打开系统设置通知页；
-  // 文件夹访问可检测（回来自动打勾）；通知没有检测 API，以测试通知送达为准
+  // 只剩通知一项：「去开启」=发测试通知触发系统授权弹窗+打开系统设置通知页；
+  // 没有检测 API，以测试通知送达为准（文件夹访问不引导——拖拽/面板选择即授权，系统弹窗自然出现）
   if (welcomeDone && step >= STEPS.length && isMac !== false && !permDone) {
     const doRequest = async (): Promise<void> => {
-      const r = await window.api.requestPermissions()
-      setPerm({ folder: r.folder, requested: true })
+      await window.api.requestPermissions()
+      setPerm({ requested: true })
     }
     return (
       <>
         <div className="tour-overlay" />
         <div className="perm-panel">
-          <h3 className="perm-title">开启系统权限</h3>
-          <p className="perm-sub">两项可选权限，授权后体验更完整，也可以先跳过</p>
+          <h3 className="perm-title">开启通知</h3>
+          <p className="perm-sub">一项可选权限，授权后体验更完整，也可以先跳过</p>
           <div className="perm-cards">
-            <div className={`perm-card ${perm.folder ? 'perm-card-ok' : ''}`}>
-              <FolderOpen className="perm-card-icon" size={20} />
-              <div className="perm-card-title">文件夹访问</div>
-              <div className="perm-card-desc">从桌面、文稿、下载里把项目拖进来登记</div>
-              {perm.folder && <CheckCircle2 className="perm-card-check" size={16} />}
-            </div>
             <div className={`perm-card ${perm.requested ? 'perm-card-ok' : ''}`}>
               <Bell className="perm-card-icon" size={20} />
               <div className="perm-card-title">通知</div>
@@ -221,20 +200,17 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
               {perm.requested && <CheckCircle2 className="perm-card-check" size={16} />}
             </div>
           </div>
-          {perm.requested && !perm.folder && (
-            <p className="perm-hint">已在系统弹窗里点「允许」吗？回到 Reopen 窗口会自动检测</p>
-          )}
           <div className="perm-actions">
             <button className="btn-secondary" onClick={() => setPermDone(true)}>
               跳过
             </button>
-            {perm.folder ? (
+            {perm.requested ? (
               <button className="perm-btn-system" onClick={() => setPermDone(true)}>
                 继续
               </button>
             ) : (
               <button className="perm-btn-system" onClick={() => void doRequest()}>
-                去跳转
+                去开启
               </button>
             )}
           </div>

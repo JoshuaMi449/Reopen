@@ -32,10 +32,11 @@ import {
   rehostProject,
   reprobeAllLan,
   startProject,
-  stopProject
+  stopProject,
+  syncGateway
 } from './projectManager'
 import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
-import { checkFolderAccess, getPlatform, requestPermissions } from './perm'
+import { getPlatform, requestPermissions } from './perm'
 import { isMonoImage, listCharacters } from './trayCharacters'
 import { refreshShortcuts } from './shortcuts'
 import {
@@ -333,7 +334,9 @@ function toProjectInput(p: Project): NewProjectInput {
     openBrowser: p.openBrowser,
     note: p.note,
     tags: p.tags,
-    lastPort: p.lastPort
+    lastPort: p.lastPort,
+    lanSlug: p.lanSlug,
+    lanSuspicious: p.lanSuspicious
   }
 }
 
@@ -363,8 +366,8 @@ export function registerIpc(): void {
     adoptRunning(project)
     return project
   })
-  ipcMain.handle('project:update', (_e, id: string, input: NewProjectInput) => {
-    // 组重名禁止（排除自己）
+  ipcMain.handle('project:update', (_e, id: string, input: Partial<NewProjectInput>) => {
+    // 组重名禁止（排除自己；只转移 parentId 等局部更新时 input 无 type/name，跳过校验）
     if (
       input.type === 'group' &&
       listProjects().some((p) => p.id !== id && p.type === 'group' && p.name === input.name)
@@ -570,7 +573,7 @@ export function registerIpc(): void {
       isGif: mime === 'image/gif'
     }
   })
-  // 面板图标④：打开 macOS 系统「活动监视器」（RunCat 同款行为）
+  // 面板图标④：打开 macOS 系统「活动监视器」（同款行为）
   ipcMain.handle('tray:open-activity-monitor', async () => {
     await shell.openPath('/System/Applications/Utilities/Activity Monitor.app')
   })
@@ -605,6 +608,10 @@ export function registerIpc(): void {
     }
     // 开「允许局域网访问」→ 立即补探所有运行中项目（关则渲染层按门控隐藏）
     if ('lanAccess' in patch && patch.lanAccess === true) reprobeAllLan()
+    // 统一入口开关/端口变化 → 重启网关+重新挂载（lanAccess 是统一入口的前置，一起监听）
+    if ('gatewayEnabled' in patch || 'gatewayPort' in patch || 'lanAccess' in patch) {
+      void syncGateway()
+    }
     if ('hotkey' in patch || 'quickLaunch' in patch) refreshShortcuts()
     broadcastSettings(saved)
     return saved
@@ -614,8 +621,7 @@ export function registerIpc(): void {
   ipcMain.handle('window:show-main', (_e, action?: string) => showMainWindow(action))
   ipcMain.handle('window:open-settings', () => openSettingsWindow())
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
-  // 权限引导（新手引导第 5 步之后）：检测 / 请求（触发系统授权弹窗）
-  ipcMain.handle('perm:check', () => ({ folder: checkFolderAccess() }))
+  // 权限引导（新手引导第 5 步之后）：请求通知权限（触发系统授权弹窗）
   ipcMain.handle('perm:request', () => requestPermissions())
   ipcMain.handle('app:platform', () => getPlatform())
   ipcMain.handle('system:list-browsers', () => listBrowsers())

@@ -77,7 +77,14 @@ export interface Project {
   lastStartedAt?: number
   /** 上次实际运行端口（web 自动分配/实际端口回写；重启 Reopen 后用它接管检测）*/
   lastPort?: number
+  /** 统一入口路由名（拖入时按名称生成：中文转拼音缩写、小写化；老数据启动时惰性补） */
+  lanSlug?: string
+  /** JS 根路径扫描命中（拖入体检）→ 挂载时直接 direct 不进 route（宁丢便利不丢正确） */
+  lanSuspicious?: boolean
 }
+
+/** 统一入口挂载状态（运行时判定，不持久化；重启 Reopen 后重新实测） */
+export type LanMode = 'probing' | 'route' | 'route-rewrite' | 'direct'
 
 /** 端口检测来源（表单改端口时直接改写项目源文件用）：
  *  file=相对项目根的文件路径；find=匹配到的原始片段；portAt/portLen=端口数字在片段里的位置。
@@ -95,6 +102,8 @@ export type NewProjectInput = Omit<Project, 'id' | 'createdAt' | 'lastStartedAt'
 /** 拖拽识别成功：类型已确定，带全自动猜的表单预填 */
 export interface DetectSuccess {
   ok: true
+  /** 该路径已登记过（弹窗标记「已存在」并禁勾选，2026-09-01） */
+  alreadyRegistered?: boolean
   type: ProjectType
   /** 实际要登记的路径 */
   path: string
@@ -116,6 +125,10 @@ export interface DetectSuccess {
     launchModes: LaunchMode[]
     /** 默认启动方式 id（= launchModes[0].id） */
     activeMode: string
+    /** 统一入口路由名（按名称生成：中文转拼音、小写化、重名加后缀） */
+    lanSlug?: string
+    /** JS 根路径扫描命中（location 跳转/fetch('/api/WebSocket 写死根）→ 直接独立端口，不进统一入口 */
+    lanSuspicious?: boolean
   }
 }
 
@@ -177,6 +190,10 @@ export interface ProjectStatusEvent {
   lanReachable?: boolean
   /** 服务是否本应用自己拉起的（true=是 → 局域网打不开时只能提示改项目命令；false/缺省=接管的 → 可「由本应用托管」重启） */
   spawned?: boolean
+  /** 统一入口挂载状态（probing=实测中 / route=子路由直挂 / route-rewrite=响应重写兜底 / direct=降级独立端口） */
+  lanMode?: LanMode
+  /** 统一入口实际端口（与 lanMode 成对出现；设置端口被占时会换实际端口，UI 拼访客地址用实际值） */
+  gatewayPort?: number
   /** 失败时可自动修复的动作（有则界面显示按钮） */
   fix?: ProjectFix
 }
@@ -249,8 +266,12 @@ export interface Settings {
   onboarded: boolean
   /** 打开项目网页用的默认浏览器（app 名，如 Google Chrome；空=系统默认浏览器） */
   defaultBrowser?: string
-  /** 允许同一 Wi-Fi 的设备访问跑的项目（默认关；开=服务绑 0.0.0.0+dev 注入 HOST） */
+  /** 允许同一 Wi-Fi 的设备访问跑的项目（默认开；开=服务绑 0.0.0.0+dev 注入 HOST） */
   lanAccess: boolean
+  /** 统一入口（访客走一个端口+子路由；默认开；需 lanAccess 也开着才生效） */
+  gatewayEnabled: boolean
+  /** 统一入口端口（默认 8088；被占用时自动换相邻空闲端口并在日志说明） */
+  gatewayPort: number
   /** 退出 Reopen 后项目继续在本地运行（默认关：退出时一并停止） */
   keepProjectsOnQuit: boolean
 }
@@ -282,6 +303,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyOnFail: false,
   onboarded: false,
   lanAccess: true,
+  gatewayEnabled: true,
+  gatewayPort: 8088,
   keepProjectsOnQuit: false
 }
 
@@ -340,14 +363,14 @@ export interface TrayCharacterItem {
   isGif: boolean
 }
 
-/** 面板系统信息卡数据（native addon getSystemInfo 采集，口径与 RunCat 面板一致：
+/** 面板系统信息卡数据（native addon getSystemInfo 采集，口径与业界通行面板一致：
  *  SystemInfoKit 同款 API——Mach host_statistics64 / IOKit AppleSmartBattery / getifaddrs；
  *  比例均为 0-1，字节为 bytes，速度 bps） */
 export interface SystemInfo {
   cpu: { percent: number; system: number; user: number; idle: number }
   memory: {
     percent: number
-    /** 压力=(联动+已压缩)/物理内存（RunCat 自创口径，非活动监视器的压力等级） */
+    /** 压力=(联动+已压缩)/物理内存（业界通行口径，非活动监视器的压力等级） */
     pressure: number
     appBytes: number
     wiredBytes: number
@@ -376,7 +399,7 @@ export interface ReopenApi {
   /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null） */
   pickProjectFolder(allowFile?: boolean): Promise<string | null>
   addProject(input: NewProjectInput): Promise<Project>
-  updateProject(id: string, input: NewProjectInput): Promise<Project>
+  updateProject(id: string, input: Partial<NewProjectInput>): Promise<Project>
   deleteProject(id: string): Promise<void>
   /** 手动成组：把一批顶层项目收纳成一个新组，返回新组（框选右键添加成组） */
   createGroup(ids: string[], name?: string): Promise<Project>
@@ -434,10 +457,8 @@ export interface ReopenApi {
   onEnvInstallEvent(cb: (e: EnvInstallEvent) => void): () => void
   /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
   getLanIp(): Promise<string>
-  /** 权限检测：文件夹访问是否已授权（通知无检测 API，走测试通知确认） */
-  checkPermissions(): Promise<{ folder: boolean }>
-  /** 请求权限：触发系统授权弹窗+发测试通知+打开系统设置，返回请求后的检测结果 */
-  requestPermissions(): Promise<{ folder: boolean }>
+  /** 请求通知权限：发测试通知触发系统授权弹窗+打开系统设置通知页 */
+  requestPermissions(): Promise<void>
   /** 当前操作系统平台（非 darwin 跳过引导权限幕） */
   getPlatform(): Promise<NodeJS.Platform>
   /** 当前自定义菜单栏图标的预览（base64 dataURL；GIF 原样返回，浏览器原生动画）；没设置返回 null */
@@ -471,7 +492,7 @@ export interface ReopenApi {
   switchTrayCharacter(path: string): Promise<void>
   /** 切回内置 Reopen 黑白主题图标（「切换动画」弹窗左下角主题按钮） */
   switchTrayTheme(): Promise<void>
-  /** 打开 macOS 系统「活动监视器」App（面板图标④，RunCat 同款行为） */
+  /** 打开 macOS 系统「活动监视器」App（面板图标④，同款行为） */
   openActivityMonitor(): Promise<void>
   /** 面板每次弹出前重置回默认界面，返回取消订阅函数 */
   onTrayResetView(cb: () => void): () => void
