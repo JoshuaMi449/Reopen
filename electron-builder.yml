@@ -3,6 +3,12 @@ productName: Reopen
 directories:
   buildResources: build
 files:
+  # electron-builder 26 起普通文件不再默认全包含：构建产物与运行资源必须显式列出
+  - out/**
+  - resources/**
+  - package.json
+  - '!native/**'
+  - native/build/Release/reopen_native.node
   - '!**/.vscode/*'
   - '!src/*'
   - '!docs/*'
@@ -10,10 +16,9 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.node.tsbuildinfo}'
-  - '!native/**'
-  - native/build/Release/reopen_native.node
 asarUnpack:
   - resources/**
+  - native/build/Release/reopen_native.node
 win:
   executableName: reopen-scaffold
 nsis:
@@ -22,13 +27,19 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  # ad-hoc 签名（无 Developer ID 的本地分发：arm64 必须签名才能运行；bundle id 正确进签名）
+  identity: '-'
+  hardenedRuntime: false
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  # 只发 Apple Silicon：native 托盘模块按本机 arm64 编译，打 x64 包托盘必挂（默认 arch 是 x64 的坑）
-  arch:
-    - arm64
+  # electron-builder 26：arch 在 target 里配。只发 Apple Silicon（native 托盘模块按 arm64 编译）
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
   # SwiftUI 托盘渲染动态库：打包后 asar 里没有 native/build，拷到 Contents/Resources，
   # tray.ts 打包态改用 process.resourcesPath 加载（M4 发布接线）
   extraResources:
@@ -36,7 +47,7 @@ mac:
       to: libtray_runner.dylib
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}.${ext}
 linux:
   target:
     - AppImage
