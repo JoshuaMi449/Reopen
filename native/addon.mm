@@ -1,14 +1,14 @@
-// 托盘模块（macOS 专用）——严格照抄 BuZhiYin 机制（2026-08-28 三图标对比实验定稿）：
-//   图标=贴在状态栏按钮上的 NSHostingView（SwiftUI 视图，BuZhiYin 🐔App.swift:70
+// 托盘模块（macOS 专用）——参照业界 SwiftUI 菜单栏实现（2026-08-28 三图标对比实验定稿）：
+//   图标=贴在状态栏按钮上的 NSHostingView（SwiftUI 视图，业界通行做法
 //   addSubview(NSHostingView) 同款），换帧=SwiftUI 内部 .common RunLoop Timer
-//   （BuZhiYin 🐔View.swift:48 同款）。实验实锤：只有 SwiftUI 管线能获得系统
+//   （业界通行做法）。实验实锤：只有 SwiftUI 管线能获得系统
 //   「非活跃屏冻结最后一帧」托管——NSImageView 换图 / layer.contents 换帧在非活跃屏
 //   都会跟着动（前几轮失败根因）。
 //   SwiftUI 视图与模型在 native/src/tray_runner.swift（编译为 libtray_runner.dylib，
 //   binding.gyp action 自动编译），本文件 dlopen 调用其 C 接口。
 //   帧序列（JS 侧解码/模板化/缩放好的 PNG）与换帧间隔（CPU 变速）由 JS 传入。
 //   深浅色：模板图由系统按每屏菜单栏外观着色（双屏一深一浅各屏正确）。
-//   点击（左键按下即触发/右键菜单）经 ThreadSafeFunction 回调 JS。
+//   点击（左键按下即触发）经 ThreadSafeFunction 回调 JS。
 #include <napi.h>
 #import <Cocoa/Cocoa.h>
 #include <dlfcn.h>
@@ -16,7 +16,7 @@
 #include <string>
 #include <chrono>
 #include <mutex>
-// SystemMonitor 依赖（RunCat SystemInfoKit 同源 API）：
+// SystemMonitor 依赖（业界开源 SystemInfoKit 同源 API）：
 #include <mach/mach_host.h>
 #import <IOKit/IOKitLib.h>
 #include <ifaddrs.h>
@@ -43,7 +43,7 @@ struct EventData {
 };
 
 // 全局左键监视（面板显示期间启用：点击面板外任意处关闭面板，标准菜单栏交互）。
-// global monitor 只观察不拦截（无需辅助功能权限，BuZhiYin/LookAway 同款机制）。
+// global monitor 只观察不拦截（无需辅助功能权限，同类工具通行机制）。
 static id gClickMonitor = nil;
 static Napi::ThreadSafeFunction gClickTsFn = nullptr;
 
@@ -96,9 +96,9 @@ static void PushAppearance(void);
 @interface StatusItemTarget : NSObject
 @end
 @implementation StatusItemTarget
-// 按钮视图 effectiveAppearance / window 变化（RunCat viewDidChangeEffectiveAppearance 同款
+// 按钮视图 effectiveAppearance / window 变化（viewDidChangeEffectiveAppearance 机制
 //   触发时机）：视图外观沿继承链变化（含窗口换屏、外观切换）时推送。取值源在
-//   PushAppearance 里统一走 button.window.effectiveAppearance（RunCat 同款数据源）。
+//   PushAppearance 里统一走 button.window.effectiveAppearance（同款数据源）。
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
                         change:(NSDictionary *)change
@@ -109,49 +109,18 @@ static void PushAppearance(void);
   }
 }
 
+// 左键按下即触发（用户要求：不等 mouseUp）。右键无功能（2026-09-01 用户拍板：
+// 右键菜单与面板内「打开主窗口/偏好设置/退出」重复，移除）
 - (void)clicked:(id)sender {
   NSEvent *e = [NSApp currentEvent];
-  if (e.type == NSEventTypeRightMouseDown) {
-    [self showContextMenu];
-    return;
-  }
-  // 左键按下即触发（用户要求：不等 mouseUp）
   if (e.type == NSEventTypeLeftMouseDown) {
     EmitEvent("click", "left");
   }
 }
-
-// 右键菜单：原生 NSMenu（popUpStatusItemMenu 自动定位图标正下方，无坐标换算问题）
-- (void)showContextMenu {
-  if (!gStatusItem) return;
-  NSMenu *menu = [[NSMenu alloc] init];
-  NSMenuItem *open =
-      [[NSMenuItem alloc] initWithTitle:@"打开主窗口" action:@selector(menuAction:) keyEquivalent:@""];
-  open.target = self;
-  open.representedObject = @"show-main";
-  [menu addItem:open];
-  NSMenuItem *settings =
-      [[NSMenuItem alloc] initWithTitle:@"偏好设置…" action:@selector(menuAction:) keyEquivalent:@""];
-  settings.target = self;
-  settings.representedObject = @"settings";
-  [menu addItem:settings];
-  [menu addItem:[NSMenuItem separatorItem]];
-  NSMenuItem *quit =
-      [[NSMenuItem alloc] initWithTitle:@"退出 Reopen" action:@selector(menuAction:) keyEquivalent:@""];
-  quit.target = self;
-  quit.representedObject = @"quit";
-  [menu addItem:quit];
-  [gStatusItem popUpStatusItemMenu:menu];
-}
-
-- (void)menuAction:(id)sender {
-  NSString *action = [(NSMenuItem *)sender representedObject];
-  EmitEvent("menu", action.UTF8String);
-}
 @end
 static StatusItemTarget *gTarget = nil;
 
-// 把菜单栏窗口当前外观推给 Swift 侧（RunCat StatusBarAppearanceBridge 同款数据源）：
+// 把菜单栏窗口当前外观推给 Swift 侧（StatusBarAppearanceBridge 同款数据源）：
 //   取值源=button.window.effectiveAppearance——只用于双色 GIF 的反转判定（mono 静态
 //   主题图标走系统模板图渲染，不经此路径）。窗口暂不存在时保持上次值——8-28 黑根因
 //   =窗口 nil 时回退 NSApp=Aqua 判浅色。日志实测（2026-08-31）：此源跟随系统外观设置
@@ -189,15 +158,15 @@ Napi::Value CreateStatusItem(const Napi::CallbackInfo &info) {
     return env.Undefined();
   }
   gTsFn = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "reopen-tray-events", 0, 1);
-  // 长度固定 22pt（BuZhiYin iconMinWidth 同款）：所有 GIF 占位一致；自适应长度算不出
+  // 长度固定 22pt（业界通行）：所有 GIF 占位一致；自适应长度算不出
   //  addSubview 的 hostingView 宽度，会偏窄导致图标右边被相邻内容遮挡（裁剪根因）
   gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:22];
   gStatusItem.button.title = @"";
   gTarget = [[StatusItemTarget alloc] init];
   gStatusItem.button.target = gTarget;
   gStatusItem.button.action = @selector(clicked:);
-  [gStatusItem.button sendActionOn:(NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown)];
-  // 全程纯菜单栏应用身份（LSUIElement 同款，BuZhiYin/RunCat 都是此身份）：
+  [gStatusItem.button sendActionOn:NSEventMaskLeftMouseDown];
+  // 全程纯菜单栏应用身份（LSUIElement 身份）：
   // 无 Dock、不进 Cmd+Tab、不抢焦点
   [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   return env.Undefined();
@@ -229,8 +198,8 @@ Napi::Value InitTrayRunner(const Napi::CallbackInfo &info) {
   gRunnerModel = pTrModelCreate();
   void *viewPtr = pTrViewCreate(gRunnerModel);
   gHostingView = (__bridge NSView *)viewPtr;
-  [gStatusItem.button addSubview:gHostingView];  // BuZhiYin 🐔App.swift:70 同款
-  // 监听按钮视图外观变化（RunCat viewDidChangeEffectiveAppearance 同款触发时机；
+  [gStatusItem.button addSubview:gHostingView];  // 业界通行做法
+  // 监听按钮视图外观变化（viewDidChangeEffectiveAppearance 机制触发时机；
   //   NSView.effectiveAppearance 是 KVO 兼容属性，Initial 立即推一次消除空窗）
   //   与按钮归属窗口变化（双屏切换时换窗重推）。
   //   2026-08-31 重做：取值源统一在 PushAppearance 走窗口外观，这里只负责触发
@@ -244,8 +213,8 @@ Napi::Value InitTrayRunner(const Napi::CallbackInfo &info) {
 
 // setFrames(pngBuffers: Buffer[], isTemplate: boolean, intervalMs: number, box: boolean)：
 //   帧序列（JS 已解码/缩放到 2x 像素）→ NSImage 数组（尺寸减半为 pt）→
-//   Swift 侧换帧模型。换帧由 Swift .common Timer 驱动（BuZhiYin 同款）。
-//   box=方框拉伸显示（只因/篮球等 BuZhiYin .resizable() 同款；否则保持原比例居中）。
+//   Swift 侧换帧模型。换帧由 Swift .common Timer 驱动。
+//   box=方框拉伸显示（非正方形素材等 .resizable() 拉伸；否则保持原比例居中）。
 Napi::Value SetFrames(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   if (!gStatusItem || !gRunnerModel || !pTrModelSetFrames || info.Length() < 4 ||
@@ -270,7 +239,7 @@ Napi::Value SetFrames(const Napi::CallbackInfo &info) {
     [images addObject:img];
   }
   if (images.count == 0) return env.Undefined();
-  gStatusItem.length = 22;  // 固定 22pt（BuZhiYin 同款，见 CreateStatusItem 注释）
+  gStatusItem.length = 22;  // 固定 22pt（见 CreateStatusItem 注释）
   if (isTemplate) {
     // mono 主题图标（静态单帧）：走系统模板图渲染——button.image=template NSImage，
     //   系统按每屏壁纸自动着色（暗壁纸→白/亮壁纸→黑）+ 非活跃屏自动变灰，
@@ -300,7 +269,7 @@ Napi::Value SetInterval(const Napi::CallbackInfo &info) {
   return env.Undefined();
 }
 
-// setInvert(light: boolean, dark: boolean)：反转配置（亮色反转/暗色反转，BuZhiYin 同款）——
+// setInvert(light: boolean, dark: boolean)：反转配置（亮色反转/暗色反转——
 //   Swift 侧 RunnerView 按当前菜单栏外观决定 colorInvert，外观切换自动响应
 Napi::Value SetInvert(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
@@ -333,7 +302,7 @@ Napi::Object GetFrame(const Napi::CallbackInfo &info) {
 }
 
 // setPanelBehavior(handle: Buffer)：面板窗口设为「显示时移到活跃 Space」——每次弹出出现在
-// 当前桌面，不再闪回创建时的旧桌面（LookAway 同款交互）。
+// 当前桌面，不再闪回创建时的旧桌面（同类托盘工具通行交互）。
 // 注意：CanJoinAllSpaces 与 MoveToActiveSpace 互斥（同设会 NSInternalInconsistencyException 崩溃）
 Napi::Value SetPanelBehavior(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
@@ -387,14 +356,14 @@ Napi::Value DestroyStatusItem(const Napi::CallbackInfo &info) {
 }
 
 // ============================================================
-// SystemMonitor：RunCat 面板同款系统信息采集。
-// 数据来源 1:1 对齐 RunCat 作者的 SystemInfoKit 开源库（官方 RunCat 面板即用它）：
+// SystemMonitor：面板同款系统信息采集。
+// 数据来源 1:1 对齐业界开源 SystemInfoKit 库：
 //   CPU   → Mach host_statistics64(HOST_CPU_LOAD_INFO)，两次调用 tick 差（CPURepository.swift:32 同款）
 //   内存  → Mach host_statistics64(HOST_VM_INFO64)+host_info(HOST_BASIC_INFO)（MemoryRepository.swift:51 同款公式）
 //   储存  → NSURL 资源值 TotalCapacity/AvailableCapacityForImportantUsage，根卷 "/"（StorageRepository.swift:20 同款）
 //   电池  → IOKit 服务 AppleSmartBattery（旧键 + macOS 27 BatteryData 新键双路径探测，BatteryRepository.swift:43 同款）
 //   网络  → NWPathMonitor 主接口 + getifaddrs 全接口字节差÷间隔=速度（NetworkRepository.swift:78 同款）
-// 采样节奏：JS 主进程每 2s 调一次 getSystemInfo()（RunCat 默认 5s，SystemInfoObserver.swift:35）。
+// 采样节奏：JS 主进程每 2s 调一次 getSystemInfo()（业界通行默认 5s）。
 // CPU 百分比与网速都是「两次采样之间发生的量」：原生侧保存上一帧基准做差值。
 // ============================================================
 
@@ -578,7 +547,7 @@ Napi::Value GetSystemInfo(const Napi::CallbackInfo &info) {
       else battery.Set("adapterName", "电源适配器");
     }
   } else {
-    battery.Set("installed", false);  // 台式机无电池：面板显示「电池：未安装」（RunCat 同款文案）
+    battery.Set("installed", false);  // 台式机无电池：面板显示「电池：未安装」
   }
 
   // ---- 网络：全接口累计字节差÷间隔=速度；主接口名匹配 IPv4 ----

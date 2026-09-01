@@ -29,7 +29,7 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
-/** LookAway 形态：主窗口可见 → Regular（Dock+应用菜单+可激活）；隐藏/销毁 → Accessory
+/** 托盘形态：主窗口可见 → Regular（Dock+应用菜单+可激活）；隐藏/销毁 → Accessory
  *  （纯菜单栏，无 Dock 不抢焦点）。托盘关闭时钉死 Regular（Dock 是唯一入口，切
  *  Accessory 会让应用彻底不可达）；非 macOS 跳过。实验已排除身份切换与非活跃屏
  *  冻结的关联（41bf59c），动态切换安全。 */
@@ -86,7 +86,7 @@ export function createWindow(): void {
     }
   })
 
-  // LookAway 形态：窗口隐藏（hideMainWindow/Cmd+H 都汇聚到这里）或销毁（closeToTray 关）→
+  // 托盘形态：窗口隐藏（hideMainWindow/Cmd+H 都汇聚到这里）或销毁（closeToTray 关）→
   // 回 Accessory。最小化走 'minimize' 不触发 hide → 保持 Regular、Dock 保留（标准 macOS 行为）
   mainWindow.on('hide', () => setDockMode(false))
   mainWindow.on('closed', () => setDockMode(false))
@@ -106,7 +106,7 @@ export function createWindow(): void {
 }
 
 /** 显示主窗口（托盘面板"打开主窗口"、⌥+R 等调用；可附带菜单动作）。
- *  LookAway 形态：显示即切 Regular（Dock 出现、应用可激活、左上角应用菜单）；
+ *  托盘形态：显示即切 Regular（Dock 出现、应用可激活、左上角应用菜单）；
  *  activate=false 用于首启/重建自动显示——只 show 不抢焦点（开机自启不打断用户） */
 export function showMainWindow(action?: string, activate = true): void {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow()
@@ -121,7 +121,7 @@ export function showMainWindow(action?: string, activate = true): void {
   }
 }
 
-/** 隐藏主窗口：hide 事件里切回 Accessory（LookAway 形态，见 createWindow 事件注册） */
+/** 隐藏主窗口：hide 事件里切回 Accessory（托盘形态，见 createWindow 事件注册） */
 export function hideMainWindow(): void {
   mainWindow?.hide()
 }

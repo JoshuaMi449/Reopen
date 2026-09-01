@@ -15,11 +15,11 @@ export interface GifFrame {
 const MAX_FRAMES = 60
 const cache = new Map<string, GifFrame[]>()
 
-/** 面积平均缩小（box filter，照系统原生高质量缩放原理——不只因/RunCat 清晰度的关键）：
+/** 面积平均缩小（box filter，照系统原生高质量缩放原理（清晰度的关键））：
  *  每个目标像素对应源区域 [x·W/tw,(x+1)·W/tw) × [y·H/th,(y+1)·H/th)，区域内全部源像素
  *  （premultiplied 域）按覆盖面积加权平均——4 倍缩小时 16 像素合成 1 个，细线密度保留；
  *  双线性只取 2×2 邻域，大幅缩小会丢细节（只因篮球 180×210→44 糊的根因）。
- *  默认等比缩放：高度=target、宽度随原比例；box=正方形拉伸缩放（照不只因
+ *  默认等比缩放：高度=target、宽度随原比例；box=正方形拉伸缩放（照
  *  .frame(22,22)+.resizable() 显示规格：非正方形素材拉满方框）。
  *  alpha 预乘域运算防透明渗色；unpremultiply：v 与 a 同处 0~255 域，结果 ×255/a（漏乘=全黑） */
 function downscale(

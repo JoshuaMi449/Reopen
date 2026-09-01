@@ -35,7 +35,7 @@ type PanelView = 'dashboard' | 'projects' | 'more' | 'about'
 /** CPU 波形图历史窗口（2s 一次采样 × 30 = 1 分钟） */
 const WAVE_POINTS = 30
 
-/** 字节 → 人类可读（RunCat 同款显示：GB 一位小数起步） */
+/** 字节 → 人类可读（同款显示：GB 一位小数起步） */
 function fmtBytes(bytes: number): string {
   if (!isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -61,8 +61,8 @@ function fmtPct(v: number, digits = 1): string {
   return `${(Math.max(0, Math.min(v, 1)) * 100).toFixed(digits)}%`
 }
 
-/** 面板布局照 RunCat 官方面板（2026-08-30 定稿）：
- *  左侧大框=5 张系统信息卡（CPU 波形图/内存/储存进度条/电池/网络，RunCat 同款数据），
+/** 面板布局参照业界通行面板（2026-08-30 定稿）：
+ *  左侧大框=5 张系统信息卡（CPU 波形图/内存/储存进度条/电池/网络，同款数据），
  *  右上角 wordmark 文字 logo（点击回默认页），右侧 5 个方形功能格（图标+下方小字）。
  *  左框三视图切换：dashboard（默认）/ projects（点①查看项目状态）/ more（点⑤）。
  */
@@ -155,7 +155,7 @@ export function TrayPanel(): React.JSX.Element {
           {view === 'about' && <AboutView onBack={() => setView('more')} />}
         </div>
 
-        {/* 右侧 5 功能格（RunCat 面板同款布局：图标+下方小字） */}
+        {/* 右侧 5 功能格（面板布局：图标+下方小字） */}
         <div className="tray-side">
           <button
             className={`tray-side-btn ${view === 'projects' ? 'is-active' : ''}`}
@@ -258,7 +258,7 @@ export function TrayPanel(): React.JSX.Element {
   )
 }
 
-/** 默认页：5 张系统信息卡（数据口径与 RunCat 面板一致） */
+/** 默认页：5 张系统信息卡（数据口径与业界通行面板一致） */
 function SystemCards(props: {
   sysInfo: SystemInfo | null
   cpuHistory: number[]
@@ -384,7 +384,7 @@ function networkTypeName(type?: string): string {
   }
 }
 
-/** CPU 柱状波形图（RunCat 同款蓝色波形：每 2s 一根柱子，30 根=1 分钟窗口） */
+/** CPU 柱状波形图（同款蓝色波形：每 2s 一根柱子，30 根=1 分钟窗口） */
 function CpuWave(props: { history: number[] }): React.JSX.Element {
   const { history } = props
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -402,7 +402,7 @@ function CpuWave(props: { history: number[] }): React.JSX.Element {
     canvas.height = h * dpr
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, w, h)
-    // accentColor 系统蓝（RunCat 波形同款）：浅色 #007AFF、暗色 #0A84FF，读 CSS 变量
+    // accentColor 系统蓝：浅色 #007AFF、暗色 #0A84FF，读 CSS 变量
     const accent = getComputedStyle(document.documentElement)
       .getPropertyValue('--tray-accent')
       .trim()
@@ -492,7 +492,7 @@ function ProjectRow(props: {
   )
 }
 
-/** 更多页（RunCat 更多菜单同款内容：返回/关于/帮助/反馈问题/退出） */
+/** 更多页（更多菜单内容：返回/关于/帮助/反馈问题/退出） */
 function MoreView(props: { onNavigate: (v: PanelView) => void }): React.JSX.Element {
   const { onNavigate } = props
   const GITHUB = 'https://github.com/JoshuaMi449/Reopen'
@@ -522,7 +522,7 @@ function MoreView(props: { onNavigate: (v: PanelView) => void }): React.JSX.Elem
   )
 }
 
-/** 关于页（RunCat 关于弹窗同款布局：图标+名字+版本、简介、版权） */
+/** 关于页（关于弹窗布局：图标+名字+版本、简介、版权） */
 function AboutView(props: { onBack: () => void }): React.JSX.Element {
   const { onBack } = props
   return (

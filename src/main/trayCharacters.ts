@@ -33,17 +33,17 @@ const LABELS: Record<string, string> = {
   my0: 'BenignX',
   pink_cat: '粉色猫猫🐱',
   xiaolan_turn: '小蓝转圈圈♿️',
-  zhiyin: '只因铁山靠⛰️',
-  zhiyin_basketball: '只因篮球🏀'
+  jntm: '只因铁山靠⛰️',
+  jntm_basketball: '只因篮球🏀'
 }
 
-/** 角色反转配置（照不只因 ZhiyinEntity 数据库实抄，2026-08-28）：
+/** 角色反转配置（2026-08-28 按同类菜单栏宠物工具的配置口径实抄）：
  *   light=浅色菜单栏反转颜色（亮色反转）；dark=深色菜单栏反转颜色（暗色反转）。
- *   渲染由 tray_runner.swift RunnerView 按当前菜单栏外观做 colorInvert（不只因 AutoInvertImage 同款）。
- *   未列出的角色/彩色素材=永不反转（原图显示，不只因绝大多数角色都是这个配置）。 */
+ *   渲染由 tray_runner.swift RunnerView 按当前菜单栏外观做 colorInvert。
+ *   未列出的角色/彩色素材=永不反转（原图显示）。 */
 const INVERT_ROLES: Record<string, { light: boolean; dark: boolean }> = {
-  zhiyin: { light: false, dark: true }, // 铁山靠：深色菜单栏黑剪影反转成白（不只因 0/1）
-  zhiyin_basketball: { light: false, dark: true }, // 篮球：深色反转（2026-08-31 用户拍板：暗色屏也要变白）
+  jntm: { light: false, dark: true }, // 铁山靠：深色菜单栏黑剪影反转成白
+  jntm_basketball: { light: false, dark: true }, // 篮球：深色反转（2026-08-31 用户拍板：暗色屏也要变白）
   dogeza: { light: false, dark: true } // 磕头（白底素材）：深色反转成黑底白线，黑底融入深菜单栏
 }
 
@@ -58,17 +58,16 @@ export function invertOf(path: string): { light: boolean; dark: boolean } {
   return { light: false, dark: false }
 }
 
-/** 方框显示角色（与不只因同素材）：22×22pt 方框拉伸显示（照不只因 .frame(22,22)+.resizable()
- *  显示规格——非正方形素材拉满方框，只因篮球等与不只因菜单栏显示尺寸一致） */
-const BOX_ROLES = new Set(['zhiyin', 'zhiyin_basketball'])
+/** 方框显示角色：22×22pt 方框拉伸显示（非正方形素材拉满方框，与菜单栏显示尺寸一致） */
+const BOX_ROLES = new Set(['jntm', 'jntm_basketball'])
 
-/** 是否方框显示角色（照不只因显示规格） */
+/** 是否方框显示角色 */
 export function isBoxRole(path: string): boolean {
   return BOX_ROLES.has(basename(path, extname(path)))
 }
 
 /** 不进入角色列表的内置 GIF（功能动画素材，不是角色） */
-const EXCLUDED = new Set(['add_zhiyin.gif'])
+const EXCLUDED = new Set(['add_jntm.gif'])
 
 /** 图片是否单色（每个像素 R=G=B；GIF 取第一帧）：单色素材转模板图，随菜单栏深浅自动变色 */
 export function isMonoImage(path: string): boolean {

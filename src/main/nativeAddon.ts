@@ -1,7 +1,7 @@
 // 原生托盘统一入口（native/build/Release/reopen_native.node，macOS 专用）：
 //   自建 NSStatusItem，图标=按钮上的 NSHostingView（SwiftUI 视图，libtray_runner.dylib，
-//   照抄 BuZhiYin 机制）——三图标对比实验实锤：只有 SwiftUI 管线能获得系统
-//   「非活跃屏冻结最后一帧」托管。换帧由 Swift 内部 .common Timer 驱动（BuZhiYin 同款），
+//   参照业界 SwiftUI 菜单栏实现）——三图标对比实验实锤：只有 SwiftUI 管线能获得系统
+//   「非活跃屏冻结最后一帧」托管。换帧由 Swift 内部 .common Timer 驱动，
 //   JS 只传帧序列与换帧间隔（CPU 变速）。加载失败降级：全部 no-op（应用不崩，托盘功能缺失）。
 import type { SystemInfo } from '../shared/types'
 
@@ -110,7 +110,7 @@ export function nativeDestroyStatusItem(): void {
   }
 }
 
-/** 面板系统信息采样（RunCat 面板同款数据：Mach/IOKit/getifaddrs，native addon 内实现） */
+/** 面板系统信息采样（面板同款数据：Mach/IOKit/getifaddrs，native addon 内实现） */
 export function nativeGetSystemInfo(): SystemInfo | null {
   try {
     return native?.getSystemInfo() ?? null
