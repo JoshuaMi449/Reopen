@@ -1,14 +1,17 @@
-appId: com.electron.app
-productName: reopen-scaffold
+appId: com.joshuami.reopen
+productName: Reopen
 directories:
   buildResources: build
 files:
   - '!**/.vscode/*'
   - '!src/*'
+  - '!docs/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.node.tsbuildinfo}'
+  - '!native/**'
+  - native/build/Release/reopen_native.node
 asarUnpack:
   - resources/**
 win:
@@ -21,10 +24,16 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # 只发 Apple Silicon：native 托盘模块按本机 arm64 编译，打 x64 包托盘必挂（默认 arch 是 x64 的坑）
+  arch:
+    - arm64
+  # SwiftUI 托盘渲染动态库：打包后 asar 里没有 native/build，拷到 Contents/Resources，
+  # tray.ts 打包态改用 process.resourcesPath 加载（M4 发布接线）
+  extraResources:
+    - from: native/build/Release/libtray_runner.dylib
+      to: libtray_runner.dylib
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

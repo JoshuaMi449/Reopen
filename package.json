@@ -4,6 +4,7 @@
   "description": "Restart your Mac without losing your projects",
   "main": "./out/main/index.js",
   "author": "JoshuaMi449",
+  "license": "MIT",
   "homepage": "https://github.com/JoshuaMi449/Reopen",
   "scripts": {
     "format": "prettier --write .",
