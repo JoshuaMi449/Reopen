@@ -4,21 +4,31 @@ import type { DetectMulti, DetectSuccess } from '../../../shared/types'
 
 interface Props {
   multi: DetectMulti
-  /** 确认成组：组名 + 勾选的子项（按清单顺序） */
+  /** 确认成组：组名 + 勾选的子项（按清单顺序；含「已存在」项=转移进新组） */
   onConfirm(name: string, selected: DetectSuccess[]): void
+  /** 跳过成组：只把勾选的未登记候选作为独立项目登记（不建组） */
+  onSkip(selected: DetectSuccess[]): void
   onCancel(): void
 }
 
 /** 多项目容器 → 项目组预览（组预览勾选式）：
  *  拖入的文件夹里有多个项目 → 弹组名输入+候选勾选 → 确认登记成一个组
  *  二轮候选行显示网站标题；默认只勾「最大的成品」（fileCount 最多），多个成品不再全勾 */
-export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.JSX.Element {
+export function GroupPreviewModal({
+  multi,
+  onConfirm,
+  onSkip,
+  onCancel
+}: Props): React.JSX.Element {
   const [name, setName] = useState(multi.path.split('/').pop() || '项目组')
   // 勾选状态：候选 path 的集合。默认只勾「最大的成品」（含成品预览方式且非单页附件、fileCount 最多的那个）；
   // 散装 html（单页附件）与纯开发项目默认不勾，要的再手动勾（实测：用户只要官网首页端口）
   const [checked, setChecked] = useState<Set<string>>(() => {
-    const finished = multi.projects.filter((p) =>
-      p.suggested.launchModes.some((m) => m.kind === 'preview' && !m.entryPath)
+    // 已存在的默认不勾（转移需用户主动勾）
+    const finished = multi.projects.filter(
+      (p) =>
+        !p.alreadyRegistered &&
+        p.suggested.launchModes.some((m) => m.kind === 'preview' && !m.entryPath)
     )
     if (finished.length === 0) return new Set()
     const max = Math.max(...finished.map((p) => p.suggested.fileCount ?? 0))
@@ -44,6 +54,8 @@ export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.
   }
 
   const selected = sorted.filter((p) => checked.has(p.path))
+  // 勾了「已存在」项 = 转移进新组（确认按钮文案切换）
+  const hasExisting = selected.some((p) => p.alreadyRegistered)
   const allChecked = checked.size === sorted.length
 
   return (
@@ -67,7 +79,7 @@ export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.
               <button
                 key={p.path}
                 type="button"
-                className={`multi-item ${on ? '' : 'multi-item-off'}`}
+                className={`multi-item ${p.alreadyRegistered ? 'multi-item-exists' : ''} ${on ? '' : 'multi-item-off'}`}
                 onClick={() => toggle(p.path)}
               >
                 {on ? (
@@ -86,6 +98,7 @@ export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.
                         .join(' · ')
                     : (p.suggested.title ?? '成品网页')}
                 </span>
+                {p.alreadyRegistered && <span className="multi-exists-tag">已存在</span>}
               </button>
             )
           })}
@@ -99,13 +112,21 @@ export function GroupPreviewModal({ multi, onConfirm, onCancel }: Props): React.
           </button>
           <span className="multi-count">已选 {selected.length} 个</span>
           <button
+            className="btn-secondary"
+            disabled={selected.length === 0}
+            title="不建组：勾选的未登记项目直接作为独立项目登记"
+            onClick={() => onSkip(selected)}
+          >
+            跳过
+          </button>
+          <button
             className="btn-primary"
             disabled={selected.length === 0}
             onClick={() =>
               onConfirm(name.trim() || (multi.path.split('/').pop() ?? '项目组'), selected)
             }
           >
-            登记成组
+            {hasExisting ? '转移为新组' : '登记成组'}
           </button>
         </div>
       </div>

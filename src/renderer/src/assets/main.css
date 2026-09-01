@@ -1270,6 +1270,29 @@ html.dark .sidebar-logo-word,
   opacity: 0.5;
 }
 
+/* 已登记的候选：灰化显示+尾部「已存在」标签（2026-09-01 用户拍板：可勾选，勾了=转移进新组） */
+.multi-item-exists {
+  opacity: 0.65;
+}
+
+.multi-item-exists:hover {
+  border-color: var(--border);
+}
+
+.multi-check-disabled {
+  color: var(--text-dim);
+}
+
+.multi-exists-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--fill-dim);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 .multi-count {
   flex: 1;
   text-align: right;
@@ -2851,6 +2874,21 @@ html.dark .settings-card {
 .settings-static {
   color: var(--text-dim);
   font-size: 12px;
+}
+
+/* 统一入口端口输入（设置-通用组） */
+.settings-port-input {
+  width: 88px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: inherit;
+  text-align: center;
+  outline: none;
+}
+.settings-port-input:focus {
+  border-color: #3b6ef5;
 }
 
 /* 圆角卡内的小节（外观组：主题模式/特殊风格，小节间细分隔线） */

@@ -91,7 +91,7 @@ export function deleteProject(id: string): void {
   persist()
 }
 
-export function updateProject(id: string, input: NewProjectInput): Project {
+export function updateProject(id: string, input: Partial<NewProjectInput>): Project {
   const p = projects.find((proj) => proj.id === id)
   if (!p) throw new Error('项目不存在')
   Object.assign(p, input)
@@ -103,6 +103,15 @@ export function touchStartedAt(id: string): void {
   const p = projects.find((p) => p.id === id)
   if (p) {
     p.lastStartedAt = Date.now()
+    persist()
+  }
+}
+
+/** 惰性补统一入口路由名（老数据无 lanSlug，首次挂载时生成并写回档案） */
+export function touchLanSlug(id: string, slug: string): void {
+  const p = projects.find((proj) => proj.id === id)
+  if (p && p.lanSlug !== slug) {
+    p.lanSlug = slug
     persist()
   }
 }

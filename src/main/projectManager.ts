@@ -7,6 +7,7 @@ import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { connect } from 'net'
 import type {
+  LanMode,
   LaunchMode,
   Project,
   ProjectFix,
@@ -15,9 +16,26 @@ import type {
   StartResult
 } from '../shared/types'
 import { isPureWeb } from '../shared/types'
-import { getSettings, listProjects, touchLastPort, touchStartedAt } from './store'
+import { getSettings, listProjects, touchLanSlug, touchLastPort, touchStartedAt } from './store'
 import { getLanIp, probeLan } from './lan'
 import { startWebServer } from './webServer'
+import { makeLanSlug, scanJsRootPaths, scanLocalHostRefs } from './detect'
+import {
+  clearLeakPaths,
+  getGatewayPort,
+  registerRoute,
+  setLeakListener,
+  startGateway,
+  stopGateway,
+  unregisterRoute
+} from './gateway'
+import {
+  probeNow,
+  registerTarget,
+  scheduleLeakRecheck,
+  setRecheckAll,
+  unregisterTarget
+} from './mountProbe'
 
 /** 健康检查：30 秒内端口就绪（验收标准 2），每 500ms 轮询一次 */
 const HEALTH_TIMEOUT_MS = 30_000
@@ -30,6 +48,8 @@ interface Runtime {
   server?: import('http').Server
   status: ProjectStatus
   port?: number
+  /** 统一入口挂载状态（probing/route/route-rewrite/direct；emit 时带上，UI 据此显示访客地址） */
+  lanMode?: LanMode
   /** 网页文件入口路径（单个文件登记时带文件名），右键"在浏览器打开"用 */
   entryPath?: string
   healthTimer?: NodeJS.Timeout
@@ -72,8 +92,185 @@ function setStatus(rt: Runtime, project: Project, status: ProjectStatus, port?: 
     id: project.id,
     status,
     port: rt.port,
+    lanMode: rt.lanMode,
     startedAt: status === 'running' ? Date.now() : undefined
   })
+  // 统一入口挂载/摘除中枢：所有 running/stopped 路径都经过这里，一处挂一处摘
+  void syncGatewayMount(rt, project)
+}
+
+// ---------- 统一入口挂载（方案一：IP + 路径） ----------
+
+/** 统一入口路由名：档案里有就用；老数据惰性生成并写回（改名不改 slug，访客书签稳定） */
+function ensureLanSlug(project: Project): string {
+  if (project.lanSlug) return project.lanSlug
+  const taken = new Set<string>()
+  for (const p of listProjects()) {
+    if (p.id !== project.id && p.lanSlug) taken.add(p.lanSlug)
+  }
+  const slug = makeLanSlug(project.name, taken)
+  project.lanSlug = slug
+  touchLanSlug(project.id, slug)
+  return slug
+}
+
+/** 挂载状态变化 → 记运行时 + 推事件（UI 据此显示访客地址） */
+function setLanMode(project: Project, mode: LanMode): void {
+  const rt = getRuntime(project.id)
+  rt.lanMode = mode
+  emit({
+    id: project.id,
+    status: rt.status,
+    port: rt.port,
+    lanMode: mode,
+    lanIp: getLanIp(),
+    gatewayPort: getGatewayPort()
+  })
+}
+
+/** 实测结果的日志说明（项目日志面板透明可见，不弹窗）。有预判时对比输出"确认/修正" */
+function mountLog(project: Project, mode: LanMode, predicted?: LanMode): void {
+  const ip = getLanIp()
+  const gw = getGatewayPort()
+  const route = `http://${ip}:${gw}/rp/${project.lanSlug}/`
+  const direct = `http://${ip}:${project.port ?? ''}/`
+  if (predicted) {
+    if (mode === predicted) {
+      emitLog(
+        project.id,
+        mode === 'route'
+          ? `实测确认 ✓ 零改写直挂：${route}`
+          : `实测确认 ✓ 自动改写（页面里的本机地址链接已翻译）：${route}`
+      )
+      return
+    }
+    emitLog(
+      project.id,
+      mode === 'direct'
+        ? `实测修正：统一入口不可用，降级独立端口：${direct}`
+        : `实测修正：${mode === 'route' ? '零改写直挂' : '自动改写'}：${route}`
+    )
+    return
+  }
+  if (mode === 'route') emitLog(project.id, `统一入口就绪：${route}`)
+  else if (mode === 'route-rewrite')
+    emitLog(project.id, `统一入口就绪（自动改写页面里的根路径引用）：${route}`)
+  else if (mode === 'direct') emitLog(project.id, `统一入口降级为独立端口：${direct}`)
+}
+
+/** 项目 running → 挂上统一入口。JS 体检命中（拖入时或挂载时实时复扫）直接 direct 不实测（宁丢便利不丢正确）。
+ *  每次挂载都复扫：项目重构建可能引入新病（SPA history 路由等），档案值只是拖入时的快照 */
+async function mountProject(project: Project, port: number): Promise<void> {
+  if (project.type === 'group') return
+  const s = getSettings()
+  if (!s.gatewayEnabled || !s.lanAccess) return
+  const slug = ensureLanSlug(project)
+  // 扫成品目录优先（preview 的 staticRoot 才是访客真正看到的内容）；老数据无档案值也靠这轮补判
+  const staticRoot = project.launchModes?.find((m) => m.kind === 'preview')?.staticRoot
+  const suspicious = project.lanSuspicious === true || scanJsRootPaths(staticRoot ?? project.path)
+  if (suspicious) {
+    registerRoute({ slug, name: project.name, port, mode: 'direct' })
+    setLanMode(project, 'direct')
+    emitLog(
+      project.id,
+      '体检发现 JS 写死根路径或 history 路由（子路径下会白屏），统一入口自动降级为独立端口访问'
+    )
+    return
+  }
+  registerRoute({ slug, name: project.name, port, mode: 'route' })
+  registerTarget({ id: project.id, name: project.name, slug, port })
+  // 预判（挂载即明牌，不等实测）：文件里写死本机 host:port 链接 → 改写模式；否则直挂。
+  // 预判直接推给前端（卡片立刻显示统一入口地址），实测几秒内完成后再校正
+  const predicted: LanMode = scanLocalHostRefs(staticRoot ?? project.path)
+    ? 'route-rewrite'
+    : 'route'
+  setLanMode(project, predicted)
+  emitLog(
+    project.id,
+    predicted === 'route-rewrite'
+      ? `统一入口预判·改写模式（页面含写死本机地址链接，自动翻译）：http://${getLanIp()}:${getGatewayPort()}/rp/${slug}/，实测复核中…`
+      : `统一入口预判·直挂模式：http://${getLanIp()}:${getGatewayPort()}/rp/${slug}/，实测复核中…`
+  )
+  await probeNow(project.id, (mode) => {
+    setLanMode(project, mode)
+    mountLog(project, mode, predicted)
+  })
+}
+
+/** 项目停止/失败 → 摘除统一入口 */
+function unmountProject(project: Project): void {
+  unregisterTarget(project.id)
+  if (project.lanSlug) unregisterRoute(project.lanSlug)
+  const rt = getRuntime(project.id)
+  if (rt.lanMode) {
+    rt.lanMode = undefined
+    // 通知 UI 清掉访客入口显示（lanMode 回到未探测态）
+    emit({ id: project.id, status: rt.status, port: rt.port, lanMode: undefined })
+  }
+}
+
+/** 状态中枢：running 且拿到端口 → 挂载；其余 → 摘除 */
+function syncGatewayMount(rt: Runtime, project: Project): void {
+  if (rt.status === 'running' && rt.port) {
+    void mountProject(project, rt.port)
+  } else {
+    unmountProject(project)
+  }
+}
+
+/** 网关漏网信号 → 防抖重测全部挂载项目（某个项目内页 JS 写死根路径跳转露馅 → 自动降级） */
+export function reprobeAllMounted(): void {
+  clearLeakPaths()
+  for (const [id, rt] of runtimes) {
+    if (rt.status !== 'running' || !rt.port) continue
+    const project = listProjects().find((p) => p.id === id)
+    if (project && !project.lanSuspicious && project.lanSlug) {
+      const oldMode = rt.lanMode
+      void probeNow(id, (mode) => {
+        setLanMode(project, mode)
+        if (mode !== oldMode) mountLog(project, mode)
+      })
+    }
+  }
+}
+
+/** 接线（index.ts 启动时调一次）：漏网信号 → 防抖重测 */
+export function initGatewayHooks(): void {
+  setLeakListener(() => scheduleLeakRecheck())
+  setRecheckAll(() => reprobeAllMounted())
+}
+
+/** 统一入口开关/端口变化时调用（ipc settings:save 联动）：
+ *  双开关任一关 → 停网关+摘除全部挂载；开 → 起网关+重新挂载所有 running 项目 */
+export async function syncGateway(): Promise<void> {
+  const s = getSettings()
+  console.log(
+    `[gateway] syncGateway 触发 enabled=${s.gatewayEnabled} lanAccess=${s.lanAccess} port=${s.gatewayPort}`
+  )
+  if (!s.gatewayEnabled || !s.lanAccess) {
+    stopGateway()
+    for (const [id, rt] of runtimes) {
+      if (rt.status !== 'running') continue
+      const project = listProjects().find((p) => p.id === id)
+      if (project) unmountProject(project)
+    }
+    return
+  }
+  const port = await startGateway(s.gatewayPort)
+  console.log(`[gateway] startGateway 返回 ${port}`)
+  if (port === 0) {
+    console.error('[gateway] 统一入口启动失败（端口连续被占）')
+    return
+  }
+  if (port !== s.gatewayPort) {
+    console.error(`[gateway] 设置的端口 ${s.gatewayPort} 被占用，改用 ${port}`)
+  }
+  for (const [id, rt] of runtimes) {
+    if (rt.status === 'running' && rt.port) {
+      const project = listProjects().find((p) => p.id === id)
+      if (project) void mountProject(project, rt.port)
+    }
+  }
 }
 
 /** 局域网可达性探测+推送：lanAccess 开且拿得到本机 IP 才探。
@@ -93,7 +290,9 @@ function probeAndEmitLan(rt: Runtime, project: Project, port: number): void {
         port: rt.port ?? port,
         lanIp: ip,
         lanReachable: ok,
-        spawned: !!rt.child?.pid
+        spawned: !!rt.child?.pid,
+        lanMode: rt.lanMode,
+        gatewayPort: getGatewayPort()
       })
       if (!ok && attempt === 0) {
         // 文案按服务出身区分：自己起的没托管按钮（加 --host 才行），接管的外部服务才有
@@ -942,7 +1141,9 @@ async function startWeb(project: Project, rt: Runtime, mode: LaunchMode): Promis
     emitLog(project.id, `临时服务已就绪：http://127.0.0.1:${port}${servedEntry}`)
     probeAndEmitLan(rt, project, port)
     if (project.openBrowser && !rt.noOpenBrowser) {
-      openUrl(`http://localhost:${port}${servedEntry}`)
+      // SPA 路由只认根路径：/index.html 归一为 /（登记即上线自动打开与右键打开同一规则，
+      // 带 index.html 打开会白屏——用户「删掉 index 才能看」就是这条路的漏网）
+      openUrl(`http://localhost:${port}${servedEntry === '/index.html' ? '/' : servedEntry}`)
     }
     return { ok: true }
   } catch (err) {

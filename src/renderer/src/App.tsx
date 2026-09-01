@@ -1228,7 +1228,19 @@ export default function App(): React.JSX.Element {
         tags: []
       })
       const added: Project[] = [group]
+      // 勾选的「已存在」项：从原位置转移进新组（2026-09-01 用户拍板）
+      const movedIds = new Set<string>()
+      let movedCount = 0
       for (const s of selected) {
+        if (s.alreadyRegistered) {
+          const existing = allProjects.find((p) => p.path === s.path)
+          if (existing) {
+            await window.api.updateProject(existing.id, { parentId: group.id })
+            movedIds.add(existing.id)
+            movedCount++
+          }
+          continue
+        }
         const child = await window.api.addProject({
           name: s.suggested.name,
           type: s.type,
@@ -1239,6 +1251,8 @@ export default function App(): React.JSX.Element {
           entryPaths: s.suggested.entryPaths,
           launchModes: s.suggested.launchModes,
           activeMode: s.suggested.activeMode,
+          lanSlug: s.suggested.lanSlug,
+          lanSuspicious: s.suggested.lanSuspicious,
           openBrowser: false,
           note: '',
           tags: [],
@@ -1251,11 +1265,54 @@ export default function App(): React.JSX.Element {
           if (!r.ok && r.reason) toast(r.reason, 'error')
         }
       }
-      setProjects((ps) => [...ps, ...added])
+      // 转移项更新 parentId（不入 added，避免重复行）
+      setProjects((ps) => [
+        ...ps.map((p) => (movedIds.has(p.id) ? { ...p, parentId: group.id } : p)),
+        ...added
+      ])
       setMulti(null)
       // 新组登记完直接跳组页面
       setCategory(`group:${group.id}` as Category)
-      toast(`已登记项目组「${name}」（${selected.length} 个子项）`, 'success')
+      toast(
+        `已登记项目组「${name}」（${selected.length} 个子项${movedCount ? `，其中 ${movedCount} 个为转移` : ''}）`,
+        'success'
+      )
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '登记失败', 'error')
+    }
+  }
+
+  /** 跳过成组（2026-09-01 用户拍板）：勾选的未登记候选直接登记为独立项目（不进组）；已存在的不动 */
+  const handleGroupSkip = async (selected: DetectSuccess[]): Promise<void> => {
+    try {
+      const added: Project[] = []
+      for (const s of selected) {
+        if (s.alreadyRegistered) continue
+        const child = await window.api.addProject({
+          name: s.suggested.name,
+          type: s.type,
+          path: s.path,
+          command: s.suggested.command,
+          port: s.suggested.port,
+          entryPath: s.suggested.entryPath,
+          entryPaths: s.suggested.entryPaths,
+          launchModes: s.suggested.launchModes,
+          activeMode: s.suggested.activeMode,
+          lanSlug: s.suggested.lanSlug,
+          lanSuspicious: s.suggested.lanSuspicious,
+          openBrowser: false,
+          note: '',
+          tags: []
+        })
+        added.push(child)
+        if ((child.launchModes ?? []).some((m) => m.kind === 'preview')) {
+          const r = await window.api.startProject(child.id, 'preview')
+          if (!r.ok && r.reason) toast(r.reason, 'error')
+        }
+      }
+      setProjects((ps) => [...ps, ...added])
+      setMulti(null)
+      toast(`已登记 ${added.length} 个独立项目`, 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : '登记失败', 'error')
     }
@@ -1796,6 +1853,7 @@ export default function App(): React.JSX.Element {
         <GroupPreviewModal
           multi={multi}
           onConfirm={handleGroupCreate}
+          onSkip={handleGroupSkip}
           onCancel={() => setMulti(null)}
         />
       )}

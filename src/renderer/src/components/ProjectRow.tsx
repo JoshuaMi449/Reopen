@@ -111,6 +111,14 @@ export function ProjectRow({
         ? (status.lanIp ?? lanIp)
         : ''
   const rowBlocked = project.id !== 'demo-app' && status?.lanReachable === false
+  // 统一入口挂载成功（route/route-rewrite）→ 访客地址显示统一入口；其余沿用独立端口
+  const mounted =
+    (status?.lanMode === 'route' || status?.lanMode === 'route-rewrite') &&
+    !!project.lanSlug &&
+    !!status?.gatewayPort
+  const guestUrl = mounted
+    ? `http://${status?.lanIp ?? lanIp}:${status?.gatewayPort}/rp/${project.lanSlug}/`
+    : `http://${rowLan}:${port}`
   // 局域网地址复制反馈（点击=复制，不再跳转）
   const [lanCopied, setLanCopied] = useState(false)
 
@@ -176,19 +184,25 @@ export function ProjectRow({
                 :{port}
                 <ExternalLink size={11} />
               </a>
-              {rowLan && (
+              {(rowLan || mounted) && (
                 <a
                   className={`lan-link ${lanCopied ? 'lan-copied' : ''}`}
                   data-tour={project.id === 'demo-app' ? 'lan-link' : undefined}
-                  title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
+                  title={
+                    mounted
+                      ? '访客地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                      : '局域网地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                  }
                   onClick={(e) => {
                     e.stopPropagation()
-                    void navigator.clipboard.writeText(`http://${rowLan}:${port}`)
+                    void navigator.clipboard.writeText(guestUrl)
                     setLanCopied(true)
                     setTimeout(() => setLanCopied(false), 1500)
                   }}
                 >
-                  {rowLan}:{port}
+                  {mounted
+                    ? `${status?.lanIp ?? lanIp}:${status?.gatewayPort}/rp/${project.lanSlug}/`
+                    : `${rowLan}:${port}`}
                   {lanCopied && <span className="lan-copied-tag">已复制</span>}
                 </a>
               )}

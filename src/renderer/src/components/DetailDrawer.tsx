@@ -80,6 +80,14 @@ export function DetailDrawer({
   const logRef = useRef<HTMLDivElement>(null)
   // 局域网地址复制反馈（点击=复制不再跳转）
   const [lanCopied, setLanCopied] = useState(false)
+  // 统一入口挂载成功（route/route-rewrite）→ 显示访客地址（统一入口）；其余沿用独立端口
+  const drawerMounted =
+    (status?.lanMode === 'route' || status?.lanMode === 'route-rewrite') &&
+    !!project.lanSlug &&
+    !!status?.gatewayPort
+  const guestUrl = drawerMounted
+    ? `http://${status?.lanIp ?? lanIp}:${status?.gatewayPort}/rp/${project.lanSlug}/`
+    : `http://${status?.lanIp ?? lanIp}:${status?.port ?? project.port}`
 
   // 日志自动滚到底
   useEffect(() => {
@@ -119,22 +127,27 @@ export function DetailDrawer({
             <span className="drawer-meta-label">端口</span>
             <b>
               {status?.port ?? project.port ?? '—'}
-              {status?.lanReachable === true && (status?.port ?? project.port) && (
-                <span
-                  className={`drawer-lan ${lanCopied ? 'lan-copied' : ''}`}
-                  title="局域网地址（点击复制）"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(
-                      `http://${status?.lanIp ?? lanIp}:${status?.port ?? project.port}`
-                    )
-                    setLanCopied(true)
-                    setTimeout(() => setLanCopied(false), 1500)
-                  }}
-                >
-                  局域网 {status?.lanIp ?? lanIp}:{status?.port ?? project.port}
-                  {lanCopied && <span className="lan-copied-tag">已复制</span>}
-                </span>
-              )}
+              {(status?.lanReachable === true || drawerMounted) &&
+                (status?.port ?? project.port) && (
+                  <span
+                    className={`drawer-lan ${lanCopied ? 'lan-copied' : ''}`}
+                    title={
+                      drawerMounted
+                        ? '访客地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                        : '局域网地址（点击复制）'
+                    }
+                    onClick={() => {
+                      void navigator.clipboard.writeText(guestUrl)
+                      setLanCopied(true)
+                      setTimeout(() => setLanCopied(false), 1500)
+                    }}
+                  >
+                    {drawerMounted
+                      ? `访客 ${status?.lanIp ?? lanIp}:${status?.gatewayPort}/rp/${project.lanSlug}/`
+                      : `局域网 ${status?.lanIp ?? lanIp}:${status?.port ?? project.port}`}
+                    {lanCopied && <span className="lan-copied-tag">已复制</span>}
+                  </span>
+                )}
               {status?.lanReachable === false && (
                 <span
                   className="lan-blocked"

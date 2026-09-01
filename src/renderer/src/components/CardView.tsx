@@ -187,6 +187,14 @@ export function CardView({
               ? (ev.lanIp ?? lanIp)
               : ''
         const lanBlocked = p.id !== 'demo-app' && ev?.lanReachable === false
+        // 统一入口挂载成功（route/route-rewrite）→ 访客地址显示统一入口；其余沿用独立端口
+        const mounted =
+          (ev?.lanMode === 'route' || ev?.lanMode === 'route-rewrite') &&
+          !!p.lanSlug &&
+          !!ev?.gatewayPort
+        const guestUrl = mounted
+          ? `http://${ev?.lanIp ?? lanIp}:${ev?.gatewayPort}/rp/${p.lanSlug}/`
+          : `http://${cardLan}:${port}`
         return (
           <Fragment key={p.id}>
             {header && <div className="list-group-header card-grid-full">{header.label}</div>}
@@ -291,19 +299,25 @@ export function CardView({
                         localhost:{port}
                         <ExternalLink size={11} />
                       </a>
-                      {cardLan && (
+                      {(cardLan || mounted) && (
                         <a
                           className={`lan-link ${lanCopiedId === p.id ? 'lan-copied' : ''}`}
                           data-tour={p.id === 'demo-app' ? 'lan-link' : undefined}
-                          title="局域网地址（点击复制，同一 Wi-Fi 的设备用这个）"
+                          title={
+                            mounted
+                              ? '访客地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                              : '局域网地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                          }
                           onClick={(e) => {
                             e.stopPropagation()
-                            void navigator.clipboard.writeText(`http://${cardLan}:${port}`)
+                            void navigator.clipboard.writeText(guestUrl)
                             setLanCopiedId(p.id)
                             setTimeout(() => setLanCopiedId(null), 1500)
                           }}
                         >
-                          {cardLan}:{port}
+                          {mounted
+                            ? `${ev?.lanIp ?? lanIp}:${ev?.gatewayPort}/rp/${p.lanSlug}/`
+                            : `${cardLan}:${port}`}
                           {lanCopiedId === p.id && <span className="lan-copied-tag">已复制</span>}
                         </a>
                       )}

@@ -2,11 +2,12 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
 import { createAppMenu } from './menu'
-import { autoStartAll, stopAllRuntimes } from './projectManager'
+import { autoStartAll, initGatewayHooks, stopAllRuntimes, syncGateway } from './projectManager'
 import { getSettings } from './store'
 import { refreshShortcuts } from './shortcuts'
 import { initTray } from './tray'
 import { createWindow, isQuitConfirmed, markQuitConfirmed, showMainWindow } from './window'
+import { stopGateway } from './gateway'
 
 // 单例锁：重复启动时唤起已有窗口而不是开两个（PRD 四·稳定性）
 if (!app.requestSingleInstanceLock()) {
@@ -41,6 +42,10 @@ app.whenReady().then(() => {
   initTray()
   refreshShortcuts()
 
+  // 统一入口：漏网信号接线 + 按设置起网关（跑在项目启动之前，挂载顺序无依赖）
+  initGatewayHooks()
+  void syncGateway()
+
   // 自启项：打开 Reopen 自动拉起（PRD 3.5 两层自动机制中的软件层）
   autoStartAll()
 
@@ -74,6 +79,8 @@ app.on('before-quit', (e) => {
   })
   if (choice !== 0) return
   if (!keep) stopAllRuntimes()
+  // 统一入口随 Reopen 退出而关闭（访客改走各项目独立端口；keep 模式下项目仍在跑）
+  stopGateway()
   markQuitConfirmed()
   app.quit()
 })

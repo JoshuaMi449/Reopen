@@ -39,6 +39,10 @@ interface FormValues {
   activeMode?: string
   /** 端口来源（改端口时直接改写项目源文件；提交后由 App 调用 rewrite） */
   portSource?: PortSource
+  /** 统一入口路由名（识别生成，表单不编辑，静默带进档案） */
+  lanSlug?: string
+  /** JS 根路径扫描结果（识别生成，静默带进档案） */
+  lanSuspicious?: boolean
 }
 
 /** 规格摘要行（用户拖入登记时就标明里面有什么，大白话事实陈述，不出现「启动方式」这个词） */
@@ -80,7 +84,9 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       entryPaths: project.entryPaths,
       launchModes: project.launchModes,
       activeMode: project.activeMode,
-      portSource: project.portSource
+      portSource: project.portSource,
+      lanSlug: project.lanSlug,
+      lanSuspicious: project.lanSuspicious
     }
   }
   if (mode === 'create' && detect) {
@@ -97,7 +103,9 @@ function initialValues(mode: Props['mode'], detect?: DetectSuccess, project?: Pr
       entryPaths: detect.suggested.entryPaths,
       launchModes: detect.suggested.launchModes,
       activeMode: detect.suggested.activeMode,
-      portSource: detect.suggested.portSource
+      portSource: detect.suggested.portSource,
+      lanSlug: detect.suggested.lanSlug,
+      lanSuspicious: detect.suggested.lanSuspicious
     }
   }
   return {
@@ -240,6 +248,9 @@ export function ProjectFormModal({
       launchModes,
       activeMode: init.activeMode,
       portSource: init.portSource,
+      // 统一入口：路由名与 JS 扫描结果由识别生成，表单不编辑，原样带进档案
+      lanSlug: init.lanSlug,
+      lanSuspicious: init.lanSuspicious,
       openBrowser,
       note: note.trim(),
       tags: [
