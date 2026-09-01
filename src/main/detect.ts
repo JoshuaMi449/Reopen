@@ -3,6 +3,7 @@
 // S5 Python / S6 bun·deno / S7 启动脚本 / S9 隐藏根不跳过
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { basename, extname, join, resolve } from 'path'
+import { pinyin } from 'pinyin-pro'
 import type {
   DetectOutcome,
   DetectSuccess,
@@ -64,9 +65,9 @@ function countFiles(dir: string): number {
   return count
 }
 
-/** 浅层找 html 文件（最多下钻 2 层，跳过隐藏目录和 SKIP_DIRS） */
+/** 浅层找 html 文件（最多下钻 3 层，跳过隐藏目录和 SKIP_DIRS） */
 function findHtml(dir: string, depth = 0): string | null {
-  if (depth > 2) return null
+  if (depth > 3) return null
   try {
     for (const name of readdirSync(dir)) {
       const full = join(dir, name)
@@ -84,11 +85,11 @@ function findHtml(dir: string, depth = 0): string | null {
 }
 
 /** 收集文件夹里的全部网页入口（多入口清单，登记后都能打开；
- *  最多下钻 2 层，跳隐藏目录和 SKIP_DIRS；按文件大小从大到小排——最大的最可能是主页，排第一当主入口） */
+ *  最多下钻 3 层，跳隐藏目录和 SKIP_DIRS；按文件大小从大到小排——最大的最可能是主页，排第一当主入口） */
 function findHtmlEntries(dir: string): string[] {
   const out: { rel: string; size: number }[] = []
   const walk = (d: string, depth: number): void => {
-    if (depth > 2) return
+    if (depth > 3) return
     try {
       for (const name of readdirSync(d)) {
         const full = join(d, name)
@@ -506,7 +507,15 @@ function buildLaunchModes(dir: string): LaunchMode[] {
   }
   // 什么都没有但能找到 html：兜底成单文件成品预览（老行为的 html 分支）
   if (modes.length === 0) {
-    const entries = findHtmlEntries(dir)
+    const entries = findHtmlEntries(dir).filter((rel) => {
+      try {
+        // 大文件不可能是模板壳，跳过读；壳（未构建的 Vite index.html）当入口必白屏，排除
+        if (statSync(join(dir, rel)).size > 256 * 1024) return true
+        return !isViteShell(readFileSync(join(dir, rel), 'utf-8'))
+      } catch {
+        return true
+      }
+    })
     if (entries.length > 0) {
       modes.push({
         id: 'preview',
@@ -520,8 +529,9 @@ function buildLaunchModes(dir: string): LaunchMode[] {
   return modes
 }
 
-/** 一个目录的完整检测（S1 找到项目根后复用）：生成启动方式清单，preview 为默认类型 */
-function detectDirAsProject(dir: string): DetectSuccess | null {
+/** 一个目录的完整检测（S1 找到项目根后复用）：生成启动方式清单，preview 为默认类型。
+ *  takenSlugs：本批已生成的 slug（多项目容器互查重） */
+function detectDirAsProject(dir: string, takenSlugs?: Set<string>): DetectSuccess | null {
   const modes = buildLaunchModes(dir)
   if (modes.length === 0) return null
   const primary = modes[0]
@@ -531,12 +541,18 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
   const indexFile = preview?.staticRoot ? join(preview.staticRoot, 'index.html') : null
   // 全部网页入口清单（多页面项目登记时展示、登记后都能打开）
   const entries = preview?.staticRoot ? findHtmlEntries(preview.staticRoot) : []
+  // 统一入口路由名：已登记项目的 slug + 本批已生成的，全部避让
+  const slugSet = takenSlugs ?? new Set<string>()
+  for (const p of listProjects()) if (p.lanSlug) slugSet.add(p.lanSlug)
+  const name = basename(dir)
+  const lanSlug = makeLanSlug(name, slugSet)
+  slugSet.add(lanSlug)
   return {
     ok: true,
     type: isWeb ? 'web' : 'service',
     path: dir,
     suggested: {
-      name: basename(dir),
+      name,
       command: primary.command,
       port: primary.port,
       portSource: modes.find((m) => m.portSource)?.portSource,
@@ -545,15 +561,19 @@ function detectDirAsProject(dir: string): DetectSuccess | null {
       title: indexFile && existsSync(indexFile) ? readTitle(indexFile) : undefined,
       fileCount: preview?.staticRoot ? countFiles(preview.staticRoot) : undefined,
       launchModes: modes,
-      activeMode: primary.id
+      activeMode: primary.id,
+      lanSlug,
+      lanSuspicious: scanJsRootPaths(dir)
     }
   }
 }
 
 /** S2：多项目容器——每个项目根走完整检测（合并成一条+多启动方式）+ 根层散装 html 候选，过滤掉已登记的 */
 function detectMulti(dir: string, roots: string[]): DetectOutcome {
+  const slugSet = new Set<string>()
+  for (const p of listProjects()) if (p.lanSlug) slugSet.add(p.lanSlug)
   const projects = roots
-    .map((r) => detectDirAsProject(r))
+    .map((r) => detectDirAsProject(r, slugSet))
     .filter((x): x is DetectSuccess => x !== null)
   // 根层散装 html（不进子目录——子目录可能属于上面的项目）
   try {
@@ -561,12 +581,15 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
       const ext = extname(name).toLowerCase()
       if (ext !== '.html' && ext !== '.htm') continue
       const full = join(dir, name)
+      const projName = basename(name, ext)
+      const lanSlug = makeLanSlug(projName, slugSet)
+      slugSet.add(lanSlug)
       projects.push({
         ok: true,
         type: 'web',
         path: full,
         suggested: {
-          name: basename(name, ext),
+          name: projName,
           entryPath: `/${name}`,
           title: readTitle(full),
           fileCount: 1,
@@ -579,7 +602,9 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
               entryPath: `/${name}`
             }
           ],
-          activeMode: 'preview'
+          activeMode: 'preview',
+          lanSlug,
+          lanSuspicious: safeScanFile(full)
         }
       })
     }
@@ -594,11 +619,203 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
     return (b.suggested.fileCount ?? 0) - (a.suggested.fileCount ?? 0)
   })
   const registered = new Set(listProjects().map((proj) => resolve(proj.path)))
-  const fresh = projects.filter((pr) => !registered.has(resolve(pr.path)))
-  if (fresh.length === 0) {
+  // 已登记的候选不静默过滤：标记出来让弹窗显示「已存在」并禁勾（2026-09-01 用户拍板，
+  // 之前静默消失让用户以为识别漏了文件）
+  for (const pr of projects) {
+    if (registered.has(resolve(pr.path))) pr.alreadyRegistered = true
+  }
+  if (projects.every((pr) => pr.alreadyRegistered)) {
     return { ok: false, kind: 'duplicate', name: basename(dir) }
   }
-  return { ok: true, kind: 'multi', path: dir, projects: fresh }
+  return { ok: true, kind: 'multi', path: dir, projects }
+}
+
+/** 统一入口路由名（方案一 IP+路径）：中文转全拼、保留英文数字、其余清掉、重名加后缀。
+ *  稳定优先：一次生成后持久化，改名不改 slug（访客书签不失效） */
+export function makeLanSlug(name: string, taken: Set<string>): string {
+  let base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[一-龥]+/g, (c) => pinyin(c, { toneType: 'none', type: 'array' }).join(' '))
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 32)
+  if (!base) base = 'app'
+  let slug = base
+  let i = 2
+  while (taken.has(slug)) slug = `${base}-${i++}`
+  return slug
+}
+
+/** 扫描文本里的 JS 根路径特征（location 跳转 / fetch API / WebSocket 写死根）。
+ *  命中 = 挂子路径必断的暗病；误报代价只是少统一入口便利，宁可错杀 */
+const ROOT_PATH_PATTERNS = [
+  /(?:location\.(?:href|assign|replace)\s*=|window\.location\s*=)\s*['"`]\//,
+  /window\.open\s*\(\s*['"`]\//,
+  /fetch\(\s*['"`]\//,
+  /axios\s*\.\s*(?:get|post|put|patch|delete|request)\s*\(\s*['"`]\//,
+  /\.open\(\s*['"`](?:GET|POST|PUT|DELETE)['"`]\s*,\s*['"`]\//,
+  /new\s+WebSocket\s*\(\s*['"`](?:ws|\/)/,
+  // EventSource 独立模式：URL 是 /api/... 开头，不能和 WebSocket 共用 ws 前缀模式
+  /new\s+EventSource\s*\(\s*['"`]\//,
+  /new\s+Worker\s*\(\s*['"`]\//,
+  /(?:navigator\.)?serviceWorker\s*\.\s*register\s*\(\s*['"`]\//,
+  // 动态导入根路径：import('/assets/chunk.js') 懒加载子页面——重写器救不了 JS 内部，子路径下必 404
+  /import\s*\(\s*['"`]\//,
+  // origin 拼接根路径：location.origin + '/x'——统一入口下 origin 是网关地址，拼出来必落回根 404
+  /\.origin\s*\+\s*['"`]\//,
+  // SPA history 路由：子路径下 pathname 匹配不到路由 → 整页空白（HTTP 层一切正常，实测测不出；
+  // pushState 是浏览器 API，压缩后保留；hash 路由不用它，不误伤）
+  /(?:history\.)?(?:pushState|replaceState)\s*\(/
+]
+
+/** 扫一段文本（JS 源码/html 内嵌 script）：逐行匹配，跳过纯注释行（压缩 dist 无注释行，照常命中） */
+export function scanText(text: string): boolean {
+  for (const line of text.split('\n')) {
+    const t = line.trim()
+    if (!t || t.startsWith('//')) continue
+    if (ROOT_PATH_PATTERNS.some((re) => re.test(t))) return true
+  }
+  return false
+}
+
+/** 扫单个文件（html 内嵌 script 场景）：html 走 scanHtmlRoots（内联 script + importmap），
+ *  其余按纯 JS 扫。读不到/读失败按不命中 */
+function safeScanFile(file: string): boolean {
+  try {
+    const content = readFileSync(file, 'utf-8')
+    return /\.html?$/i.test(file) ? scanHtmlRoots(content) : scanText(content)
+  } catch {
+    return false
+  }
+}
+
+/** 扫 HTML 里的内联 <script>（服务端渲染盲区：挂载扫描只扫静态文件，后端渲染的 JS 藏在这里）
+ *  + importmap：根路径说明符会让模块解析必断。命中 = 挂子路径必断 → direct */
+export function scanHtmlRoots(html: string): boolean {
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = m[1] ?? ''
+    const body = m[2] ?? ''
+    if (!body.trim()) continue
+    if (/type\s*=\s*["']?importmap["']?/i.test(attrs)) {
+      // importmap 是 JSON：键/值为根路径说明符（"/lib/x.js"）→ 模块解析必断
+      if (/["']\/(?!\/)/.test(body)) return true
+    } else if (scanText(body)) {
+      return true
+    }
+  }
+  return false
+}
+
+/** 收集目录里参与扫描的文件（JS 相关 + HTML）：上限 100 个，跳过 node_modules/.git。
+ *  传单个文件（单 HTML 项目 path 就是文件）则直接收集该文件 */
+function collectScanFiles(dir: string): string[] {
+  const files: string[] = []
+  const walk = (d: string, depth: number): void => {
+    if (depth > 5 || files.length >= 100) return
+    try {
+      for (const name of readdirSync(d)) {
+        const full = join(d, name)
+        if (name === 'node_modules' || name === '.git') continue
+        if (isDir(full)) {
+          walk(full, depth + 1)
+        } else if (/\.(js|ts|jsx|tsx|vue|mjs|cjs|html?)$/i.test(name)) {
+          files.push(full)
+        }
+      }
+    } catch {
+      // 读不了的目录忽略
+    }
+  }
+  try {
+    if (isDir(dir)) walk(dir, 0)
+    else if (/\.(js|ts|jsx|tsx|vue|mjs|cjs|html?)$/i.test(dir)) files.push(dir)
+  } catch {
+    // 读不了忽略
+  }
+  return files
+}
+
+/** 扫目录里的 JS 文件（拖入体检）：上限 100 个、单文件 2MB，跳过 node_modules/.git */
+export function scanJsRootPaths(dir: string): boolean {
+  for (const f of collectScanFiles(dir)) {
+    try {
+      if (statSync(f).size > 2 * 1024 * 1024) continue
+      // js 按纯 JS 扫；html 走 scanHtmlRoots（内联 script + importmap 一起查）
+      if (safeScanFile(f)) return true
+    } catch {
+      // 读不了跳过
+    }
+  }
+  return false
+}
+
+/** 扫目录里写死本机 host:port 的链接（挂载预判 route-rewrite 用）：这类页面必须靠响应改写，
+ *  访客点开才不会跳到自己电脑的端口。任意端口都算——挂载时其他项目可能还没登记。
+ *  尾斜杠可省（裸写 http://127.0.0.1:5001 也算）；(?!\d) 防止端口数字被截断误配 */
+export function scanLocalHostRefs(dir: string): boolean {
+  const re = /http:\/\/(?:localhost|127\.0\.0\.1):\d+(?!\d)/g
+  for (const f of collectScanFiles(dir)) {
+    try {
+      if (statSync(f).size > 2 * 1024 * 1024) continue
+      if (re.test(readFileSync(f, 'utf-8'))) return true
+    } catch {
+      // 读不了跳过
+    }
+  }
+  return false
+}
+
+/** 目录根层 ≥2 个 HTML 且没有含 HTML 的子目录 → 独立作品堆（根层平铺多个独立作品）。
+ *  有子目录结构的（如 factory/integrator/cases 分区）是多页网站，不算 */
+function isHtmlWorkspace(dir: string): boolean {
+  let rootHtml = 0
+  let subDirHtml = false
+  try {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name)
+      if (isDir(full)) {
+        if (name.startsWith('.') || SKIP_DIRS.has(name)) continue
+        if (findHtml(full, 0) !== null) subDirHtml = true
+      } else if (/\.html?$/i.test(name)) {
+        rootHtml++
+      }
+    }
+  } catch {
+    return false
+  }
+  return rootHtml >= 2 && !subDirHtml
+}
+
+/** 目录里有没有 PHP 入口（下钻 2 层）——只为给出准确的「不支持」提示（需要 PHP 环境，非本产品范围） */
+function hasPhpEntry(dir: string, depth = 0): boolean {
+  if (depth > 2) return false
+  try {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name)
+      if (isDir(full)) {
+        if (!name.startsWith('.') && !SKIP_DIRS.has(name) && hasPhpEntry(full, depth + 1))
+          return true
+      } else if (extname(name).toLowerCase() === '.php') {
+        return true
+      }
+    }
+  } catch {
+    // 读不了按没有
+  }
+  return false
+}
+
+/** Vite/React 开发模板壳：body 只有挂载点、module 脚本指向 /src/ 的 index.html——
+ *  未构建时直接预览必白屏。单文件拖入给提示；静态站兜底时排除它当入口 */
+function isViteShell(content: string): boolean {
+  return (
+    content.includes('@vite/client') ||
+    (/<div\s+id\s*=\s*["']root["']\s*><\/div>/i.test(content) &&
+      /<script[^>]*type\s*=\s*["']module["'][^>]*src\s*=\s*["'][^"']*\/src\//i.test(content))
+  )
 }
 
 /** 拖拽识别入口（PRD 3.2 的识别规则） */
@@ -617,30 +834,53 @@ export function detectPath(rawPath: string): DetectOutcome {
     if (roots.length >= 2) {
       return detectMulti(p, roots)
     }
+    // 纯 HTML 独立作品堆（根层 ≥2 个 HTML、无含 HTML 的子目录）→ 组（2026-09-01 用户拍板；
+    // detectMulti 的根层散装 html 收集正好把每个 HTML 收成子项目）
+    if (roots.length === 0 && isHtmlWorkspace(p)) {
+      return detectMulti(p, [])
+    }
     const root = roots[0] ?? p
     const result = detectDirAsProject(root)
     if (!result) {
       return {
         ok: false,
         kind: 'no-match',
-        reason: '文件夹里没有 package.json 也没有 html 文件'
+        reason: hasPhpEntry(root)
+          ? 'PHP 项目暂不支持（需要 PHP 环境）'
+          : '文件夹里没有 package.json 也没有 html 文件'
       }
     }
     return successOrDuplicate(root, result)
   }
   // 单个文件：html → 网页文件
   const ext = extname(p).toLowerCase()
+  if (ext === '.php') {
+    return { ok: false, kind: 'no-match', reason: 'PHP 项目暂不支持（需要 PHP 环境）' }
+  }
   if (ext === '.html' || ext === '.htm') {
+    const projName = basename(p, ext)
+    // Vite 模板壳（未构建的 index.html）预览必白屏：提示拖整个项目文件夹
+    try {
+      if (isViteShell(readFileSync(p, 'utf-8'))) {
+        return { ok: false, kind: 'no-match', reason: '这是 Vite 开发模板页，请拖入整个项目文件夹' }
+      }
+    } catch {
+      // 读不了按不是壳
+    }
+    const slugSet = new Set<string>()
+    for (const proj of listProjects()) if (proj.lanSlug) slugSet.add(proj.lanSlug)
     return successOrDuplicate(p, {
       ok: true,
       type: 'web',
       path: p,
       suggested: {
-        name: basename(p, ext),
+        name: projName,
         // 网站标题小字（单 html 拖入英文文件名难认，读 <title> 帮辨认）
         title: readTitle(p),
         launchModes: [{ id: 'preview', kind: 'preview', label: '成品预览' }],
-        activeMode: 'preview'
+        activeMode: 'preview',
+        lanSlug: makeLanSlug(projName, slugSet),
+        lanSuspicious: safeScanFile(p)
       }
     })
   }
@@ -651,11 +891,15 @@ export function detectPath(rawPath: string): DetectOutcome {
 export function parseApp(appPath: string): DetectOutcome {
   const name = basename(appPath, '.app')
   const roots = [join(appPath, 'Contents/Resources/app'), join(appPath, 'Contents/Resources')]
+  const slugSet = new Set<string>()
+  for (const proj of listProjects()) if (proj.lanSlug) slugSet.add(proj.lanSlug)
   for (const root of roots) {
     if (!existsSync(root)) continue
     if (existsSync(join(root, 'package.json'))) {
       const guessed = guessCommand(root)
       const rp = readPort(root, guessed)
+      const lanSlug = makeLanSlug(name, slugSet)
+      slugSet.add(lanSlug)
       return successOrDuplicate(root, {
         ok: true,
         type: 'service',
@@ -675,12 +919,16 @@ export function parseApp(appPath: string): DetectOutcome {
               portSource: rp?.source
             }
           ],
-          activeMode: 'dev'
+          activeMode: 'dev',
+          lanSlug,
+          lanSuspicious: scanJsRootPaths(root)
         }
       })
     }
     const html = findHtml(root)
     if (html) {
+      const lanSlug = makeLanSlug(name, slugSet)
+      slugSet.add(lanSlug)
       return successOrDuplicate(root, {
         ok: true,
         type: 'web',
@@ -697,7 +945,9 @@ export function parseApp(appPath: string): DetectOutcome {
               entryPath: toEntryPath(root, html)
             }
           ],
-          activeMode: 'preview'
+          activeMode: 'preview',
+          lanSlug,
+          lanSuspicious: scanJsRootPaths(root)
         }
       })
     }
