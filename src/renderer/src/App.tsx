@@ -395,7 +395,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.3（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.4（VC复活点）')
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）

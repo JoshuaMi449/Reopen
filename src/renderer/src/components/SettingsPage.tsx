@@ -599,7 +599,7 @@ export function SettingsPage({
   const about = (
     <div className="settings-group">
       <div className="settings-about-app">Reopen</div>
-      <div className="settings-about-line">版本 1.0.3（VC复活点）</div>
+      <div className="settings-about-line">版本 1.0.4（VC复活点）</div>
       <div className="settings-about-line">Restart your Mac without losing your projects</div>
       <div className="settings-about-line">
         <a
