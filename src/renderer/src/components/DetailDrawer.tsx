@@ -43,8 +43,6 @@ interface Props {
   lanIp?: string
   /** 局域网打不开时「由本应用托管」（接管服务没开门） */
   onRehost?(): void
-  /** 切换启动方式（运行中=停掉按新方式重启，停止态=改默认） */
-  onSwitchMode?(modeId: string): void
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -77,8 +75,7 @@ export function DetailDrawer({
   onInstallDeps,
   onKillResidual,
   lanIp,
-  onRehost,
-  onSwitchMode
+  onRehost
 }: Props): React.JSX.Element {
   const logRef = useRef<HTMLDivElement>(null)
   // 局域网地址复制反馈（点击=复制不再跳转）
@@ -217,21 +214,19 @@ export function DetailDrawer({
           )}
         </div>
 
-        {/* 启动方式切换（多方式项目才有）：运行中切换=按新方式重启，停止态=改下次启动默认 */}
+        {/* 启动方式（多方式项目才有）：纯信息展示（2026-09-02 定稿：打开就行，不做切换——
+            显示实际命令小字（npm run dev / ./start.command），成品预览显示入口文件 */}
         {(project.launchModes?.length ?? 0) > 1 && (
           <div className="drawer-modes">
             <span className="drawer-meta-label">启动方式</span>
             <div className="drawer-mode-btns">
               {project.launchModes!.map((m) => (
-                <button
+                <span
                   key={m.id}
-                  type="button"
-                  className={`btn-mini ${m.id === project.activeMode ? 'mode-active' : ''}`}
-                  title={active ? '切换并重启到此方式' : '设为下次启动的方式'}
-                  onClick={() => onSwitchMode?.(m.id)}
+                  className={`drawer-mode-text ${m.id === project.activeMode ? 'mode-active' : ''}`}
                 >
-                  {m.label}
-                </button>
+                  {m.command ?? m.entryPath ?? m.label}
+                </span>
               ))}
             </div>
           </div>

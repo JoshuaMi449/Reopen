@@ -282,9 +282,10 @@ function SystemCards(props: {
               <span>用户：{cpu ? fmtPct(cpu.user) : '…'}</span>
               <span>闲置：{cpu ? fmtPct(cpu.idle) : '…'}</span>
             </div>
+            {/* 折线波形只在文字列下方（左侧大图标位置空出） */}
+            <CpuWave history={cpuHistory} />
           </div>
         </div>
-        <CpuWave history={cpuHistory} />
       </div>
 
       <div className="sys-card">
@@ -385,7 +386,7 @@ function networkTypeName(type?: string): string {
   }
 }
 
-/** CPU 柱状波形图（同款蓝色波形：每 2s 一根柱子，30 根=1 分钟窗口） */
+/** CPU 连续折线波形图（2026-09-02 定稿：柱状改为折线，每 2s 一个采样点，30 点=1 分钟窗口） */
 function CpuWave(props: { history: number[] }): React.JSX.Element {
   const { history } = props
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -407,13 +408,20 @@ function CpuWave(props: { history: number[] }): React.JSX.Element {
     const accent = getComputedStyle(document.documentElement)
       .getPropertyValue('--tray-accent')
       .trim()
-    const barW = w / WAVE_POINTS - 2
+    // 连续折线：采样点从左到右连线
+    const n = Math.max(history.length, 2)
+    const step = w / (n - 1)
+    ctx.beginPath()
     history.forEach((v, i) => {
-      const bh = Math.max(2, v * (h - 2))
-      const x = i * (barW + 2)
-      ctx.fillStyle = accent || '#0A84FF'
-      ctx.fillRect(x, h - bh, barW, bh)
+      const y = h - Math.max(2, Math.min(1, v) * (h - 3)) - 1
+      if (i === 0) ctx.moveTo(0, y)
+      else ctx.lineTo(i * step, y)
     })
+    ctx.strokeStyle = accent || '#0A84FF'
+    ctx.lineWidth = 1.5
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.stroke()
   }, [history])
 
   return <canvas ref={canvasRef} className="sys-wave" />
@@ -552,7 +560,7 @@ function AboutView(props: { onBack: () => void }): React.JSX.Element {
           />
         </div>
         <div className="tray-about-name">Reopen</div>
-        <div className="tray-about-version">版本 1.0.2</div>
+        <div className="tray-about-version">版本 1.0.3</div>
         <div className="tray-about-desc">
           本地项目启动器：一键复活你的开发服务。 菜单栏常驻，端口状态一目了然，退出即止。
         </div>

@@ -28,7 +28,6 @@ const api: ReopenApi = {
   rewriteProjectPortFile: (path, source, port) =>
     ipcRenderer.invoke('project:rewrite-port-file', path, source, port),
   startProject: (id, modeId) => ipcRenderer.invoke('project:start', id, modeId),
-  setActiveMode: (id, modeId) => ipcRenderer.invoke('project:set-active-mode', id, modeId),
   checkPortInUse: (port, excludeId) => ipcRenderer.invoke('project:check-port', port, excludeId),
   pickTrayIcon: (filter) => ipcRenderer.invoke('tray:pick-icon', filter),
   importTrayIcon: (filePath: string) => ipcRenderer.invoke('tray:import-icon', filePath),
@@ -95,6 +94,7 @@ const api: ReopenApi = {
     return () => ipcRenderer.removeListener('tray:system-info', listener)
   },
   switchTrayCharacter: (path) => ipcRenderer.invoke('tray:switch-character', path),
+  setTrayFlip: (v) => ipcRenderer.invoke('tray:set-flip', v),
   switchTrayTheme: () => ipcRenderer.invoke('tray:switch-theme'),
   openActivityMonitor: () => ipcRenderer.invoke('tray:open-activity-monitor'),
   onTrayResetView: (cb) => {

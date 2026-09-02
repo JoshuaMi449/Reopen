@@ -799,7 +799,7 @@ html.dark .sidebar-logo-word,
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-/* ---------- 抽屉启动方式切换 ---------- */
+/* ---------- 抽屉启动方式（纯文本小字，不做切换） ---------- */
 
 .drawer-modes {
   display: flex;
@@ -810,16 +810,19 @@ html.dark .sidebar-logo-word,
 
 .drawer-mode-btns {
   display: flex;
-  gap: 4px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.drawer-mode-btns .btn-mini {
-  margin-left: 0;
+/* 启动方式纯文本：显示实际命令（npm run dev 等），当前生效的用强调色 */
+.drawer-mode-text {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
-.drawer-mode-btns .btn-mini.mode-active {
-  background: var(--accent);
-  color: #fff;
+.drawer-mode-text.mode-active {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ---------- 右侧详情抽屉（点击项目从右侧滑出预览） ---------- */
@@ -1090,6 +1093,22 @@ html.dark .sidebar-logo-word,
   width: 480px;
 }
 
+/* 「已是最新版本 / 检查失败」小弹窗（无新版时的轻提示）：
+   文字居中，按钮占满下面整行（不是右下角小按钮） */
+.modal-latest {
+  width: 300px;
+  text-align: center;
+}
+
+.modal-latest p {
+  margin: 10px 0 18px;
+  font-size: 14px;
+}
+
+.modal-latest .btn-primary {
+  width: 100%;
+}
+
 .update-desc {
   font-size: 13px;
 }
@@ -1112,8 +1131,25 @@ html.dark .sidebar-logo-word,
   margin: 6px 0;
 }
 
-.update-body h1,
-.update-body h2,
+/* 内容区顶部版本标题（与 GitHub 下载页顶部文字一致：Reopen vX.X.X 更新）；
+   用户要求非常非常明显：正文两倍字号 */
+.update-body-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* 对标弹窗：更新内容里的 markdown 标题要明显高于正文（第一行「更新内容」即二级标题） */
+.update-body h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+}
+.update-body h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+}
 .update-body h3 {
   font-size: 13px;
   font-weight: 600;
@@ -2223,11 +2259,12 @@ body.tray-window #root {
   line-height: 1.45;
 }
 
-/* CPU 蓝色柱状波形（RunCat 同款：每根柱子=一次采样，accentColor 系统蓝） */
+/* CPU 蓝色连续折线波形（2026-09-02 柱状改折线：只在文字列下方，左侧大图标位置空出） */
 .sys-wave {
   width: 100%;
-  height: 16px;
+  height: 18px;
   display: block;
+  margin-top: 5px;
 }
 
 /* 储存蓝色进度条（RunCat BarGraphView 同款：accentColor 填充） */
@@ -4000,6 +4037,12 @@ html.dark .settings-card {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 水平翻转激活态：按钮着色提示当前角色处于镜像状态 */
+.flip-on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .tray-icon-preview {

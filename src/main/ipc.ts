@@ -27,7 +27,6 @@ import {
   adoptAllRunning,
   adoptRunning,
   installProjectDeps,
-  isProjectRunning,
   killResidualAndStart,
   openProjectBrowser,
   rehostProject,
@@ -303,7 +302,9 @@ function compareVersions(a: string, b: string): number {
 }
 
 /** 检查更新：GitHub Releases 拿最新正式版（发现新版本弹窗 ，
- *  弹窗里渲染 Release 正文=git 更新内容，链接与按钮跳发布页） */
+ *  弹窗里渲染 Release 正文=git 更新内容，链接与按钮跳发布页）。
+ *  新版确认即把版本号持久化进 settings.pendingUpdate——设置按钮红点常亮，
+ *  与弹窗开关无关；只有检查确认「已是最新」才清除；网络失败保持原状 */
 async function checkUpdate(): Promise<UpdateInfo> {
   const currentVersion = app.getVersion()
   try {
@@ -318,7 +319,13 @@ async function checkUpdate(): Promise<UpdateInfo> {
     }
     const latestVersion = data.tag_name.replace(/^v/, '')
     if (compareVersions(latestVersion, currentVersion) <= 0) {
+      // 确认已是最新 → 清常亮红点（只有这一条路能清，弹窗关闭不清）
+      if (getSettings().pendingUpdate) saveSettings({ pendingUpdate: undefined })
       return { hasUpdate: false, currentVersion }
+    }
+    // 发现新版 → 红点常亮（幂等：值相同不重复写盘）
+    if (getSettings().pendingUpdate !== latestVersion) {
+      saveSettings({ pendingUpdate: latestVersion })
     }
     return {
       hasUpdate: true,
@@ -471,15 +478,6 @@ export function registerIpc(): void {
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   // 切换启动方式：更新存档；运行中=停掉按新方式重启（停止态只改默认，下次启动生效）
-  ipcMain.handle('project:set-active-mode', async (_e, id: string, modeId: string) => {
-    const p = listProjects().find((x) => x.id === id)
-    if (!p) return { ok: false, reason: '项目不存在' }
-    if (!p.launchModes?.some((m) => m.id === modeId)) return { ok: false, reason: '启动方式不存在' }
-    updateProject(id, { activeMode: modeId })
-    if (!isProjectRunning(id)) return { ok: true }
-    await stopProject(id)
-    return startProject(id, modeId)
-  })
   ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
   ipcMain.handle('project:kill-residual', (_e, id: string) => killResidualAndStart(id))
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
@@ -612,6 +610,12 @@ export function registerIpc(): void {
     refreshTray()
     broadcastSettings(saved)
   })
+  // 设置「当前角色」水平翻转按钮：存设置 + 立即镜像当前托盘帧（素材文件不动）
+  ipcMain.handle('tray:set-flip', (_e, flipped: boolean) => {
+    const saved = saveSettings({ trayFlip: flipped })
+    refreshTray()
+    broadcastSettings(saved)
+  })
   // 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用）
   ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
   // 改由本应用托管：停掉手动起的旧服务重新启动（对局域网开门）
@@ -657,7 +661,12 @@ export function registerIpc(): void {
   ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))
   ipcMain.handle('system:env-install-cancel', (_e, key: string) => cancelEnvInstall(key))
   ipcMain.handle('system:get-lan-ip', () => getLanIp())
-  ipcMain.handle('update:check', () => checkUpdate())
+  // 检查完广播设置（pendingUpdate 可能变了：发现新版常亮红点 / 确认最新清红点）
+  ipcMain.handle('update:check', async () => {
+    const info = await checkUpdate()
+    broadcastSettings(getSettings())
+    return info
+  })
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })

@@ -18,6 +18,7 @@ import {
   nativeSetFrames,
   nativeSetInterval,
   nativeSetInvert,
+  nativeSetFlip,
   nativeGetFrame,
   nativeSetPanelBehavior,
   nativeStartGlobalClickMonitor,
@@ -80,16 +81,18 @@ function staticTrayIconPng(): { png: Buffer; template: boolean } {
   return { png: sized.toPNG(), template: trayIcon === 'mono' }
 }
 
-/** 当前帧间隔（ms）：CPU 使用率换算（cpuSampler 内部缓存窗口 2s）。
- *  帧间隔公式：开=(1-CPU)/5×(1.1-只因速)；关=CPU/5×(1.1-只因速），
- *  下限 40ms（防刷爆菜单栏）。换帧本身由 Swift 侧 .common Timer 驱动，
- *  JS 只周期性把间隔传给 Swift。 */
+/** 当前帧间隔（ms）：
+ *   速度正比 CPU 开=（1-CPU）/5×(1.1-速度)（CPU 越高换帧越快）；
+ *   关=自由速度，只由滑杆决定（0=400ms 慢速 → 1=40ms 快速，下限 40ms 防刷爆菜单栏）。
+ *   换帧本身由 Swift 侧 .common Timer 驱动，JS 只周期性把间隔传给 Swift。 */
 function frameInterval(): number {
-  const usage = getCpuUsage()
   const { trayIconSpeed, cpuFollow } = getSettings()
   const speed = trayIconSpeed ?? 0.5
-  const base = (cpuFollow ? 1.0001 - usage : usage) / 5
-  return Math.max(MIN_INTERVAL, Math.round(base * (1.1 - speed) * 1000))
+  if (!cpuFollow) {
+    return Math.max(MIN_INTERVAL, Math.round((1 - speed) * 360 + 40))
+  }
+  const usage = getCpuUsage()
+  return Math.max(MIN_INTERVAL, Math.round(((1.0001 - usage) / 5) * (1.1 - speed) * 1000))
 }
 
 /** CPU 变速：每 2s 采样（cpuSampler 内部缓存窗口同为 2s），把换帧间隔传给 Swift 侧 Timer */
@@ -133,7 +136,7 @@ function stopSystemInfoFeed(): void {
  *  活跃时=GIF 原图、非活跃屏=系统自动线条化，
  *  自动反转播放=乒乓（拼正向+反向帧序列，边界帧不重复 */
 function applyTrayIcon(): void {
-  const { trayIcon, trayIconPath, trayAutoReverse } = getSettings()
+  const { trayIcon, trayIconPath, trayAutoReverse, trayFlip } = getSettings()
   const isGif =
     trayIcon === 'custom' && !!trayIconPath && extname(trayIconPath).toLowerCase() === '.gif'
   const invert = trayIconPath ? invertOf(trayIconPath) : { light: false, dark: false }
@@ -156,6 +159,7 @@ function applyTrayIcon(): void {
         box
       )
       nativeSetInvert(invert.light, invert.dark)
+      nativeSetFlip(!!trayFlip)
       startCpuFollow()
       return
     }
@@ -164,6 +168,7 @@ function applyTrayIcon(): void {
   const { png, template } = staticTrayIconPng()
   nativeSetFrames([png], template, 1000, false)
   nativeSetInvert(invert.light, invert.dark)
+  nativeSetFlip(!!trayFlip)
 }
 
 /** 面板外关闭规则：除面板外的所有窗口（主窗口/设置窗口/未来任何窗口）mousedown → 关面板。

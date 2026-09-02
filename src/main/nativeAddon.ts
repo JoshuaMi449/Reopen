@@ -11,6 +11,7 @@ let native: {
   setFrames(pngs: Buffer[], isTemplate: boolean, intervalMs: number, box: boolean): void
   setInterval(intervalMs: number): void
   setInvert(light: boolean, dark: boolean): void
+  setFlip(flipped: boolean): void
   getFrame(): { x: number; y: number; w: number; h: number }
   setPanelBehavior(handle: Buffer): void
   startGlobalClickMonitor(cb: (type: string, payload: string) => void): void
@@ -58,6 +59,15 @@ export function nativeSetFrames(
 export function nativeSetInterval(intervalMs: number): void {
   try {
     native?.setInterval(intervalMs)
+  } catch {
+    /* no-op */
+  }
+}
+
+/** 水平翻转（RunCat Runner Flip 同款：显示层镜像帧，素材文件不动） */
+export function nativeSetFlip(flipped: boolean): void {
+  try {
+    native?.setFlip(flipped)
   } catch {
     /* no-op */
   }

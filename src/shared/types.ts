@@ -242,6 +242,8 @@ export interface Settings {
   trayIcon: 'mono' | 'custom'
   /** 自定义托盘图标的文件路径（trayIcon=custom 时生效；内置角色或用户导入素材都指向这） */
   trayIconPath?: string
+  /** 当前角色水平翻转（RunCat Runner Flip 同款：显示层镜像帧，素材文件不动） */
+  trayFlip?: boolean
   /** 菜单栏动图速度（无级滑杆 0~1，默认 0.5；越大越快，1=最快） */
   trayIconSpeed: number
   /** 动画速度随 CPU 使用率波动（CPU 忙跑得快；默认开） */
@@ -274,6 +276,9 @@ export interface Settings {
   gatewayPort: number
   /** 退出 Reopen 后项目继续在本地运行（默认关：退出时一并停止） */
   keepProjectsOnQuit: boolean
+  /** 待升级的最新版本号（检查更新发现新版即写入，设置按钮红点常亮——弹窗关了/重启都在；
+   *  只有检查确认「已是最新」才清除；网络失败保持原状） */
+  pendingUpdate?: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -412,8 +417,6 @@ export interface ReopenApi {
     port: number
   ): Promise<{ ok: boolean; reason?: string; source?: PortSource }>
   startProject(id: string, modeId?: string): Promise<StartResult>
-  /** 切换启动方式：更新存档；运行中=停掉按新方式重启，停止态=只改默认 */
-  setActiveMode(id: string, modeId: string): Promise<StartResult>
   /** 端口查重：档案里其他项目登记的端口 + 本机 TCP 监听探测（表单输入时实时调用） */
   checkPortInUse(
     port: number,
@@ -494,6 +497,8 @@ export interface ReopenApi {
   onSystemInfo(cb: (s: SystemInfo) => void): () => void
   /** 切换菜单栏动画角色（面板「切换动画」弹菜单用；与设置页同一入口） */
   switchTrayCharacter(path: string): Promise<void>
+  /** 水平翻转当前角色（显示层镜像帧，素材文件不动） */
+  setTrayFlip(v: boolean): Promise<void>
   /** 切回内置 Reopen 黑白主题图标（「切换动画」弹窗左下角主题按钮） */
   switchTrayTheme(): Promise<void>
   /** 打开 macOS 系统「活动监视器」App（面板图标④，同款行为） */

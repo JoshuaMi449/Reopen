@@ -32,6 +32,7 @@ static void *(*pTrModelCreate)(void) = nullptr;
 static void (*pTrModelSetFrames)(void *, NSArray *, double, bool) = nullptr;
 static void (*pTrModelSetInterval)(void *, double) = nullptr;
 static void (*pTrModelSetInvert)(void *, bool, bool) = nullptr;
+static void (*pTrModelSetFlip)(void *, bool) = nullptr;
 static void (*pTrModelSetDark)(void *, bool) = nullptr;
 static void *(*pTrViewCreate)(void *) = nullptr;
 static void (*pTrDestroy)(void *) = nullptr;
@@ -214,11 +215,12 @@ Napi::Value InitTrayRunner(const Napi::CallbackInfo &info) {
       dlsym(handle, "tr_model_set_frames"));
   pTrModelSetInterval = reinterpret_cast<void (*)(void *, double)>(dlsym(handle, "tr_model_set_interval"));
   pTrModelSetInvert = reinterpret_cast<void (*)(void *, bool, bool)>(dlsym(handle, "tr_model_set_invert"));
+  pTrModelSetFlip = reinterpret_cast<void (*)(void *, bool)>(dlsym(handle, "tr_model_set_flip"));
   pTrModelSetDark = reinterpret_cast<void (*)(void *, bool)>(dlsym(handle, "tr_model_set_dark"));
   pTrViewCreate = reinterpret_cast<void *(*)(void *)>(dlsym(handle, "tr_view_create"));
   pTrDestroy = reinterpret_cast<void (*)(void *)>(dlsym(handle, "tr_destroy"));
   if (!pTrModelCreate || !pTrModelSetFrames || !pTrModelSetInterval || !pTrModelSetInvert ||
-      !pTrModelSetDark || !pTrViewCreate || !pTrDestroy) {
+      !pTrModelSetFlip || !pTrModelSetDark || !pTrViewCreate || !pTrDestroy) {
     NSLog(@"[reopen-native] dlsym failed: %s", dlerror());
     return env.Undefined();
   }
@@ -306,6 +308,15 @@ Napi::Value SetInvert(const Napi::CallbackInfo &info) {
   bool light = info[0].As<Napi::Boolean>().Value();
   bool dark = info[1].As<Napi::Boolean>().Value();
   pTrModelSetInvert(gRunnerModel, light, dark);
+  return env.Undefined();
+}
+
+// setFlip(flipped: boolean)：水平翻转（RunCat Runner Flip 同款：显示层镜像帧）
+Napi::Value SetFlip(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (!gRunnerModel || !pTrModelSetFlip || info.Length() < 1 || !info[0].IsBoolean())
+    return env.Undefined();
+  pTrModelSetFlip(gRunnerModel, info[0].As<Napi::Boolean>().Value());
   return env.Undefined();
 }
 
@@ -638,6 +649,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setFrames", Napi::Function::New(env, SetFrames));
   exports.Set("setInterval", Napi::Function::New(env, SetInterval));
   exports.Set("setInvert", Napi::Function::New(env, SetInvert));
+  exports.Set("setFlip", Napi::Function::New(env, SetFlip));
   exports.Set("getFrame", Napi::Function::New(env, GetFrame));
   exports.Set("setPanelBehavior", Napi::Function::New(env, SetPanelBehavior));
   exports.Set("startGlobalClickMonitor", Napi::Function::New(env, StartGlobalClickMonitor));

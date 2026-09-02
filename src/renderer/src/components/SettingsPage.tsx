@@ -41,13 +41,19 @@ const GROUPS: { key: GroupKey; label: string; icon: React.ReactNode }[] = [
 /** 偏好设置（主窗口内浮层界面，非独立窗口——浮层交互）：左侧分组 + 右侧内容（PRD 3.6） */
 export function SettingsPage({
   initialSettings,
+  initialGroup,
+  autoCheck,
   onClose
 }: {
   /** 主窗口传入已加载的设置：浮层打开瞬间用真值渲染（防「默认主题先渲染再换真主题」闪一下） */
   initialSettings?: Settings | null
+  /** 打开时落在哪个分组（托盘/菜单「检查更新」=直接落在关于页） */
+  initialGroup?: GroupKey
+  /** 打开时自动触发一次检查更新（托盘/菜单「检查更新」入口） */
+  autoCheck?: boolean
   onClose?: () => void
 }): React.JSX.Element {
-  const [group, setGroup] = useState<GroupKey>('general')
+  const [group, setGroup] = useState<GroupKey>(initialGroup ?? 'general')
   const [settings, setSettings] = useState<Settings>(initialSettings ?? DEFAULT_SETTINGS)
   const [projects, setProjects] = useState<Project[]>([])
   /** 环境监测结果（关于组下方） */
@@ -55,6 +61,8 @@ export function SettingsPage({
   /** 更新检查结果与弹窗（关于组「检查更新」，有新版弹窗） */
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [showUpdate, setShowUpdate] = useState(false)
+  /** 「已是最新版本 / 检查失败」小弹窗文案（非空=弹出） */
+  const [latestMsg, setLatestMsg] = useState<string | null>(null)
   /** 正在一键安装的运行时 key（按钮转"取消"；再点=取消安装） */
   const [installingKey, setInstallingKey] = useState<string | null>(null)
   /** 安装实时日志行（最近 60 行：Cakebrew 式流水日志） */
@@ -156,12 +164,26 @@ export function SettingsPage({
     }
   }, [settings.trayIcon, settings.trayIconPath])
 
-  /** 检查更新（GitHub Release；有新版弹窗，失败静默显示已是最新） */
-  const checkUpdate = async (): Promise<void> => {
-    const info = await window.api.checkUpdate()
+  /** 检查更新结果的统一呈现：有新版弹更新弹窗；无新版弹「已是最新版本」小弹窗；
+   *  网络失败弹失败提示（不冒充已是最新）。红点由主进程持久化处理，这里只管弹窗 */
+  const applyCheckResult = useCallback((info: UpdateInfo): void => {
     setUpdateInfo(info)
     if (info.hasUpdate) setShowUpdate(true)
-  }
+    else if (info.error) setLatestMsg('检查更新失败，请检查网络后重试')
+    else setLatestMsg(`当前已是最新版本 v${info.currentVersion}`)
+  }, [])
+
+  /** 检查更新（GitHub Release 真实请求，与启动时的自动检查同源） */
+  const checkUpdate = useCallback(async (): Promise<void> => {
+    applyCheckResult(await window.api.checkUpdate())
+  }, [applyCheckResult])
+
+  // 托盘/应用菜单「检查更新」入口：浮层落在关于页并自动触发一次该页的检查
+  // （结果统一走 applyCheckResult：有新版弹更新弹窗 / 无新版弹小弹窗 / 失败弹提示）
+  useEffect(() => {
+    if (!autoCheck) return
+    void window.api.checkUpdate().then(applyCheckResult)
+  }, [autoCheck, applyCheckResult])
 
   /** 一键安装运行时（brew 自动装+实时日志；再点=取消） */
   const handleInstallEnv = (item: EnvCheckItem): void => {
@@ -419,6 +441,18 @@ export function SettingsPage({
                   onDrop={(e) => void handleTrayDrop(e)}
                 />
               )}
+              {/* 水平翻转（RunCat Runner Flip 同款）：显示层镜像帧，素材文件不动 */}
+              <button
+                className={`btn-secondary ${settings.trayFlip ? 'flip-on' : ''}`}
+                title="水平翻转（再点一次翻回来）"
+                onClick={async () => {
+                  const v = !settings.trayFlip
+                  await window.api.setTrayFlip(v)
+                  update({ trayFlip: v })
+                }}
+              >
+                水平翻转
+              </button>
             </div>
           </SettingRow>
         )}
@@ -565,7 +599,7 @@ export function SettingsPage({
   const about = (
     <div className="settings-group">
       <div className="settings-about-app">Reopen</div>
-      <div className="settings-about-line">版本 1.0.2（VC复活点）</div>
+      <div className="settings-about-line">版本 1.0.3（VC复活点）</div>
       <div className="settings-about-line">Restart your Mac without losing your projects</div>
       <div className="settings-about-line">
         <a
@@ -581,7 +615,9 @@ export function SettingsPage({
           {updateInfo
             ? updateInfo.hasUpdate
               ? `新版本 v${updateInfo.latestVersion} 可用`
-              : '已是最新版本'
+              : updateInfo.error
+                ? '检查更新'
+                : '已是最新版本'
             : '检查更新'}
         </a>
       </div>
@@ -726,6 +762,19 @@ export function SettingsPage({
       </div>
       {showUpdate && updateInfo && (
         <UpdateModal info={updateInfo} onClose={() => setShowUpdate(false)} />
+      )}
+      {/* 「已是最新版本 / 检查失败」小弹窗（无新版时的轻提示） */}
+      {latestMsg && (
+        <div className="modal-backdrop">
+          <div className="modal modal-latest">
+            <p>{latestMsg}</p>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={() => setLatestMsg(null)}>
+                好
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {showRolePicker && (
         <RolePickerModal

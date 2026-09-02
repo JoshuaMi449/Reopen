@@ -17,6 +17,8 @@ final class RunnerModel: ObservableObject {
     var darkInvert = false
     /// 方框拉伸显示（BuZhiYin 同款：.resizable() 拉伸填满 22×22）；false=保持原比例居中
     var box = false
+    /// 水平翻转（RunCat Runner Flip 同款：显示层镜像帧，素材文件不动）
+    @Published var flipped = false
     /// 菜单栏窗口外观深浅（RunCat window.effectiveAppearance 同款判定）：
     ///   双屏一浅一暗时 colorScheme 是全局值会判错，此值由 native 侧 KVO 每屏推来；
     ///   nil=未知（回退 colorScheme）
@@ -70,6 +72,7 @@ struct RunnerView: View {
             // 深浅判定用菜单栏窗口 effectiveAppearance（KVO 推来），未知时回退 colorScheme
             let isDark = model.menuBarDark ?? (scheme == .dark)
             let img = Image(nsImage: model.frames[model.index]).resizable()
+                .scaleEffect(x: model.flipped ? -1 : 1, y: 1, anchor: .center)
             let invert = (!isDark && model.lightInvert) || (isDark && model.darkInvert)
             if model.box {
                 if invert {
@@ -120,6 +123,13 @@ public func tr_model_set_invert(_ modelPtr: UnsafeMutableRawPointer,
     let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
     m.lightInvert = light
     m.darkInvert = dark
+}
+
+/// 水平翻转开关（RunCat Runner Flip 同款）
+@_cdecl("tr_model_set_flip")
+public func tr_model_set_flip(_ modelPtr: UnsafeMutableRawPointer, _ flipped: Bool) {
+    let m = Unmanaged<RunnerModel>.fromOpaque(modelPtr).takeUnretainedValue()
+    m.flipped = flipped
 }
 
 /// 菜单栏明暗（native 侧 KVO 按钮视图 effectiveAppearance 推来，替代全局 colorScheme 判定）

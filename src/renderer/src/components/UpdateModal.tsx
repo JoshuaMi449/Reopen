@@ -29,6 +29,8 @@ export function UpdateModal({ info, onClose }: Props): React.JSX.Element {
 
         {/* git 更新内容（Release 正文；空正文给斜体占位，与参考主题一致） */}
         <div className="update-body">
+          {/* 顶部标题与 GitHub 下载页一致：Reopen vX.X.X 更新 */}
+          <div className="update-body-title">Reopen v{info.latestVersion} 更新</div>
           {info.body ? (
             <ReactMarkdown
               components={{

@@ -194,8 +194,13 @@ export default function App(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   /** 更新检查结果（启动时自动查 GitHub Release，有新版本弹窗） */
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
-  /** 设置按钮红点已读：打开设置即视为已读；检测到新版本时重新点亮 */
-  const [updateDotDismissed, setUpdateDotDismissed] = useState(false)
+  /** 设置浮层打开参数：托盘/应用菜单「检查更新」=落在关于页并自动触发该页的检查 */
+  const [settingsLaunch, setSettingsLaunch] = useState<{
+    group: 'about'
+    check: true
+  } | null>(null)
+  /** 设置浮层重挂载 key（浮层已开着时点「检查更新」→ 强制重挂载到关于页并触发检查） */
+  const [settingsPageKey, setSettingsPageKey] = useState(0)
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** 侧栏标签右键菜单（重命名/删除/染色）*/
   const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null)
@@ -293,14 +298,12 @@ export default function App(): React.JSX.Element {
     applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
   }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
-  // 启动时自动检查更新（有新版弹出「发现新版本」弹窗；失败静默不打扰）
-  // 检测到新版本同时点亮设置按钮红点（打开设置视为已读后，下次检测到新版再亮）
+  // 启动时自动检查更新（有新版弹「发现新版本」弹窗；失败静默不打扰）。
+  // 红点不走这里：主进程发现新版会把 pendingUpdate 写进设置并广播，
+  // 设置按钮红点由 settings.pendingUpdate 驱动（常亮，弹窗关了/重启都在）
   useEffect(() => {
     void window.api.checkUpdate().then((info) => {
-      if (info.hasUpdate) {
-        setUpdateInfo(info)
-        setUpdateDotDismissed(false)
-      }
+      if (info.hasUpdate) setUpdateInfo(info)
     })
   }, [])
 
@@ -391,17 +394,14 @@ export default function App(): React.JSX.Element {
       else if (action === 'set-view-card') updateSettings({ view: 'card' })
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
-        setUpdateDotDismissed(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.2（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.3（VC复活点）')
       else if (action === 'check-update') {
-        // 托盘「更多 → 检查更新」：唤起主窗口检查，有新版弹窗+亮红点、无新版提示
-        void window.api.checkUpdate().then((info) => {
-          if (info.hasUpdate) {
-            setUpdateInfo(info)
-            setUpdateDotDismissed(false)
-          } else toast('已是最新版本')
-        })
+        // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
+        // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
+        setSettingsLaunch({ group: 'about', check: true })
+        setSettingsPageKey((k) => k + 1)
+        setSettingsOpen(true)
       }
     })
     return off
@@ -1088,14 +1088,6 @@ export default function App(): React.JSX.Element {
     if (!res.ok) toast(res.reason ?? '切换失败', 'error')
   }
 
-  /** 切换启动方式：主进程改存档（运行中自动重启到新方式）；同步本地方案清单 */
-  const handleSwitchMode = async (p: Project, modeId: string): Promise<void> => {
-    if (p.activeMode === modeId) return
-    const res = await window.api.setActiveMode(p.id, modeId)
-    if (!res.ok) toast(res.reason ?? '切换失败', 'error')
-    else setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, activeMode: modeId } : x)))
-  }
-
   /** 启动失败后的「看成品」兜底（以成品预览方式打开 */
   const handleViewPreview = async (p: Project): Promise<void> => {
     const res = await window.api.startProject(p.id, 'preview')
@@ -1626,7 +1618,7 @@ export default function App(): React.JSX.Element {
       )}
 
       <Sidebar
-        showUpdateDot={!!updateInfo && !updateDotDismissed}
+        showUpdateDot={!!settings.pendingUpdate}
         category={category}
         tags={allTags}
         tagColor={tagColor}
@@ -1856,7 +1848,6 @@ export default function App(): React.JSX.Element {
                 }
                 lanIp={settings.lanAccess ? lanIp : ''}
                 onRehost={() => handleRehost(drawerProject)}
-                onSwitchMode={(modeId) => handleSwitchMode(drawerProject, modeId)}
               />
             )}
           </div>
@@ -1998,11 +1989,23 @@ export default function App(): React.JSX.Element {
         <div
           className="settings-overlay"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setSettingsOpen(false)
+            if (e.target === e.currentTarget) {
+              setSettingsOpen(false)
+              setSettingsLaunch(null)
+            }
           }}
         >
           <div className="settings-panel">
-            <SettingsPage initialSettings={settings} onClose={() => setSettingsOpen(false)} />
+            <SettingsPage
+              key={settingsPageKey}
+              initialSettings={settings}
+              initialGroup={settingsLaunch?.group}
+              autoCheck={settingsLaunch?.check}
+              onClose={() => {
+                setSettingsOpen(false)
+                setSettingsLaunch(null)
+              }}
+            />
           </div>
         </div>
       )}
