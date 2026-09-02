@@ -547,7 +547,7 @@ function AboutView(props: { onBack: () => void }): React.JSX.Element {
           />
         </div>
         <div className="tray-about-name">Reopen</div>
-        <div className="tray-about-version">版本 1.0.1</div>
+        <div className="tray-about-version">版本 1.0.2</div>
         <div className="tray-about-desc">
           本地项目启动器：一键复活你的开发服务。 菜单栏常驻，端口状态一目了然，退出即止。
         </div>
