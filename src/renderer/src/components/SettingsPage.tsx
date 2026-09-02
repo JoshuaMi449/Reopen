@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
+import { Check, ChevronDown, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
+import { BrowserIcon } from './BrowserIcons'
 import type { EnvCheckItem, Project, Settings, UpdateInfo } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
@@ -69,6 +70,7 @@ export function SettingsPage({
     window.api.getSettings().then(setSettings)
     window.api.listProjects().then(setProjects)
     window.api.checkEnvironment().then(setEnvItems)
+    window.api.getNotifAuth().then(setNotifAuth)
   }, [])
 
   const update = useCallback(async (patch: Partial<Settings>): Promise<void> => {
@@ -95,6 +97,8 @@ export function SettingsPage({
     }
   }
 
+  /** 通知授权状态（native 查询；null=查询中按已授权处理不误伤开关） */
+  const [notifAuth, setNotifAuth] = useState<'authorized' | 'denied' | 'notDetermined' | null>(null)
   /** 当前自定义图标的预览（dataURL；GIF 在 <img> 里原生动画） */
   const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
   /** 角色选择弹窗开关（点预览图弹出） */
@@ -198,13 +202,6 @@ export function SettingsPage({
           />
         </SettingRow>
 
-        <SettingRow
-          label="关闭时最小化到托盘"
-          hint="点红色关闭按钮时隐藏到右上角菜单栏，而不是退出"
-        >
-          <Switch checked={settings.closeToTray} onChange={(v) => update({ closeToTray: v })} />
-        </SettingRow>
-
         <SettingRow label="默认浏览器" hint="打开项目网页时用哪个浏览器（自动检索你电脑里的）">
           <BrowserSelect
             value={settings.defaultBrowser ?? ''}
@@ -219,17 +216,31 @@ export function SettingsPage({
           <Switch checked={settings.lanAccess} onChange={(v) => update({ lanAccess: v })} />
         </SettingRow>
 
-        <SettingRow
-          label="统一入口"
-          hint="访客用一个端口+导航页访问所有运行中的项目（需开启上方「允许局域网访问」）。项目不适合子路由时自动降级为独立端口，全程自动"
-        >
-          <Switch
-            checked={settings.gatewayEnabled}
-            onChange={(v) => update({ gatewayEnabled: v })}
-          />
-        </SettingRow>
+        {/* 统一入口两项从属于「允许局域网访问」：关了就整个隐藏；显示时缩进表达层级 */}
+        {settings.lanAccess && (
+          <div className="settings-sub">
+            <SettingRow
+              label="统一入口"
+              hint="访客用一个端口+导航页访问所有运行中的项目。项目不适合子路由时自动降级为独立端口，全程自动"
+            >
+              <Switch
+                checked={settings.gatewayEnabled}
+                onChange={(v) => update({ gatewayEnabled: v })}
+              />
+            </SettingRow>
+            <GatewayPortRow
+              port={settings.gatewayPort}
+              onChange={(v) => update({ gatewayPort: v })}
+            />
+          </div>
+        )}
 
-        <GatewayPortRow port={settings.gatewayPort} onChange={(v) => update({ gatewayPort: v })} />
+        <SettingRow
+          label="关闭时最小化到托盘"
+          hint="点红色关闭按钮时隐藏到右上角菜单栏，而不是退出"
+        >
+          <Switch checked={settings.closeToTray} onChange={(v) => update({ closeToTray: v })} />
+        </SettingRow>
 
         <SettingRow
           label="退出后项目继续运行"
@@ -251,8 +262,27 @@ export function SettingsPage({
           />
         </SettingRow>
 
-        <SettingRow label="启动失败通知" hint="项目启动失败时发系统通知（右上角弹窗）">
-          <Switch checked={settings.notifyOnFail} onChange={(v) => update({ notifyOnFail: v })} />
+        <SettingRow
+          label="启动失败通知"
+          hint={
+            notifAuth === 'authorized'
+              ? '项目启动失败时发系统通知（右上角弹窗）'
+              : notifAuth === 'denied'
+                ? '系统通知权限已关闭——点开关去系统设置里开启'
+                : '还没允许过系统通知——点开关弹出授权询问'
+          }
+        >
+          <Switch
+            checked={settings.notifyOnFail}
+            disabled={notifAuth !== 'authorized'}
+            onChange={(v) => update({ notifyOnFail: v })}
+            onBlockedClick={() => {
+              // 点禁用开关：触发授权弹窗（没弹过时）+ 打开系统设置通知页，回来刷新状态
+              void window.api.requestPermissions().then(() =>
+                window.api.getNotifAuth().then(setNotifAuth)
+              )
+            }}
+          />
         </SettingRow>
       </div>
     </div>
@@ -705,7 +735,7 @@ export function SettingsPage({
   )
 }
 
-/** 默认浏览器下拉（自动检索电脑里的浏览器） */
+/** 默认浏览器下拉（自动检索电脑里的浏览器；选项带品牌图标，原生 select 不支持图标所以自定义） */
 function BrowserSelect({
   value,
   onChange
@@ -714,20 +744,42 @@ function BrowserSelect({
   onChange(v: string): void
 }): React.JSX.Element {
   const [browsers, setBrowsers] = useState<string[]>([])
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     window.api.listBrowsers().then(setBrowsers)
   }, [])
 
   return (
-    <select className="settings-select" value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">系统默认</option>
-      {browsers.map((b) => (
-        <option key={b} value={b}>
-          {b}
-        </option>
-      ))}
-    </select>
+    <div className="browser-select">
+      <button
+        type="button"
+        className={`browser-select-btn ${open ? 'is-open' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <BrowserIcon name={value} />
+        <span>{value || '系统默认'}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <>
+          {/* 点击菜单外关闭 */}
+          <div className="browser-select-mask" onClick={() => setOpen(false)} />
+          <div className="browser-select-menu">
+            <button type="button" onClick={() => { onChange(''); setOpen(false) }}>
+              <BrowserIcon name="" />
+              <span>系统默认</span>
+            </button>
+            {browsers.map((b) => (
+              <button key={b} type="button" onClick={() => { onChange(b); setOpen(false) }}>
+                <BrowserIcon name={b} />
+                <span>{b}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -864,15 +916,20 @@ function GatewayPortRow({
 
 function Switch({
   checked,
-  onChange
+  onChange,
+  disabled,
+  onBlockedClick
 }: {
   checked: boolean
   onChange(v: boolean): void
+  /** 禁用态（如通知权限未授权）：点了不切换，回调 onBlockedClick 提示去开权限 */
+  disabled?: boolean
+  onBlockedClick?(): void
 }): React.JSX.Element {
   return (
     <button
-      className={`settings-switch ${checked ? 'settings-switch-on' : ''}`}
-      onClick={() => onChange(!checked)}
+      className={`settings-switch ${checked ? 'settings-switch-on' : ''} ${disabled ? 'settings-switch-off' : ''}`}
+      onClick={() => (disabled ? onBlockedClick?.() : onChange(!checked))}
     >
       <span className="settings-switch-knob" />
     </button>

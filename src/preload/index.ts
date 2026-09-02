@@ -58,6 +58,7 @@ const api: ReopenApi = {
   },
   getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
   requestPermissions: () => ipcRenderer.invoke('perm:request'),
+  getNotifAuth: () => ipcRenderer.invoke('perm:notif-status'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
   getTrayIconPreview: () => ipcRenderer.invoke('tray:get-icon-preview'),
   recheckLan: () => ipcRenderer.invoke('system:recheck-lan'),

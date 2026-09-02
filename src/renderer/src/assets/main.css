@@ -2845,6 +2845,78 @@ body.tray-window #root {
     0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+/* 从属于上级开关的子设置区（统一入口两项挂在「允许局域网访问」下）：缩进表达层级 */
+.settings-sub {
+  padding-left: 26px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  margin-left: 10px;
+}
+
+/* 默认浏览器自定义下拉（原生 select 不支持 option 内图标） */
+.browser-select {
+  position: relative;
+}
+
+.browser-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 140px;
+  justify-content: space-between;
+}
+
+.browser-select-btn:hover,
+.browser-select-btn.is-open {
+  border-color: var(--accent);
+}
+
+.browser-select-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+}
+
+.browser-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  z-index: 96;
+  padding: 4px;
+}
+
+.browser-select-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.browser-select-menu button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 :root[data-mode='dark'] .settings-card,
 html.dark .settings-card {
   background: transparent;

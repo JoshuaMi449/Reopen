@@ -17,6 +17,7 @@ let native: {
   stopGlobalClickMonitor(): void
   destroyStatusItem(): void
   getSystemInfo(): SystemInfo
+  getNotificationAuth(cb: (auth: string) => void): void
 } | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -116,5 +117,15 @@ export function nativeGetSystemInfo(): SystemInfo | null {
     return native?.getSystemInfo() ?? null
   } catch {
     return null
+  }
+}
+
+/** 通知授权查询：authorized / denied / notDetermined（addon 加载失败时按已授权处理，不误伤开关） */
+export function nativeGetNotificationAuth(cb: (auth: string) => void): void {
+  try {
+    if (native) native.getNotificationAuth(cb)
+    else cb('authorized')
+  } catch {
+    cb('authorized')
   }
 }

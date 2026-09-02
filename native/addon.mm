@@ -22,6 +22,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #import <Network/Network.h>
+#import <UserNotifications/UserNotifications.h>
 
 static NSStatusItem *gStatusItem = nil;
 static Napi::ThreadSafeFunction gTsFn = nullptr;
@@ -78,6 +79,32 @@ Napi::Value StopGlobalClickMonitor(const Napi::CallbackInfo &info) {
     gClickTsFn.Release();
     gClickTsFn = nullptr;
   }
+  return env.Undefined();
+}
+
+// 通知授权查询（UNUserNotificationCenter）：一次性回调，payload =
+// authorized（已允许）/ denied（已拒绝）/ notDetermined（没弹过授权窗）
+Napi::Value GetNotificationAuth(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsFunction()) return env.Undefined();
+  auto *tsfn = new Napi::ThreadSafeFunction(
+      Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(),
+                                    "reopen-notif-auth", 0, 1));
+  UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+  [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+    NSString *result = @"notDetermined";
+    if (settings.authorizationStatus == UNAuthorizationStatusAuthorized) {
+      result = @"authorized";
+    } else if (settings.authorizationStatus == UNAuthorizationStatusDenied) {
+      result = @"denied";
+    }
+    auto *data = new EventData{"auth", [result UTF8String]};
+    tsfn->BlockingCall(data, [](Napi::Env env, Napi::Function cb, EventData *d) {
+      cb.Call({Napi::String::New(env, d->payload)});
+      delete d;
+    });
+    tsfn->Release();
+  }];
   return env.Undefined();
 }
 
@@ -615,6 +642,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setPanelBehavior", Napi::Function::New(env, SetPanelBehavior));
   exports.Set("startGlobalClickMonitor", Napi::Function::New(env, StartGlobalClickMonitor));
   exports.Set("stopGlobalClickMonitor", Napi::Function::New(env, StopGlobalClickMonitor));
+  exports.Set("getNotificationAuth", Napi::Function::New(env, GetNotificationAuth));
   exports.Set("getSystemInfo", Napi::Function::New(env, GetSystemInfo));
   exports.Set("destroyStatusItem", Napi::Function::New(env, DestroyStatusItem));
   return exports;

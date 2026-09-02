@@ -461,6 +461,8 @@ export interface ReopenApi {
   getLanIp(): Promise<string>
   /** 请求通知权限：发测试通知触发系统授权弹窗+打开系统设置通知页 */
   requestPermissions(): Promise<void>
+  /** 通知授权状态查询（authorized / denied / notDetermined；设置页开关联动用） */
+  getNotifAuth(): Promise<'authorized' | 'denied' | 'notDetermined'>
   /** 当前操作系统平台（非 darwin 跳过引导权限幕） */
   getPlatform(): Promise<NodeJS.Platform>
   /** 当前自定义菜单栏图标的预览（base64 dataURL；GIF 原样返回，浏览器原生动画）；没设置返回 null */

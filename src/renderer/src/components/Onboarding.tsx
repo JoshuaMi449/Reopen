@@ -180,6 +180,8 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
   if (welcomeDone && step >= STEPS.length && isMac !== false && !permDone) {
     const doRequest = async (): Promise<void> => {
       await window.api.requestPermissions()
+      // 引导里点授权 = 用户愿意收通知：顺手把「启动失败通知」打开（用户拍板 2026-09-02）
+      void window.api.saveSettings({ notifyOnFail: true })
       setPerm({ requested: true })
     }
     return (

@@ -38,6 +38,7 @@ import {
 } from './projectManager'
 import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
 import { getPlatform, requestPermissions } from './perm'
+import { nativeGetNotificationAuth } from './nativeAddon'
 import { isMonoImage, listCharacters } from './trayCharacters'
 import { refreshShortcuts } from './shortcuts'
 import {
@@ -86,6 +87,17 @@ const KNOWN_BROWSERS = [
   'Chromium',
   'Mozilla Firefox',
   'DuckDuckGo',
+  'Tor Browser',
+  'Orion',
+  'Zen Browser',
+  'Floorp',
+  'SigmaOS',
+  'Naver Whale',
+  'Yandex Browser',
+  'Maxthon',
+  'Sidekick',
+  '搜狗浏览器',
+  'UC浏览器',
   '360Chrome',
   'QQBrowser'
 ]
@@ -634,6 +646,8 @@ export function registerIpc(): void {
   ipcMain.handle('window:close-settings', () => closeSettingsWindow())
   // 权限引导（新手引导第 5 步之后）：请求通知权限（触发系统授权弹窗）
   ipcMain.handle('perm:request', () => requestPermissions())
+  // 通知授权状态查询（native UNUserNotificationCenter；设置页开关联动用）
+  ipcMain.handle('perm:notif-status', () => new Promise<string>((r) => nativeGetNotificationAuth(r)))
   ipcMain.handle('app:platform', () => getPlatform())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())

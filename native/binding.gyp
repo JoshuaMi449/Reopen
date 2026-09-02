@@ -31,7 +31,7 @@
       "defines": ["NAPI_VERSION=8", "NAPI_CPP_EXCEPTIONS"],
       "include_dirs": ["<!@(node -p \"require('node-addon-api').include\")"],
       "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")", "compile_tray_runner"],
-      "libraries": ["-framework Cocoa", "-framework QuartzCore", "-framework IOKit", "-framework Network"]
+      "libraries": ["-framework Cocoa", "-framework QuartzCore", "-framework IOKit", "-framework Network", "-framework UserNotifications"]
     }
   ]
 }
