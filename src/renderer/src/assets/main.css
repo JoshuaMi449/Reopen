@@ -3,8 +3,8 @@
    风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
 /* ---- 六套主题全量配色（不止背景，所有颜色搭配对齐参考主题样式） ----
-   映射：莫兰迪浅←slate-light（晨雾暖沙）/ 海洋浅←ocean-light / 石墨浅←默认 light（黑白灰）；
-         莫兰迪深←slate-dark（莫兰迪夜）/ 海洋深←ocean-dark / 石墨深←默认 dark。
+   映射：莫兰迪浅←macOS 白灰（石墨强调）/ 海洋浅←ocean-light / 石墨浅←默认 light（黑白灰）；
+         莫兰迪深←macOS 黑灰 / 海洋深←ocean-dark / 石墨深←默认 dark。
    变量语义：--primary 主色（底+字都由 --primary-foreground 配对）；
              --primary-strong 主色的深/亮变体（hover、彩色文字）；
              --accent 强调色（浅色=主色同值；深色=主色的亮版，小按钮描边/彩色文字可读）；
@@ -13,19 +13,19 @@
 /* ---- 浅色三套 ---- */
 :root,
 :root[data-theme='morandi'] {
-  /* 晨雾暖沙 ← slate-light：暖米灰底，暖棕主色，全变量带暖色调 */
-  --bg: #e2e1df;
-  --card: #f6f5f4;
-  --primary: #bca49a;
-  --primary-strong: #a7897b;
+  /* 白灰 ← macOS 系统原生（石墨强调色）：纯白底、石墨主色，色值取自系统语义色 */
+  --bg: #ffffff;
+  --card: #ffffff;
+  --primary: #8e8e93;
+  --primary-strong: #6e6e73;
   --primary-foreground: #ffffff;
-  --accent: #bca49a;
+  --accent: #8e8e93;
   --accent-foreground: #ffffff;
-  --text: #322f2a;
-  --text-dim: #78756d;
-  --border: #cfcdc9;
-  --hover: #dbdad6;
-  --input-bg: #e7e6e4;
+  --text: #272727;
+  --text-dim: #808080;
+  --border: #e6e6e6;
+  --hover: #f5f5f5;
+  --input-bg: #f5f5f5;
   --danger-bg: hsla(0, 60%, 50%, 0.12);
   --ok: #7ca982;
   --warn: #d9b45b;
@@ -74,19 +74,19 @@
 
 /* ---- 深色三套 ---- */
 :root[data-theme='morandi'].dark {
-  /* 莫兰迪夜 ← slate-dark：紫灰黑底，暖粉主色 */
-  --bg: #1e1d20;
-  --card: #201f23;
-  --primary: #c2a399;
-  --primary-strong: #d5c0b9;
-  --primary-foreground: #171519;
-  --accent: #afc5cf;
-  --accent-foreground: #1e1d20;
-  --text: #e8e6e3;
-  --text-dim: #a19991;
-  --border: #322f37;
-  --hover: #28262b;
-  --input-bg: #28262b;
+  /* 黑灰 ← macOS 系统原生深色：灰黑底、浅石墨主色，色值取自系统语义色 */
+  --bg: #1e1e1e;
+  --card: #1e1e1e;
+  --primary: #98989d;
+  --primary-strong: #b0b0b5;
+  --primary-foreground: #1e1e1e;
+  --accent: #98989d;
+  --accent-foreground: #1e1e1e;
+  --text: #dddddd;
+  --text-dim: #9a9a9a;
+  --border: #343434;
+  --hover: #282828;
+  --input-bg: #282828;
   --danger-bg: hsl(0, 25%, 20%);
   --ok: #7fa883;
   --warn: #d9b45b;
@@ -2845,11 +2845,14 @@ body.tray-window #root {
     0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-/* 从属于上级开关的子设置区（统一入口两项挂在「允许局域网访问」下）：缩进表达层级 */
-.settings-sub {
+/* 从属于上级开关的子设置区（统一入口两项挂在「允许局域网访问」下）：
+   行距行高/分割线/右侧留白与普通行完全一致，仅文字部分额外缩进两格（26px）表达层级 */
+.settings-sub .settings-row {
+  padding: 10px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 25%, transparent);
+}
+.settings-sub .settings-row-text {
   padding-left: 26px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  margin-left: 10px;
 }
 
 /* 默认浏览器自定义下拉（原生 select 不支持 option 内图标） */

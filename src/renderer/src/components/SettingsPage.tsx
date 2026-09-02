@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, Database, Info, Keyboard, Monitor, Palette, X, Zap } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  Database,
+  Info,
+  Keyboard,
+  Monitor,
+  Palette,
+  X,
+  Zap
+} from 'lucide-react'
 import { BrowserIcon } from './BrowserIcons'
 import type { EnvCheckItem, Project, Settings, UpdateInfo } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/types'
@@ -54,6 +64,8 @@ export function SettingsPage({
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
+  /** 通知授权状态（native 查询；null=查询中按已授权处理不误伤开关） */
+  const [notifAuth, setNotifAuth] = useState<'authorized' | 'denied' | 'notDetermined' | null>(null)
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -70,7 +82,17 @@ export function SettingsPage({
     window.api.getSettings().then(setSettings)
     window.api.listProjects().then(setProjects)
     window.api.checkEnvironment().then(setEnvItems)
-    window.api.getNotifAuth().then(setNotifAuth)
+  }, [])
+
+  // 通知授权状态：打开设置页查一次 + 窗口每次重新获得焦点再查——
+  // 用户中途去系统设置改权限（关闭/开启），切回应用立即反映到开关状态
+  useEffect(() => {
+    const refresh = (): void => {
+      void window.api.getNotifAuth().then(setNotifAuth)
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
   }, [])
 
   const update = useCallback(async (patch: Partial<Settings>): Promise<void> => {
@@ -97,8 +119,6 @@ export function SettingsPage({
     }
   }
 
-  /** 通知授权状态（native 查询；null=查询中按已授权处理不误伤开关） */
-  const [notifAuth, setNotifAuth] = useState<'authorized' | 'denied' | 'notDetermined' | null>(null)
   /** 当前自定义图标的预览（dataURL；GIF 在 <img> 里原生动画） */
   const [iconPreview, setIconPreview] = useState<{ dataUrl: string; isGif: boolean } | null>(null)
   /** 角色选择弹窗开关（点预览图弹出） */
@@ -273,14 +293,16 @@ export function SettingsPage({
           }
         >
           <Switch
-            checked={settings.notifyOnFail}
+            // 开关显示=设置值且已授权（查询中按设置值显示避免闪烁）：没授权就显示「关」，
+            // 与真实能力一致——不会出现「显示开、点关闭却弹系统设置」的错位
+            checked={settings.notifyOnFail && notifAuth !== 'denied'}
             disabled={notifAuth !== 'authorized'}
             onChange={(v) => update({ notifyOnFail: v })}
             onBlockedClick={() => {
               // 点禁用开关：触发授权弹窗（没弹过时）+ 打开系统设置通知页，回来刷新状态
-              void window.api.requestPermissions().then(() =>
-                window.api.getNotifAuth().then(setNotifAuth)
-              )
+              void window.api
+                .requestPermissions()
+                .then(() => window.api.getNotifAuth().then(setNotifAuth))
             }}
           />
         </SettingRow>
@@ -309,7 +331,9 @@ export function SettingsPage({
                 onClick={() =>
                   update({
                     darkMode: m.key,
-                    specialStyle: m.key === 'special' ? settings.specialStyle : ''
+                    // 点「特殊风格」且还没选过特殊配色时，直接选中第一个（云朵舞者）
+                    specialStyle:
+                      m.key === 'special' ? settings.specialStyle || SPECIAL_STYLES[0].id : ''
                   })
                 }
               >
@@ -757,7 +781,8 @@ function BrowserSelect({
         className={`browser-select-btn ${open ? 'is-open' : ''}`}
         onClick={() => setOpen((v) => !v)}
       >
-        <BrowserIcon name={value} />
+        {/* 系统默认（value 为空）不显示图标，选中的浏览器显示品牌图标 */}
+        {value ? <BrowserIcon name={value} /> : null}
         <span>{value || '系统默认'}</span>
         <ChevronDown size={12} />
       </button>
@@ -766,12 +791,24 @@ function BrowserSelect({
           {/* 点击菜单外关闭 */}
           <div className="browser-select-mask" onClick={() => setOpen(false)} />
           <div className="browser-select-menu">
-            <button type="button" onClick={() => { onChange(''); setOpen(false) }}>
-              <BrowserIcon name="" />
+            <button
+              type="button"
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+            >
               <span>系统默认</span>
             </button>
             {browsers.map((b) => (
-              <button key={b} type="button" onClick={() => { onChange(b); setOpen(false) }}>
+              <button
+                key={b}
+                type="button"
+                onClick={() => {
+                  onChange(b)
+                  setOpen(false)
+                }}
+              >
                 <BrowserIcon name={b} />
                 <span>{b}</span>
               </button>

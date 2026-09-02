@@ -647,7 +647,10 @@ export function registerIpc(): void {
   // 权限引导（新手引导第 5 步之后）：请求通知权限（触发系统授权弹窗）
   ipcMain.handle('perm:request', () => requestPermissions())
   // 通知授权状态查询（native UNUserNotificationCenter；设置页开关联动用）
-  ipcMain.handle('perm:notif-status', () => new Promise<string>((r) => nativeGetNotificationAuth(r)))
+  ipcMain.handle(
+    'perm:notif-status',
+    () => new Promise<string>((r) => nativeGetNotificationAuth(r))
+  )
   ipcMain.handle('app:platform', () => getPlatform())
   ipcMain.handle('system:list-browsers', () => listBrowsers())
   ipcMain.handle('system:check-env', () => checkEnvironment())

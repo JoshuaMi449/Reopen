@@ -287,7 +287,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoStartEnabled: true,
   autoStartIds: [],
   theme: 'morandi',
-  darkMode: 'system',
+  darkMode: 'light',
   specialStyle: '',
   closeToTray: true,
   trayIcon: 'mono',
