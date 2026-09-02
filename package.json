@@ -1,5 +1,6 @@
 {
   "name": "reopen",
+  "productName": "Reopen",
   "version": "0.1.0",
   "description": "Restart your Mac without losing your projects",
   "main": "./out/main/index.js",
