@@ -385,7 +385,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'set-view-card') updateSettings({ view: 'card' })
       else if (action === 'settings' || action === 'settings-open') setSettingsOpen(true)
       else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 0.1.0（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.1（VC复活点）')
       else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
     })
     return off
