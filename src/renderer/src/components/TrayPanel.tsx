@@ -15,6 +15,7 @@ import {
   MemoryStick,
   PawPrint,
   Power,
+  RefreshCw,
   Settings as SettingsIcon,
   Wifi
 } from 'lucide-react'
@@ -505,6 +506,10 @@ function MoreView(props: { onNavigate: (v: PanelView) => void }): React.JSX.Elem
       <button className="tray-more-row" onClick={() => onNavigate('about')}>
         <Info size={14} />
         <span>关于 Reopen</span>
+      </button>
+      <button className="tray-more-row" onClick={() => window.api.showMainWindow('check-update')}>
+        <RefreshCw size={14} />
+        <span>检查更新</span>
       </button>
       <button className="tray-more-row" onClick={() => window.api.openExternal(`${GITHUB}#readme`)}>
         <ExternalLink size={14} />

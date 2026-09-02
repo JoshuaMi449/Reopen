@@ -1098,6 +1098,7 @@ html.dark .sidebar-logo-word,
   max-height: 256px; /* max-h-64 */
   overflow-y: auto;
   border: 1px solid var(--border);
+  background: var(--input-bg); /* 对标弹窗：浅灰底内容卡 */
   border-radius: 8px;
   padding: 10px 12px;
   margin-top: 12px;

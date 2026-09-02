@@ -194,6 +194,8 @@ export default function App(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
   /** 更新检查结果（启动时自动查 GitHub Release，有新版本弹窗） */
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  /** 设置按钮红点已读：打开设置即视为已读；检测到新版本时重新点亮 */
+  const [updateDotDismissed, setUpdateDotDismissed] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
   /** 侧栏标签右键菜单（重命名/删除/染色）*/
   const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null)
@@ -292,9 +294,13 @@ export default function App(): React.JSX.Element {
   }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
   // 启动时自动检查更新（有新版弹出「发现新版本」弹窗；失败静默不打扰）
+  // 检测到新版本同时点亮设置按钮红点（打开设置视为已读后，下次检测到新版再亮）
   useEffect(() => {
     void window.api.checkUpdate().then((info) => {
-      if (info.hasUpdate) setUpdateInfo(info)
+      if (info.hasUpdate) {
+        setUpdateInfo(info)
+        setUpdateDotDismissed(false)
+      }
     })
   }, [])
 
@@ -383,10 +389,20 @@ export default function App(): React.JSX.Element {
       else if (action === 'focus-search') searchRef.current?.focus()
       else if (action === 'set-view-list') updateSettings({ view: 'list' })
       else if (action === 'set-view-card') updateSettings({ view: 'card' })
-      else if (action === 'settings' || action === 'settings-open') setSettingsOpen(true)
-      else if (action === 'settings-close') setSettingsOpen(false)
+      else if (action === 'settings' || action === 'settings-open') {
+        setSettingsOpen(true)
+        setUpdateDotDismissed(true)
+      } else if (action === 'settings-close') setSettingsOpen(false)
       else if (action === 'about') toast('Reopen 1.0.2（VC复活点）')
-      else if (action === 'check-update') toast('检查更新随 M4 发布里程碑上线')
+      else if (action === 'check-update') {
+        // 托盘「更多 → 检查更新」：唤起主窗口检查，有新版弹窗+亮红点、无新版提示
+        void window.api.checkUpdate().then((info) => {
+          if (info.hasUpdate) {
+            setUpdateInfo(info)
+            setUpdateDotDismissed(false)
+          } else toast('已是最新版本')
+        })
+      }
     })
     return off
   }, [toast, updateSettings, showOnboarding])
@@ -1610,6 +1626,7 @@ export default function App(): React.JSX.Element {
       )}
 
       <Sidebar
+        showUpdateDot={!!updateInfo && !updateDotDismissed}
         category={category}
         tags={allTags}
         tagColor={tagColor}
