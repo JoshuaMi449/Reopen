@@ -26,6 +26,8 @@ export function listProjects(): Project[] {
   }
   // 旧数据惰性迁移（"顺手刷一遍"）：老项目没有 launchModes → 按 type 生成单方式+activeMode，一次性写回
   if (migrateLaunchModes(projects)) persist()
+  // 「启动脚本」模式退役：老档案里检测生成的该模式清洗掉（副作用不可控，检测已不再生成）
+  if (migrateLaunchScriptMode(projects)) persist()
   // 主入口修正：根层 index.html 才是主页，一次性写回
   if (migrateRootEntry(projects)) persist()
   loaded = true
@@ -47,6 +49,24 @@ function migrateLaunchModes(list: Project[]): boolean {
         { id: 'dev', kind: 'dev', label: '开发服务器', command: p.command, port: p.port }
       ]
       p.activeMode = 'dev'
+    }
+    changed = true
+  }
+  return changed
+}
+
+/** 「启动脚本」模式退役迁移（2026-09-02 用户拍板）：检测已不再生成该模式——
+ *  bash 执行脚本副作用不可控（texpeed 事故：脚本自带 open 浏览器，服务还没起浏览器先弹）。
+ *  老档案清洗：删掉该模式；activeMode 指向它时改指第一个剩余模式。返回是否有改动 */
+function migrateLaunchScriptMode(list: Project[]): boolean {
+  let changed = false
+  for (const p of list) {
+    const modes = p.launchModes
+    if (!modes?.some((m) => m.label === '启动脚本')) continue
+    const kept = modes.filter((m) => m.label !== '启动脚本')
+    p.launchModes = kept
+    if (p.activeMode && !kept.some((m) => m.id === p.activeMode)) {
+      p.activeMode = kept[0]?.id
     }
     changed = true
   }

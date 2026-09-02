@@ -423,22 +423,6 @@ function detectBunDeno(dir: string): DetectHint | null {
   }
 }
 
-/** S7：只有启动脚本（没有 package.json/serve 源码）→ bash 执行脚本 */
-function detectLaunchScript(dir: string): DetectHint | null {
-  const launch = LAUNCH_SCRIPTS.find((f) => existsSync(join(dir, f)))
-  if (!launch) return null
-  return {
-    ok: true,
-    type: 'service',
-    path: dir,
-    suggested: {
-      name: basename(dir),
-      command: `bash "${launch}"`,
-      port: readScriptPort(join(dir, launch))
-    }
-  }
-}
-
 /** （一个项目的全部启动方式清单。
  *  「成品预览」排最前为默认（用户心智：先看成品）；随后按确定性排列开发类方式 */
 function buildLaunchModes(dir: string): LaunchMode[] {
@@ -480,16 +464,8 @@ function buildLaunchModes(dir: string): LaunchMode[] {
       port: bunDeno.suggested.port
     })
   }
-  const launch = detectLaunchScript(dir)
-  if (launch) {
-    modes.push({
-      id: 'launch',
-      kind: 'dev',
-      label: '启动脚本',
-      command: launch.suggested.command,
-      port: launch.suggested.port
-    })
-  }
+  // 「启动脚本」模式已删除（2026-09-02 用户拍板）：bash 执行脚本副作用不可控
+  // （脚本里自带 open 浏览器等行为，texpeed 事故），脚本里的有用命令由 S6 提取成真实命令
   if (existsSync(join(dir, 'docker-compose.yml'))) {
     modes.push({ id: 'docker', kind: 'docker', label: 'Docker', command: 'docker compose up' })
   }
@@ -667,8 +643,11 @@ const ROOT_PATH_PATTERNS = [
   // origin 拼接根路径：location.origin + '/x'——统一入口下 origin 是网关地址，拼出来必落回根 404
   /\.origin\s*\+\s*['"`]\//,
   // SPA history 路由：子路径下 pathname 匹配不到路由 → 整页空白（HTTP 层一切正常，实测测不出；
-  // pushState 是浏览器 API，压缩后保留；hash 路由不用它，不误伤）
-  /(?:history\.)?(?:pushState|replaceState)\s*\(/
+  // pushState 是浏览器 API，压缩后保留；hash 路由不用它，不误伤。
+  // 两个防误伤：①(?!...) 排除方法定义 pushState(a,b){…}（CodeMirror 等库的普通方法名）；
+  // ②(?<!...) 排除成员调用 obj.pushState(…)/this.pushState(…)（库内部方法，与 history 无关）。
+  // 真调用只认 history.pushState / history.replaceState 或裸 pushState( 前不带点号与单词字符）
+  /(?:(?<=history\.)|(?<![.\w]))(?:pushState|replaceState)\s*\((?![^{}]*\)\s*\{)/
 ]
 
 /** 扫一段文本（JS 源码/html 内嵌 script）：逐行匹配，跳过纯注释行（压缩 dist 无注释行，照常命中） */
@@ -709,7 +688,10 @@ export function scanHtmlRoots(html: string): boolean {
   return false
 }
 
-/** 收集目录里参与扫描的文件（JS 相关 + HTML）：上限 100 个，跳过 node_modules/.git。
+/** 收集目录里参与扫描的文件（JS 相关 + HTML）：上限 100 个。
+ *  跳过 node_modules/.git/.venv/__pycache__（依赖与运行环境），
+ *  跳过顶层 tests/scripts（node 端测试与构建脚本——不进浏览器，根路径引用与访客无关，
+ *  误扫会把正常项目降级。lanzhuo-md 事故：tests/*.js 的 fetch('/assets/...') 属 Playwright 测试）。
  *  传单个文件（单 HTML 项目 path 就是文件）则直接收集该文件 */
 function collectScanFiles(dir: string): string[] {
   const files: string[] = []
@@ -718,7 +700,9 @@ function collectScanFiles(dir: string): string[] {
     try {
       for (const name of readdirSync(d)) {
         const full = join(d, name)
-        if (name === 'node_modules' || name === '.git') continue
+        if (['node_modules', '.git', '.venv', 'venv', '__pycache__'].includes(name)) continue
+        // 顶层 tests/scripts 是服务端代码（测试/构建），网页项目很少把访客资源放顶层这两个目录
+        if (depth === 0 && (name === 'tests' || name === 'scripts')) continue
         if (isDir(full)) {
           walk(full, depth + 1)
         } else if (/\.(js|ts|jsx|tsx|vue|mjs|cjs|html?)$/i.test(name)) {
@@ -750,6 +734,30 @@ export function scanJsRootPaths(dir: string): boolean {
     }
   }
   return false
+}
+
+/** 挂载前复扫（比档案值更实时），结果分两类（mountProject 用）：
+ *  jsDanger=JS 文件内部写死根路径/history 路由——重写器碰不到、实测 HTTP 层也测不出，只能直接降级；
+ *  htmlHit=HTML 内联 script/importmap 命中——多数可被重写器改写、且只在访客实际打开的页面才坏，
+ *  交给实测状态机（主页+内链+资源实测）判定，主页干净即可留在统一入口 */
+export function scanLanSuspicion(dir: string): { jsDanger: boolean; htmlHit: boolean } {
+  let jsDanger = false
+  let htmlHit = false
+  for (const f of collectScanFiles(dir)) {
+    if (jsDanger && htmlHit) break
+    try {
+      if (statSync(f).size > 2 * 1024 * 1024) continue
+      const content = readFileSync(f, 'utf-8')
+      if (/\.html?$/i.test(f)) {
+        if (!htmlHit && scanHtmlRoots(content)) htmlHit = true
+      } else if (!jsDanger && scanText(content)) {
+        jsDanger = true
+      }
+    } catch {
+      // 读不了跳过
+    }
+  }
+  return { jsDanger, htmlHit }
 }
 
 /** 扫目录里写死本机 host:port 的链接（挂载预判 route-rewrite 用）：这类页面必须靠响应改写，

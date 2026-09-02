@@ -26,6 +26,7 @@ import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
   adoptRunning,
+  buildPath,
   installProjectDeps,
   killResidualAndStart,
   openProjectBrowser,
@@ -131,12 +132,18 @@ function listBrowsers(): string[] {
   return Array.from(found)
 }
 
-/** 跑一个命令拿版本（没装返回 null；Windows 用 where 探测） */
+/** 跑一个命令拿版本（没装返回 null；Windows 用 where 探测）。
+ *  带 buildPath 探测：GUI 启动的 PATH 里没有 /usr/local/bin 等，裸 which 必误报没装 */
 function runVersion(cmd: string): string | null {
   try {
     const probe = process.platform === 'win32' ? 'where' : 'which'
-    execSync(`${probe} ${cmd}`, { stdio: 'ignore' })
-    return execSync(`${cmd} --version`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+    const env = { ...process.env, PATH: buildPath() }
+    execSync(`${probe} ${cmd}`, { stdio: 'ignore', env })
+    return execSync(`${cmd} --version`, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env
+    })
       .trim()
       .split('\n')[0]
   } catch {

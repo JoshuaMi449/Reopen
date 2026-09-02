@@ -19,7 +19,7 @@ import { isPureWeb } from '../shared/types'
 import { getSettings, listProjects, touchLanSlug, touchLastPort, touchStartedAt } from './store'
 import { getLanIp, probeLan } from './lan'
 import { startWebServer } from './webServer'
-import { makeLanSlug, scanJsRootPaths, scanLocalHostRefs } from './detect'
+import { makeLanSlug, scanLanSuspicion, scanLocalHostRefs } from './detect'
 import {
   clearLeakPaths,
   getGatewayPort,
@@ -164,8 +164,9 @@ function mountLog(project: Project, mode: LanMode, predicted?: LanMode): void {
   else if (mode === 'direct') emitLog(project.id, `统一入口降级为独立端口：${direct}`)
 }
 
-/** 项目 running → 挂上统一入口。JS 体检命中（拖入时或挂载时实时复扫）直接 direct 不实测（宁丢便利不丢正确）。
- *  每次挂载都复扫：项目重构建可能引入新病（SPA history 路由等），档案值只是拖入时的快照 */
+/** 项目 running → 挂上统一入口。挂载时实时复扫（项目重构建可能引入新病，档案值只是拖入时的快照）：
+ *  jsDanger（JS 内部写死根路径/history 路由——重写器碰不到、实测也测不出）→ 直接 direct（宁丢便利不丢正确）；
+ *  仅 HTML 命中（内联 script/importmap）→ 不降级，交给实测状态机：多数可改写，且只验访客真实会打开的主页+内链 */
 async function mountProject(project: Project, port: number): Promise<void> {
   if (project.type === 'group') return
   const s = getSettings()
@@ -173,8 +174,8 @@ async function mountProject(project: Project, port: number): Promise<void> {
   const slug = ensureLanSlug(project)
   // 扫成品目录优先（preview 的 staticRoot 才是访客真正看到的内容）；老数据无档案值也靠这轮补判
   const staticRoot = project.launchModes?.find((m) => m.kind === 'preview')?.staticRoot
-  const suspicious = project.lanSuspicious === true || scanJsRootPaths(staticRoot ?? project.path)
-  if (suspicious) {
+  const sus = scanLanSuspicion(staticRoot ?? project.path)
+  if (sus.jsDanger) {
     registerRoute({ slug, name: project.name, port, mode: 'direct' })
     setLanMode(project, 'direct')
     emitLog(
@@ -679,8 +680,16 @@ function probeWebPort(port: number): Promise<boolean> {
 }
 
 // GUI 应用拿不到用户 shell 的 PATH（npm/node 常装在自定义位置），补上常见安装位置
-function buildPath(): string {
-  const extra = ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.npm-global/bin')]
+/** 项目运行/命令探测用的 PATH：GUI 应用从 Dock 启动时 PATH 只有系统四目录
+ *  （/usr/bin:/bin:/usr/sbin:/sbin），nvm/homebrew/bun 装的运行时全找不到 →
+ *  「没装 Node.js」误报（2026-09-02 lanzhuo-md 事故）。补常见运行时目录 */
+export function buildPath(): string {
+  const extra = [
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    join(homedir(), '.bun/bin'),
+    join(homedir(), '.npm-global/bin')
+  ]
   // 剔除 Reopen 自己的 node_modules/.bin：dev 模式下它被 electron-vite 注入主进程 PATH，
   // 原样传给项目会让没装依赖的项目"借"到 Reopen 的 vite 假跑起来（SCADA 事故）
   const appRoot = app.getAppPath()
@@ -847,7 +856,8 @@ const DEP_RULES: { pattern: RegExp; candidates: string[]; hint: string }[] = [
 function commandExists(cmd: string): boolean {
   const probe = process.platform === 'win32' ? 'where' : 'which'
   try {
-    execSync(`${probe} ${cmd}`, { stdio: 'ignore' })
+    // 带 buildPath 探测：GUI 启动的 PATH 里没有 /usr/local/bin 等，裸 which 必误报没装
+    execSync(`${probe} ${cmd}`, { stdio: 'ignore', env: { ...process.env, PATH: buildPath() } })
     return true
   } catch {
     return false
