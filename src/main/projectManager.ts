@@ -179,7 +179,7 @@ async function mountProject(project: Project, port: number): Promise<void> {
     setLanMode(project, 'direct')
     emitLog(
       project.id,
-      '体检发现 JS 写死根路径或 history 路由（子路径下会白屏），统一入口自动降级为独立端口访问'
+      `体检发现 JS 写死根路径或 history 路由（子路径下会白屏），统一入口自动降级为独立端口：http://${getLanIp()}:${port}/`
     )
     return
   }
