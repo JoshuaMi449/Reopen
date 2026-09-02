@@ -1671,7 +1671,7 @@ export default function App(): React.JSX.Element {
                   }}
                 />
               )}
-              {projects.length === 0 ? (
+              {allProjects.length === 0 ? (
                 <div className="empty">
                   还没有项目。
                   <br />
