@@ -395,7 +395,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.5（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.6（VC复活点）')
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
@@ -621,14 +621,24 @@ export default function App(): React.JSX.Element {
     setDragOver(false)
     // 引导期间忽略文件拖入——登记表单会盖在引导遮罩上（引导走完才能拖）
     if (showOnboarding) return
-    // 排序拖拽落到空白（列表底部/子项区域）= 移到末尾
+    // 排序拖拽落到空白（列表底部/子项区域）：顶层=移到末尾；组内子项=移到同组末尾
+    //   （自动排序下不做排序落点，面板打开时的拖拽只落自启面板）
     const sortId = e.dataTransfer.getData('application/x-reopen-id')
-    if (sortId && dragId) {
+    if (sortId && dragId && settings.sortMode === 'none') {
       const order =
         settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
       const from = order.indexOf(sortId)
       if (from !== -1) order.splice(from, 1)
-      order.push(sortId)
+      const sortP = projects.find((p) => p.id === sortId)
+      if (sortP?.parentId) {
+        const sibIds = projects
+          .filter((x) => x.parentId === sortP.parentId)
+          .map((x) => x.id)
+        const lastIdx = sibIds.reduce((m, sid) => Math.max(m, order.indexOf(sid)), -1)
+        order.splice(lastIdx === -1 ? order.length : lastIdx + 1, 0, sortId)
+      } else {
+        order.push(sortId)
+      }
       setDragId(null)
       setSortOver(null)
       applyManualOrder(order)
@@ -1045,7 +1055,9 @@ export default function App(): React.JSX.Element {
   /** 排序拖拽 dragover（行/卡共用）：指针在目标中线以上=插前、以下=插后（仿访达插入线语义） */
   const handleSortDragOver = (e: React.DragEvent, p: Project, kind: 'row' | 'card'): void => {
     if (e.dataTransfer.types.includes('Files')) return
-    if (p.parentId) return // 组内子项不是排序目标（落到空白=移到末尾）
+    // 自动排序下不做排序落点（面板打开时的拖拽只服务自启面板，面板有自己的 dragover）
+    if (settings.sortMode !== 'none') return
+    // 任意落点（2026-09-03 用户拍板：组页面/标签页面自由拖动；顶层列表本就只有顶层项目）
     e.preventDefault()
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const before =
@@ -1720,9 +1732,10 @@ export default function App(): React.JSX.Element {
                         selected={selectedIds.has(p.id)}
                         selectMode={selectMode}
                         onSelectToggle={() => toggleSelect(p.id)}
+                        // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
+                        //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
                         sortDraggable={
-                          !showOnboarding &&
-                          (settings.sortMode === 'none' || settings.autoStartEnabled)
+                          !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
                         }
                         dragging={dragId === p.id}
                         onDragStart={(e) => handleRowDragStart(e, p)}
@@ -1747,10 +1760,10 @@ export default function App(): React.JSX.Element {
                         selected={selectedIds.has(p.id)}
                         selectMode={selectMode}
                         onSelectToggle={() => toggleSelect(p.id)}
+                        // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
+                        //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
                         sortDraggable={
-                          !showOnboarding &&
-                          !p.parentId &&
-                          (settings.sortMode === 'none' || settings.autoStartEnabled)
+                          !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
                         }
                         dragging={dragId === p.id}
                         onDragStart={(e) => handleRowDragStart(e, p)}
@@ -1777,8 +1790,9 @@ export default function App(): React.JSX.Element {
                   statuses={cardStatuses}
                   autoStartIds={autoStartIdsForUi}
                   dragId={dragId}
+                  // 排序模式优先级最高：「无」可拖；自动排序下点开自启面板后可拖（拖入面板）
                   sortDraggable={
-                    !showOnboarding && (settings.sortMode === 'none' || settings.autoStartEnabled)
+                    !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
                   }
                   onDragStart={(e, p) => handleRowDragStart(e, p)}
                   onDragOver={(e, p) => handleSortDragOver(e, p, 'card')}

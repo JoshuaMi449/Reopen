@@ -204,8 +204,8 @@ export function CardView({
               }`}
               data-pid={p.id}
               data-tour={p.id === 'demo-app' ? 'demo-card' : undefined}
-              // 组内子项不可拖拽排序（顺序固定在组内，项目组）
-              draggable={sortDraggable && !p.parentId}
+              // 组页面/标签页面平铺视图里子项也可拖动排序（2026-09-03 用户拍板）
+              draggable={sortDraggable}
               onDragStart={(e) => onDragStart(e, p)}
               onDragOver={(e) => onDragOver(e, p)}
               onDragEnd={onDragEnd}
