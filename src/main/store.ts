@@ -163,6 +163,15 @@ export function getSettings(): Settings {
     console.error('读取 settings.json 失败，按默认设置继续：', err)
   }
   if (!settings) settings = { ...DEFAULT_SETTINGS }
+  // 自启清单清洗：孤儿 id（项目已删）会导致面板空着、角标还计数，加载时清掉并写回
+  if (settings.autoStartIds.length > 0) {
+    const valid = new Set(listProjects().map((p) => p.id))
+    const cleaned = settings.autoStartIds.filter((id) => valid.has(id))
+    if (cleaned.length !== settings.autoStartIds.length) {
+      settings = { ...settings, autoStartIds: cleaned }
+      saveSettings({ autoStartIds: cleaned })
+    }
+  }
   // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
   // 旧数据迁移：动图速度语义重做（倍率 0.25~3 → 只因速 0~1），老值超出范围回落默认 0.5

@@ -395,7 +395,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.4（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.5（VC复活点）')
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
@@ -919,6 +919,12 @@ export default function App(): React.JSX.Element {
       )
     )
     if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+    // 自启项同步清理（组连带子项一起清）
+    const removedIds = new Set<string>(ids)
+    for (const t of targets.filter((x) => x.type === 'group')) {
+      childrenOf(t.id).forEach((c) => removedIds.add(c.id))
+    }
+    updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => !removedIds.has(x)) })
     setBulkDelete(null)
     setSelectedIds(new Set())
     toast(`已移除 ${ids.length} 个项目`, 'success')
@@ -1369,6 +1375,12 @@ export default function App(): React.JSX.Element {
       }
     }
     await window.api.deleteProject(deleteTarget.id)
+    // 自启项同步清理：删除的项目不能留在自启清单里（孤儿 id 会让面板空着、角标还计数）
+    const removedIds =
+      deleteTarget.type === 'group'
+        ? [deleteTarget.id, ...childrenOf(deleteTarget.id).map((c) => c.id)]
+        : [deleteTarget.id]
+    updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => !removedIds.includes(x)) })
     if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
   }
@@ -1656,7 +1668,7 @@ export default function App(): React.JSX.Element {
               onSort={(m) => updateSettings({ sortMode: m })}
               onAdd={handlePickFolder}
               onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
-              autoStartCount={autoStartIdsForUi.length}
+              autoStartCount={autoStartItems.length}
               autoStartEnabled={settings.autoStartEnabled}
               searchInputRef={searchRef}
               autoStartBtnRef={autoStartBtnRef}
