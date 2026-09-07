@@ -370,6 +370,86 @@ export default function App(): React.JSX.Element {
     }
   }, [toast])
 
+  // 卡片右下角预览截图（id → dataURL）：项目变 running 抓一张静态图。
+  //   失败按 20s/40s/60s 重试（总跨度 2 分钟，2026-09-07 用户拍板）后彻底放弃：
+  //   Next.js 大项目空闲后首次请求触发按需编译常超 30s 截图超时，超时后编译多半已完成，
+  //   重试即成功（2026-09-07 my-app 复盘：529MB 缓存项目超时→只能重启才抓到图）；
+  //   重试期间项目停止（标记被清除）立即放弃，不写回旧图。停止/失败即清除缓存。
+  //   网站常驻项目由初始加载拉回 running，自动触发抓图 → 预览一直显示。
+  //   截图为一次性成本（隐藏窗口截图后销毁，零常驻）
+  const [previewImages, setPreviewImages] = useState<Record<string, string>>({})
+  const previewTriedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const running = Object.entries(statuses)
+    // 新进入 running 且还没抓过（也没失败过）的项目：等服务端口就绪 → 抓一张
+    for (const [id, ev] of running) {
+      if (ev.status !== 'running' || !ev.port || previewTriedRef.current.has(id)) continue
+      const p = projectsRef.current.find((x) => x.id === id)
+      if (!p || p.type === 'group') continue
+      // 网页类拼入口路径（/index.html 归一为 /，与主进程 openProjectBrowser 同规则）
+      const entry =
+        p.type === 'web' && p.entryPath && p.entryPath !== '/index.html' ? p.entryPath : '/'
+      const url = `http://localhost:${ev.port}${p.type === 'web' ? entry : ''}`
+      previewTriedRef.current.add(id)
+      void (async () => {
+        // 延迟 5s 再抓：等端口稳定/启动收尾。dev 服务首次访问会触发一次按需编译
+        //   （next 实测 1s），与用户自己开浏览器同成本；防循环由主进程保证——
+        //   抓图互斥排队+30s 短超时+隐藏窗口节流（2026-09-04）
+        await new Promise((r) => setTimeout(r, 5000))
+        // 重试序列 0/20s/40s/60s（总跨度 2 分钟封顶）：每轮先检查标记，
+        //   项目停止时标记被清除 → 立即放弃不写回旧图
+        for (const wait of [0, 20000, 40000, 60000]) {
+          if (wait) await new Promise((r) => setTimeout(r, wait))
+          if (!previewTriedRef.current.has(id)) break
+          const img = await window.api.capturePreview(url)
+          if (img) {
+            setPreviewImages((m) => ({ ...m, [id]: img }))
+            break
+          }
+        }
+      })()
+    }
+    // 停止/失败：清缓存 + 解除已尝试标记（下次启动重新抓一张新的）
+    for (const [id, ev] of running) {
+      if (ev.status === 'running') continue
+      setPreviewImages((m) => {
+        if (!m[id]) return m
+        const c = { ...m }
+        delete c[id]
+        return c
+      })
+      previewTriedRef.current.delete(id)
+    }
+  }, [statuses])
+
+  // TCC 授权批准后回到 Reopen 自动恢复（2026-09-07 用户：3001 点允许后仍无图无链接，
+  // 必须重启才恢复）：窗口重新聚焦时重探局域网（TCC 挂起期间探测失败的项目被判
+  // 「仅本机可访问」，批准后地址链接应恢复）+ 补抓「运行中但没图」的项目。
+  // 限流 60 秒一次，防止频繁切换窗口引发抓图风暴
+  const lastFocusRecoverRef = useRef(0)
+  useEffect(() => {
+    const onFocus = (): void => {
+      const now = Date.now()
+      if (now - lastFocusRecoverRef.current < 60000) return
+      lastFocusRecoverRef.current = now
+      void window.api.recheckLan()
+      void (async () => {
+        for (const [id, ev] of Object.entries(statuses)) {
+          if (ev.status !== 'running' || !ev.port || previewImages[id]) continue
+          const p = projectsRef.current.find((x) => x.id === id)
+          if (!p || p.type === 'group') continue
+          const entry =
+            p.type === 'web' && p.entryPath && p.entryPath !== '/index.html' ? p.entryPath : '/'
+          const url = `http://localhost:${ev.port}${p.type === 'web' ? entry : ''}`
+          const img = await window.api.capturePreview(url)
+          if (img) setPreviewImages((m) => ({ ...m, [id]: img }))
+        }
+      })()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [statuses, previewImages])
+
   // ⌘F 展开并聚焦搜索框（应用内快捷键；搜索改收起式后同步调整）
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -395,7 +475,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.6（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.0.7（VC复活点）')
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
@@ -1815,6 +1895,7 @@ export default function App(): React.JSX.Element {
                   lanIp={settings.lanAccess ? lanIp : ''}
                   onRehost={handleRehost}
                   demoLanIp={showOnboarding && onboardStep >= 2 ? '192.168.1.8' : undefined}
+                  previewOf={(p) => previewImages[p.id]}
                 />
               )}
             </main>

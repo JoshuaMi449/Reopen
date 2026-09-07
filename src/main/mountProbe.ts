@@ -11,12 +11,15 @@ export interface ProbeTarget {
   name: string
   slug: string
   port: number
+  /** 启动模式 kind（dev=开发服务器，需要按需编译：只验首页+长超时+不回测） */
+  kind: string
 }
 
-/** direct 项目的回测周期（升回 route 用；项目改配置/Reopen 更新规则后自动捞回） */
+/** direct 项目的回测周期（升回 route 用；项目改配置/Reopen 更新规则后自动捞回）。
+ *  dev 项目不排回测（每轮回测=几十个请求=编译风暴，my-app 59 路由 45GB 事件，2026-09-04） */
 const RECHECK_INTERVAL_MS = 10 * 60 * 1000
-/** 漏网信号防抖：30 秒内最多重测一轮 */
-const LEAK_DEBOUNCE_MS = 30 * 1000
+/** 漏网信号防抖：5 分钟内最多重测一轮（30s 太短：leak→recheck→leak 雪球，2026-09-04） */
+const LEAK_DEBOUNCE_MS = 5 * 60 * 1000
 /** 内链爬取上限：超过只验首页（多页项目兜底，不穷举） */
 const MAX_PAGES = 10
 /** 每页资源验证上限 */
@@ -94,39 +97,43 @@ function hasLocalHostUrl(html: string, selfPort: number): boolean {
 
 /** 验一个页面：GET 走网关 → 解析实际返回 body 的资源 → HEAD 逐个验。全通返回 true。
  *  响应 HTML 的内联 script/importmap 有根路径 = 重写器救不了的 JS 内部盲区 → 直接判失败（宁降 direct） */
-async function verifyPage(path: string, port: number): Promise<boolean> {
-  const res = await gatewayFetch(path)
+async function verifyPage(path: string, port: number, timeoutMs = 3000): Promise<boolean> {
+  const res = await gatewayFetch(path, timeoutMs)
   if (!res || res.status >= 400 || !res.contentType.includes('text/html')) return false
   if (scanHtmlRoots(res.body)) return false
   if (hasLocalHostUrl(res.body, port)) return false
   const assets = extractAssetPaths(res.body).slice(0, MAX_ASSETS)
   if (assets.length === 0) return true
   for (const a of assets) {
-    if (!(await gatewayHead(a))) return false
+    if (!(await gatewayHead(a, timeoutMs))) return false
   }
   return true
 }
 
 /** 完整实测一轮：先按 route 验（无重写），失败开 route-rewrite 再验，还失败降 direct。
- *  验首页 + 爬内链（每页都过资源验证，堵"首页绿内页白"） */
+ *  验首页 + 爬内链（每页都过资源验证，堵"首页绿内页白"）。
+ *  dev 服务例外：只验首页（最多 2 个请求）+ 超时放宽到 60s 等按需编译完——
+ *  内链爬取/资源验证=几十上百个请求=编译风暴（my-app 59 路由 45GB 事件，2026-09-04） */
 async function probeOnce(target: ProbeTarget): Promise<'route' | 'route-rewrite' | 'direct'> {
   const base = `/rp/${target.slug}/`
+  const isDev = target.kind === 'dev'
+  const timeoutMs = isDev ? 60000 : 3000
   for (const mode of ['route', 'route-rewrite'] as const) {
     updateRouteMode(target.slug, mode)
-    const homeOk = await verifyPage(base, target.port)
-    if (homeOk) {
-      const res = await gatewayFetch(base)
-      if (res && res.status < 400) {
-        const pages = extractInnerLinks(res.body, target.slug)
-        let allOk = true
-        for (const p of pages) {
-          if (!(await verifyPage(p, target.port))) {
-            allOk = false
-            break
-          }
+    const homeOk = await verifyPage(base, target.port, timeoutMs)
+    if (!homeOk) continue
+    if (isDev) return mode
+    const res = await gatewayFetch(base)
+    if (res && res.status < 400) {
+      const pages = extractInnerLinks(res.body, target.slug)
+      let allOk = true
+      for (const p of pages) {
+        if (!(await verifyPage(p, target.port))) {
+          allOk = false
+          break
         }
-        if (allOk) return mode
       }
+      if (allOk) return mode
     }
   }
   return 'direct'
@@ -141,10 +148,13 @@ export async function probeNow(id: string, onChange: (mode: LanMode) => void): P
     const mode = await probeOnce(st.target)
     updateRouteMode(st.target.slug, mode)
     onChange(mode)
-    // direct 的项目排上周期回测（项目中途改好配置能自动升回）
+    // direct 的项目排上周期回测（项目中途改好配置能自动升回）。
+    //   dev 项目不排：回测一轮=几十个请求打向编译中的服务=定时编译风暴（2026-09-04）
     if (st.timer) clearInterval(st.timer)
     st.timer =
-      mode === 'direct' ? setInterval(() => void probeNow(id, onChange), RECHECK_INTERVAL_MS) : null
+      mode === 'direct' && st.target.kind !== 'dev'
+        ? setInterval(() => void probeNow(id, onChange), RECHECK_INTERVAL_MS)
+        : null
   } finally {
     st.probing = false
   }

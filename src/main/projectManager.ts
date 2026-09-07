@@ -185,7 +185,13 @@ async function mountProject(project: Project, port: number): Promise<void> {
     return
   }
   registerRoute({ slug, name: project.name, port, mode: 'route' })
-  registerTarget({ id: project.id, name: project.name, slug, port })
+  registerTarget({
+    id: project.id,
+    name: project.name,
+    slug,
+    port,
+    kind: project.launchModes?.find((m) => m.id === project.activeMode)?.kind ?? ''
+  })
   // 预判（挂载即明牌，不等实测）：文件里写死本机 host:port 链接 → 改写模式；否则直挂。
   // 预判直接推给前端（卡片立刻显示统一入口地址），实测几秒内完成后再校正
   const predicted: LanMode = scanLocalHostRefs(staticRoot ?? project.path)
@@ -377,6 +383,12 @@ export async function rehostProject(id: string): Promise<StartResult> {
     rt.status = 'stopped'
     rt.child = undefined
     emitLog(id, `已停掉手动起的旧服务，改用本应用启动（端口 ${port}，会自动对局域网开门）`)
+  } else if (rt.status === 'running') {
+    // 旧服务已经不在了（用户手动杀/崩溃），接管状态是残留的——清掉再启动，
+    // 否则 startProject 会拦「已经在运行了」（2026-09-07 用户：点托管没反应）
+    rt.status = 'stopped'
+    rt.child = undefined
+    emitLog(id, '旧服务已不在运行，直接按托管方式启动')
   }
   return startProject(id)
 }
@@ -888,6 +900,23 @@ function isViteCommand(command: string, cwd: string): boolean {
   }
 }
 
+/** 命令是不是 Next.js 启动：与 isViteCommand 同规则（字面/包装读 package.json scripts）。
+ *  next dev 默认只绑 localhost，且不认 HOST 环境变量、只认 CLI 的 --hostname
+ *  （「由本应用托管」后无局域网链接的根因，2026-09-04） */
+function isNextCommand(command: string, cwd: string): boolean {
+  if (/\bnext\b/.test(command)) return true
+  const m = command.match(/^(?:npm run|pnpm run|yarn)\s+(\S+)/)
+  if (!m) return false
+  try {
+    const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+    return /\bnext\b/.test(String(pkg.scripts?.[m[1]] ?? ''))
+  } catch {
+    return false
+  }
+}
+
 /** 挑一个当前空闲的 TCP 端口（一次 lsof 拿全量占用）。
  *  从 5174 开始扫：跳过 5173（vite 默认）、3000/8080（Mineradio 等写死端口的 app 常驻地址）
  *  ——写死端口的 app 没跑时这些端口是空闲的，从它们开始挑必撞。
@@ -946,6 +975,11 @@ function spawnAndWatch(
       .filter(Boolean)
       .join(' ')
     if (flags) finalCommand = `${command}${wrapped ? ' -- ' : ' '}${flags}`
+  }
+  // next dev 开门：lanAccess 开时注入 --hostname 0.0.0.0（next 只认这个参数，
+  //   环境变量不管用；否则「由本应用托管」后服务仍只绑本机=没有局域网链接，2026-09-04）
+  if (isNextCommand(command, cwd) && getSettings().lanAccess) {
+    finalCommand = `${finalCommand}${wrapped ? ' -- ' : ' '}--hostname 0.0.0.0`
   }
   const child = spawn(finalCommand, {
     cwd,
@@ -1365,6 +1399,24 @@ export function stopAllRuntimes(): void {
   }
 }
 
+/** 接管项目心跳（2026-09-07）：外部服务（不是 Reopen 拉起的）进程退出后，端口探测不通过
+ *  → 自动把状态翻回停止。没有这个，状态永远显示「运行中」，点托管会撞「已经在运行了」 */
+export function startAdoptedWatch(): void {
+  setInterval(() => {
+    for (const [id, rt] of runtimes) {
+      if (rt.status !== 'running' || rt.child || !rt.port) continue
+      const project = listProjects().find((p) => p.id === id)
+      if (!project) continue
+      void checkPortOpen(rt.port).then((open) => {
+        if (!open && rt.status === 'running' && !rt.child) {
+          emitLog(id, '检测到外部服务已退出，已标记为停止')
+          setStatus(rt, project, 'stopped')
+        }
+      })
+    }
+  }, 10_000)
+}
+
 export async function stopProject(id: string): Promise<void> {
   const project = listProjects().find((p) => p.id === id)
   const rt = runtimes.get(id)
@@ -1378,18 +1430,56 @@ export async function stopProject(id: string): Promise<void> {
     return
   }
 
-  // 接管显示的项目（不是 Reopen 启动的）：杀掉监听端口的进程
+  // 接管显示的项目（不是 Reopen 启动的）：杀掉监听端口的进程。
+  //   沿父链杀整条 dev 链（npm → next → next-server）：只杀监听进程会留残留，
+  //   再启动就被「同目录残留检测」拦下（2026-09-04 用户反馈"停止没用"）
   if (!rt.child && rt.port) {
     try {
       const out = execSync(`lsof -ti tcp:${rt.port} -sTCP:LISTEN`, { encoding: 'utf-8' })
       const pid = Number(out.trim().split('\n')[0])
       if (pid > 0) {
-        process.kill(pid, 'SIGTERM')
-        // 等端口真正释放（最多 6 秒）
+        const chain: number[] = []
+        let cur = pid
+        for (let i = 0; i < 5; i++) {
+          chain.push(cur)
+          let nextPid = 0
+          try {
+            nextPid = Number(execSync(`ps -o ppid= -p ${cur}`, { encoding: 'utf-8' }).trim())
+          } catch {
+            break
+          }
+          if (!nextPid || nextPid <= 1) break
+          // 父进程是 dev 包装命令才继续向上杀；遇到终端/Reopen/init 就停（不误杀宿主）
+          let cmd = ''
+          try {
+            cmd = execSync(`ps -o command= -p ${nextPid}`, { encoding: 'utf-8' }).toString()
+          } catch {
+            break
+          }
+          if (!/(npm|yarn|pnpm|next|vite|tsx|bun|node|deno)/.test(cmd)) break
+          cur = nextPid
+        }
+        for (const p of chain) {
+          try {
+            process.kill(p, 'SIGTERM')
+          } catch {
+            // 已退出
+          }
+        }
+        // 等端口真正释放（最多 6 秒）；没释放就整条链强杀
         const start = Date.now()
         while (Date.now() - start < 6_000) {
           if (!(await checkPortOpen(rt.port))) break
           await new Promise((r) => setTimeout(r, 500))
+        }
+        if (await checkPortOpen(rt.port)) {
+          for (const p of chain) {
+            try {
+              process.kill(p, 'SIGKILL')
+            } catch {
+              // 已退出
+            }
+          }
         }
       }
     } catch {

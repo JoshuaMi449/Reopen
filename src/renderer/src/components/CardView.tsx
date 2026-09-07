@@ -45,6 +45,8 @@ interface Props {
   onOpenBrowser(p: Project): void
   /** 局域网打不开时「由本应用托管」：停掉手动起的旧服务重新启动（对局域网开门） */
   onRehost?(p: Project): void
+  /** 右下角预览截图（dataURL；运行中/网站常驻才有，没有=不显示预览窗） */
+  previewOf?(p: Project): string | undefined
   onStart(p: Project): void
   onStop(p: Project): void
   /** 启动失败后的「看成品」兜底按钮（ */
@@ -61,13 +63,6 @@ interface Props {
   lanIp?: string
   /** 引导期演示卡片的假局域网地址（demo 卡片专用，引导结束消失）*/
   demoLanIp?: string
-}
-
-function formatTime(ts?: number): string {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** 卡片视图（PRD 3.3：同数据不同排版；点击打开右侧详情抽屉；标签排序时插组头）
@@ -96,10 +91,14 @@ export function CardView({
   selectMode,
   onSelectToggle,
   lanIp,
-  demoLanIp
+  demoLanIp,
+  previewOf
 }: Props): React.JSX.Element {
   // 局域网地址复制反馈（点击=复制不再跳转；记录是哪张卡在显示「已复制」）
   const [lanCopiedId, setLanCopiedId] = useState<string | null>(null)
+  // 局域网不通时的复制反馈：点复制 → 「复制失败」+ 托管按钮边框闪一下（引导开门）
+  const [lanFailId, setLanFailId] = useState<string | null>(null)
+  const [lanFlashId, setLanFlashId] = useState<string | null>(null)
   return (
     <div className="card-grid">
       {items.map(({ p, header }) => {
@@ -267,8 +266,9 @@ export function CardView({
                 </span>
               </div>
               <div className="card-body">
-                {/* 运行中端口可点开浏览器（网站常驻；局域网访问开时副链显示局域网地址）
-                    失败时并排显示红字「启动失败」（失败文字单独占行会把同网格行 4 张卡全撑高） */}
+                {/* 第一行：端口（或失败提示，失败文字单独占行会把同网格行 4 张卡全撑高）
+                    局域网不通时后面挂「复制」按钮：点了显示「复制失败」，
+                    同时第二行的托管按钮边框闪一下（引导开门，2026-09-04 用户方案） */}
                 <div className="card-port">
                   {failed ? (
                     <span className="card-fail-inline" title={statuses[p.id]?.reason}>
@@ -299,50 +299,23 @@ export function CardView({
                         localhost:{port}
                         <ExternalLink size={11} />
                       </a>
-                      {(cardLan || mounted) && (
-                        <a
-                          className={`lan-link ${lanCopiedId === p.id ? 'lan-copied' : ''}`}
-                          data-tour={p.id === 'demo-app' ? 'lan-link' : undefined}
-                          title={
-                            mounted
-                              ? '访客地址（点击复制，同一 Wi-Fi 的设备用这个）'
-                              : '局域网地址（点击复制，同一 Wi-Fi 的设备用这个）'
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void navigator.clipboard.writeText(guestUrl)
-                            setLanCopiedId(p.id)
-                            setTimeout(() => setLanCopiedId(null), 1500)
-                          }}
-                        >
-                          {mounted
-                            ? `${ev?.lanIp ?? lanIp}:${ev?.gatewayPort}/rp/${p.lanSlug}/`
-                            : `${cardLan}:${port}`}
-                          {lanCopiedId === p.id && <span className="lan-copied-tag">已复制</span>}
-                        </a>
-                      )}
-                      {lanBlocked && (
-                        <span
-                          className="lan-blocked"
-                          title={
-                            ev.spawned === true
-                              ? '这个服务是本应用拉起的，在项目的启动命令里加 --host 0.0.0.0 才能局域网访问'
-                              : '这个服务只绑了本机，同一 Wi-Fi 的其他设备访问不了'
-                          }
-                        >
-                          仅本机可访问
-                          {ev.spawned !== true && (
-                            <button
-                              className="lan-rehost"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onRehost?.(p)
-                              }}
-                            >
-                              由本应用托管
-                            </button>
-                          )}
-                        </span>
+                      {lanBlocked && !mounted && (
+                        <>
+                          <button
+                            className="lan-copy-fail"
+                            title="局域网不通，点第二行「由本应用托管」开门后就能复制给别的设备用"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setLanFailId(p.id)
+                              setLanFlashId(p.id)
+                              setTimeout(() => setLanFailId(null), 1500)
+                              setTimeout(() => setLanFlashId(null), 900)
+                            }}
+                          >
+                            复制
+                          </button>
+                          {lanFailId === p.id && <span className="lan-fail-tag">复制失败</span>}
+                        </>
                       )}
                     </>
                   ) : port ? (
@@ -351,12 +324,68 @@ export function CardView({
                     '未设置端口'
                   )}
                 </div>
-                <div className="card-last">上次启动：{formatTime(p.lastStartedAt)}</div>
-                {p.note && <div className="card-note">{p.note}</div>}
+                {/* 第二行：局域网地址（限宽 + 最多 1.5 行，左半显示右半渐隐；
+                    「已复制」浮在渐隐区中间）。局域网不通时区域保留（高度不变），
+                    「仅本机可访问+托管按钮」放在区域的下半行（2026-09-04 用户方案）；
+                    只在运行中显示（停止后探测值残留不能带出来）。
+                    优先级：挂载成功→访客地址（走网关本机转发，服务只绑本机也能用，
+                    2026-09-04 大屏教训）；没挂载→直连地址/仅本机可访问 */}
+                {active && port && (mounted || (!lanBlocked && cardLan)) && (
+                  <div className="card-lan-zone">
+                    <a
+                      className={`lan-link ${lanCopiedId === p.id ? 'lan-copied' : ''}`}
+                      data-tour={p.id === 'demo-app' ? 'lan-link' : undefined}
+                      title={
+                        mounted
+                          ? '访客地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                          : '局域网地址（点击复制，同一 Wi-Fi 的设备用这个）'
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void navigator.clipboard.writeText(guestUrl)
+                        setLanCopiedId(p.id)
+                        setTimeout(() => setLanCopiedId(null), 1500)
+                      }}
+                    >
+                      {mounted
+                        ? `${ev?.lanIp ?? lanIp}:${ev?.gatewayPort}/rp/${p.lanSlug}/`
+                        : `${cardLan}:${port}`}
+                      {lanCopiedId === p.id && <span className="lan-copied-tag">已复制</span>}
+                    </a>
+                  </div>
+                )}
+                {lanBlocked && !mounted && active && port && (
+                  <div className="card-lan-zone card-lan-zone-blocked">
+                    <span
+                      className="lan-blocked"
+                      title={
+                        ev.spawned === true
+                          ? '这个服务是本应用拉起的，在项目的启动命令里加 --host 0.0.0.0 才能局域网访问'
+                          : '这个服务只绑了本机，同一 Wi-Fi 的其他设备访问不了'
+                      }
+                    >
+                      仅本机可访问
+                      {ev.spawned !== true && (
+                        <button
+                          className={`lan-rehost ${
+                            lanFlashId === p.id ? 'lan-rehost-flash' : ''
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onRehost?.(p)
+                          }}
+                        >
+                          由本应用托管
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
-              {/* 右下角标签（绝对定位不撑高卡片，Tag icon+文字，染了色则 icon 填色 */}
+              {/* 左下角标签（绝对定位不撑高卡片，Tag icon+文字，染了色则 icon 填色；
+                  超 1/3 卡片宽截断显示省略号，完整标签 hover 悬浮 + 详情抽屉可见） */}
               {p.tags.length > 0 && (
-                <div className="card-tags">
+                <div className="card-tags" title={p.tags.join('、')}>
                   {p.tags.map((t) => {
                     const color = tagColor(t)
                     return (
@@ -368,6 +397,14 @@ export function CardView({
                     )
                   })}
                 </div>
+              )}
+              {/* 右下角预览窗：四分之一椭圆蒙版（渐变边缘与卡片渐隐融合），
+                  截图由启动时隐藏窗口抓一张生成；停止即消失 */}
+              {previewOf?.(p) && (
+                <div
+                  className="card-preview"
+                  style={{ backgroundImage: `url(${previewOf(p)})` }}
+                />
               )}
             </div>
           </Fragment>

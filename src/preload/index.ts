@@ -62,6 +62,7 @@ const api: ReopenApi = {
   getTrayIconPreview: () => ipcRenderer.invoke('tray:get-icon-preview'),
   recheckLan: () => ipcRenderer.invoke('system:recheck-lan'),
   rehostProject: (id) => ipcRenderer.invoke('project:rehost', id),
+  capturePreview: (url: string) => ipcRenderer.invoke('preview:capture', url),
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),
   exportData: () => ipcRenderer.invoke('data:export'),
   importData: () => ipcRenderer.invoke('data:import'),

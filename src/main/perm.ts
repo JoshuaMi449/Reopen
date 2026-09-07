@@ -5,21 +5,27 @@
 //   （2026-09-01 拍板砍掉权限检测幕，与主流 Mac 软件行为一致）。
 // 授权弹窗都是 macOS 系统统一模板，应用只能触发、不能自绘。
 import { Notification, shell } from 'electron'
+import { nativeGetNotificationAuth } from './nativeAddon'
 
 /** 当前平台（渲染层：非 Mac 直接跳过权限幕） */
 export function getPlatform(): NodeJS.Platform {
   return process.platform
 }
 
-/** 请求通知权限：发一条测试通知，首次发送会触发系统授权弹窗；再打开系统设置通知页兜底。 */
-export function requestPermissions(): void {
+/** 请求通知权限：发一条测试通知，首次发送会触发系统授权弹窗。
+ *  只有已拒绝（denied）才打开系统设置通知页兜底——打开新 app 会抢焦点把 Reopen 切到后面
+ *  （2026-09-04 用户：每次点授权 Reopen 都被切到后面）；首次/已授权只走系统弹窗，
+ *  关闭后焦点自然回 Reopen。 */
+export async function requestPermissions(): Promise<void> {
   if (Notification.isSupported()) {
     new Notification({
       title: 'Reopen 通知测试',
       body: '看到这条通知，说明通知权限已开启'
     }).show()
   }
-  if (process.platform === 'darwin') {
+  if (process.platform !== 'darwin') return
+  const auth = await new Promise<string>((r) => nativeGetNotificationAuth(r))
+  if (auth === 'denied') {
     shell.openExternal('x-apple.systempreferences:com.apple.preference.notifications')
   }
 }

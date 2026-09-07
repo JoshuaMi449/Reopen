@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Check,
   ChevronLeft,
+  Copy,
   ExternalLink,
   Eye,
   FileCode2,
@@ -80,6 +82,8 @@ export function DetailDrawer({
   const logRef = useRef<HTMLDivElement>(null)
   // 局域网地址复制反馈（点击=复制不再跳转）
   const [lanCopied, setLanCopied] = useState(false)
+  // 日志复制反馈（2026-09-07 用户：日志面板右上角加复制按钮）
+  const [logCopied, setLogCopied] = useState(false)
   // 统一入口挂载成功（route/route-rewrite）→ 显示访客地址（统一入口）；其余沿用独立端口
   const drawerMounted =
     (status?.lanMode === 'route' || status?.lanMode === 'route-rewrite') &&
@@ -93,6 +97,14 @@ export function DetailDrawer({
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logs])
+
+  // 复制全部日志（2026-09-07 用户：日志右上角复制按钮，点击复制日志里的所有文字）
+  const copyLogs = async (): Promise<void> => {
+    if (logs.length === 0) return
+    await navigator.clipboard.writeText(logs.join('\n'))
+    setLogCopied(true)
+    setTimeout(() => setLogCopied(false), 2000)
+  }
 
   const st = status?.status ?? 'stopped'
   const active = st === 'running' || st === 'starting'
@@ -177,6 +189,13 @@ export function DetailDrawer({
             <span className="drawer-meta-label">上次启动</span>
             <b>{formatTime(project.lastStartedAt)}</b>
           </div>
+          {/* 备注从卡片挪到抽屉（卡片固定高度方案，2026-09-04），完整显示在「上次启动」下面 */}
+          {project.note && (
+            <div>
+              <span className="drawer-meta-label">备注</span>
+              <b>{project.note}</b>
+            </div>
+          )}
           {/* 多入口列表（纯网页项目里多个页面，点哪个打开哪个） */}
           {isPureWeb(project) && entryList.length > 1 && (status?.port ?? project.port) && (
             <div className="drawer-meta drawer-entries">
@@ -282,6 +301,13 @@ export function DetailDrawer({
             )}
           </div>
         )}
+
+        {/* 日志右上角复制按钮（复制面板里的全部文字，含已滚出视口的部分） */}
+        <div className="drawer-log-head">
+          <button className="btn-mini" onClick={() => void copyLogs()} disabled={logs.length === 0}>
+            {logCopied ? <Check size={12} /> : <Copy size={12} />} {logCopied ? '已复制' : '复制日志'}
+          </button>
+        </div>
 
         <div className="drawer-log" ref={logRef} data-tour="log-panel">
           {logs.length === 0 ? (

@@ -2,6 +2,7 @@
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import {
+  appendFileSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -65,6 +66,97 @@ function registerTrayImport(dest: string): void {
 }
 
 /** 设置变化广播给所有窗口（主窗口/托盘面板同步） */
+// 抓图互斥链：任何时刻全应用最多一个隐藏抓图窗口（串行排队，防并发窗口叠加，2026-09-04 防循环）
+let captureChain: Promise<string | null> = Promise.resolve(null)
+
+// 抓图诊断日志（~Library/Logs/Reopen/capture.log）：查「某项目没预览窗」时看哪一步挂了。
+//   低频小文件，append 失败不影响主流程（2026-09-04 3001/texpeed 无窗口排查）
+function captureLog(msg: string): void {
+  try {
+    appendFileSync(
+      join(app.getPath('logs'), 'capture.log'),
+      `${new Date().toISOString()} ${msg}\n`
+    )
+  } catch {
+    /* 日志写不进就算了，抓图照常 */
+  }
+}
+
+// 单次抓图：隐藏窗口加载 → 停动画 → 缓冲 → 截一张 → 立即销毁。
+//   不设 backgroundThrottling:false → 隐藏窗口保持系统默认节流（动画/timer ~1fps），
+//   大屏动画页在看不见的窗口里满帧跑是之前烧 CPU 的放大器；
+//   超时 20s：dev 服务首次访问触发一次按需编译（next 实测 1s），20s 覆盖慢编译余量，
+//   挂太久窗口存活期内页面一直在渲染反而烧 CPU。失败/超时一律 null，无重试。
+async function captureOnce(url: string): Promise<string | null> {
+  const t0 = Date.now()
+  const win = new BrowserWindow({ show: false, width: 980, height: 500 })
+  // 拒绝页面打开新窗口；导航只拦跨源（页面里的 window.open/target=_blank 指向外站），
+  //   同源重定向必须放行——next 首页 307 跳 /zh-CN/，全拦会停在空壳上截出空白
+  //   （2026-09-04 3001 无预览窗的头号嫌疑）
+  const origin = new URL(url).origin
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (e, target) => {
+    try {
+      if (new URL(target).origin !== origin) e.preventDefault()
+    } catch {
+      e.preventDefault()
+    }
+  })
+  try {
+    try {
+      // 只等主文档 DOM 就绪，不等子资源全部加载完：loadURL 等 did-finish-load，
+      //   页面引外网资源挂起（texpeed 引 cdnjs CSS，2026-09-04 实测 20s 超时）会拖死截图。
+      //   loadURL fire-and-forget，dom-ready/did-fail-load 任一即继续（1.5s 缓冲兜渲染）
+      void win.loadURL(url).catch(() => {})
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          let done = false
+          const fin = (): void => {
+            if (!done) {
+              done = true
+              resolve()
+            }
+          }
+          win.webContents.once('dom-ready', fin)
+          win.webContents.once('did-fail-load', fin)
+        }),
+        // 30s：dev 服务首次访问会触发按需编译（next 3000 实测 >20s，20s 会误杀，2026-09-04）
+        new Promise((_, rej) => setTimeout(() => rej(new Error('capture timeout')), 30000))
+      ])
+    } catch (e) {
+      captureLog(`${url} 加载失败/超时 ${Date.now() - t0}ms ${String(e)}`)
+      return null
+    }
+    // 停 CSS 动画双保险（canvas/rAF 动画由窗口节流压制）
+    await win.webContents
+      .insertCSS('*,*::before,*::after{animation:none!important;transition:none!important}')
+      .catch(() => {})
+    // 懒加载/异步渲染页面缓冲（首屏内容后出的页面等一等再截）
+    await new Promise((r) => setTimeout(r, 1500))
+    // 等页面真正渲染出内容再截：dev 模式 HTML 先到、JS 模块还在按需编译，页面会空白
+    //   （"截图的字没加载出来"根因，2026-09-04）；字体加载完 + 正文有字才算就绪，
+    //   每秒查一次，10s 上限（纯图形页/无字页等满 10s 照截）
+    for (let i = 0; i < 10; i++) {
+      const ready = await win.webContents
+        .executeJavaScript(
+          '(() => { const fontsOk = !document.fonts || document.fonts.status === "loaded"; const text = document.body ? document.body.innerText.replace(/\\s/g, "").length : 0; return fontsOk && text > 20 })()'
+        )
+        .catch(() => false)
+      if (ready === true) break
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+    const img = await win.webContents.capturePage()
+    const out = img.toDataURL()
+    captureLog(`${url} 截图成功 ${Date.now() - t0}ms ${Math.round(out.length / 1024)}KB`)
+    return out
+  } catch (e) {
+    captureLog(`${url} 截图失败 ${Date.now() - t0}ms ${String(e)}`)
+    return null
+  } finally {
+    if (!win.isDestroyed()) win.destroy()
+  }
+}
+
 function broadcastSettings(settings: Settings): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('settings:changed', settings)
@@ -377,6 +469,9 @@ export function registerIpc(): void {
       title: allowFile ? '选择项目文件或文件夹' : '选择项目文件夹',
       properties: allowFile ? ['openFile', 'openDirectory'] : ['openDirectory']
     })
+    // TCC 授权弹窗（下载/文稿等受保护目录）关闭后焦点不自动回主窗口（Electron 已知行为），
+    // 面板一关就把 Reopen 拉回前面（取消也一样；2026-09-04 用户：点授权后 Reopen 被切到后面）
+    showMainWindow(undefined, true)
     if (res.canceled || res.filePaths.length === 0) return null
     return res.filePaths[0]
   })
@@ -627,6 +722,40 @@ export function registerIpc(): void {
   ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
   // 改由本应用托管：停掉手动起的旧服务重新启动（对局域网开门）
   ipcMain.handle('project:rehost', (_e, id: string) => rehostProject(id))
+  // 项目预览截图：隐藏窗口加载一次 → 等懒加载渲染稳定 → 截一张 → 立即销毁
+  //   （一次性成本，零常驻；失败/超时返回 null，渲染层不留占位）
+  ipcMain.handle('preview:capture', async (_e, url: string) => {
+    if (!/^https?:\/\//.test(url)) return null
+    // 先探测端口有没有服务：没有就快速返回（不开窗口干等 loadURL 超时，
+    //   端口未就绪是启动后抓图的常态，2026-09-04 CPU 优化）
+    let port = 80
+    try {
+      const u = new URL(url)
+      port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80
+    } catch {
+      return null
+    }
+    const portUp = await new Promise<boolean>((resolve) => {
+      const s = connect({ host: 'localhost', port, timeout: 1500 })
+      s.once('connect', () => {
+        s.destroy()
+        resolve(true)
+      })
+      s.once('error', () => resolve(false))
+      s.once('timeout', () => {
+        s.destroy()
+        resolve(false)
+      })
+    })
+    if (!portUp) {
+      captureLog(`${url} 端口探测不通，未开抓图窗口`)
+      return null
+    }
+    // 串到互斥链尾：前面的抓图完成才开工（多项目同时启动时逐个抓，2026-09-04 防循环）
+    const task = captureChain.then(() => captureOnce(url))
+    captureChain = task.catch(() => null)
+    return task
+  })
   ipcMain.handle('settings:save', (_e, patch: Partial<Settings>) => {
     const saved = saveSettings(patch)
     // 托盘启用/图标样式/速度/大小变化 → 立即刷新托盘；快捷键变化 → 重新注册

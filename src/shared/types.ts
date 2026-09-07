@@ -474,6 +474,8 @@ export interface ReopenApi {
   recheckLan(): Promise<void>
   /** 改由 Reopen 托管：停掉占着项目端口的外部服务（用户手动起的），用项目自己的启动方式重新起（对局域网开门） */
   rehostProject(id: string): Promise<StartResult>
+  /** 项目预览截图：隐藏窗口加载一次→截一张→销毁（一次性成本）；失败返回 null */
+  capturePreview(url: string): Promise<string | null>
   /** 开机自启（Mac 登录项）开关 */
   setLaunchAtLogin(v: boolean): Promise<void>
   /** 资料库导出/导入（JSON 文件对话框） */
