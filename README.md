@@ -80,7 +80,17 @@ npm run build:mac  # 打包 dmg（arm64）
 
 ## License
 
-[MIT](LICENSE) © 2026 JoshuaMi449
+Reopen 的原创代码采用 [MIT](LICENSE) 协议，© 2026 JoshuaMi449。仓库及安装包中的第三方代码、动画和角色形象不因本项目采用 MIT 而自动获得 MIT 授权。
+
+## 第三方来源与独立性
+
+- [RunCat / RunCat Neo](https://github.com/runcat-dev/RunCatNeo)：菜单栏动画与系统信息面板的设计参考。另有一张 `dogeza.gif` 曾由 RunCat 动画帧重制，其准确来源与再分发授权仍需核对。
+- [不只因（BuZhiYin）](https://github.com/W-Mai/BuZhiYin)：菜单栏动画实现的参考；本仓库 `resources/animations/` 中有 18 张 GIF 与其公开仓库文件完全一致。该仓库标注 MIT，但其中可识别的第三方角色形象可能另有权利人。
+- [iStat Menus](https://bjango.com/mac/istatmenus/)：系统监测与历史图交互的产品参考；Reopen 未附带其闭源程序或素材。
+
+以上产品与 Reopen 没有官方关联，也没有为 Reopen 背书。来源、许可文本及目前待核实的素材见 [第三方说明](THIRD_PARTY_NOTICES.md)。如需再分发或商用安装包，请先确认其中动画素材和角色形象的权利；README 署名不能代替授权。
+
+Windows 移植的功能差异、风险和工期估算见 [Windows 可行性评估](docs/Windows-可行性评估.md)。
 
 ---
 
@@ -92,4 +102,4 @@ A local project shelf for macOS. Drag your web sites and services in, and Reopen
 
 **Requirements**: Apple Silicon Mac, macOS 12+. Download the dmg, drag to Applications, right-click → Open on first launch (locally signed, not notarized). All data stays local in `~/Library/Application Support/Reopen`.
 
-**License**: [MIT](LICENSE) © 2026 JoshuaMi449
+**License**: Original Reopen code is [MIT](LICENSE) © 2026 JoshuaMi449. Bundled third-party animations and character artwork may have separate rights; see [third-party notices](THIRD_PARTY_NOTICES.md). Reopen is independent of RunCat, BuZhiYin, and iStat Menus.
