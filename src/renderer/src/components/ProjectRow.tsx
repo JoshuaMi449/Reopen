@@ -47,8 +47,7 @@ interface Props {
   /** 框选多选中（高亮描边 */
   selected?: boolean
   /** 有选中时点击=切换选中（代替打开抽屉） */
-  selectMode?: boolean
-  onSelectToggle?(): void
+  onSelectToggle?(e: React.MouseEvent): void
   /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址）*/
   lanIp?: string
   /** 局域网打不开时「由本应用托管」（接管服务没开门） */
@@ -91,7 +90,6 @@ export function ProjectRow({
   onViewPreview,
   isChild,
   selected,
-  selectMode,
   onSelectToggle,
   lanIp,
   onRehost,
@@ -133,7 +131,7 @@ export function ProjectRow({
       <div
         className="row-main"
         draggable={sortDraggable}
-        onClick={selectMode ? onSelectToggle : onOpen}
+        onClick={(e) => (e.metaKey || e.ctrlKey || e.shiftKey ? onSelectToggle?.(e) : onOpen())}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)

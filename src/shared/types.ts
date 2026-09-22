@@ -42,6 +42,11 @@ export function isPureWeb(p: Pick<Project, 'type' | 'launchModes'>): boolean {
   return p.type === 'web'
 }
 
+/** 分类按能力判断，避免预览模式的服务落入网页分类。 */
+export function projectCategory(p: Pick<Project, 'type' | 'launchModes'>): ProjectType {
+  return p.type === 'group' ? 'group' : isPureWeb(p) ? 'web' : 'service'
+}
+
 /** 启动失败时的「看成品」兜底：项目有成品预览方式且当前跑的不是它 → 失败界面给「看成品」按钮 */
 export function hasPreviewFallback(p: Pick<Project, 'launchModes' | 'activeMode'>): boolean {
   return (p.launchModes ?? []).some((m) => m.kind === 'preview') && p.activeMode !== 'preview'
@@ -200,6 +205,7 @@ export interface ProjectStatusEvent {
 
 /** 日志事件（主进程推送 → 行内面板实时显示） */
 export interface ProjectLogEvent {
+  sequence: number
   id: string
   line: string
 }
@@ -212,6 +218,7 @@ export interface StartResult {
 
 /** 应用设置（settings.json；随 M3 各步扩展） */
 export interface Settings {
+  menubarColors?: import('./menubarTheme').MenubarColors
   /** 手动排序的 id 顺序（访达式"手动拖拽"排序） */
   manualOrder: string[]
   /** 列表/卡片视图 */
@@ -244,8 +251,12 @@ export interface Settings {
   trayIconPath?: string
   /** 当前角色水平翻转（RunCat Runner Flip 同款：显示层镜像帧，素材文件不动） */
   trayFlip?: boolean
+  /** 在菜单栏图标右侧显示 CPU 平均温度（整数 °C） */
+  trayCpuTemperature: boolean
   /** 菜单栏动图速度（无级滑杆 0~1，默认 0.5；越大越快，1=最快） */
   trayIconSpeed: number
+  /** 自定义动图/图片在菜单栏中的显示高度（pt，14–30；22 为原有大小） */
+  trayIconSize: number
   /** 动画速度随 CPU 使用率波动（CPU 忙跑得快；默认开） */
   cpuFollow: boolean
   /** 自动反转播放：播到最后一帧倒着播回来（乒乓）；默认开 */
@@ -296,7 +307,9 @@ export const DEFAULT_SETTINGS: Settings = {
   specialStyle: '',
   closeToTray: true,
   trayIcon: 'mono',
+  trayCpuTemperature: true,
   trayIconSpeed: 0.5,
+  trayIconSize: 22,
   cpuFollow: true,
   trayAutoReverse: true,
   customTrayIcons: [],
@@ -371,12 +384,37 @@ export interface TrayCharacterItem {
 /** 面板系统信息卡数据（native addon getSystemInfo 采集，口径与业界通行面板一致：
  *  SystemInfoKit 同款 API——Mach host_statistics64 / IOKit AppleSmartBattery / getifaddrs；
  *  比例均为 0-1，字节为 bytes，速度 bps） */
+export interface BatteryHistorySample {
+  time: number
+  percent: number
+  plugged: boolean
+  charging: boolean
+}
+
+/** 长期系统历史：由主进程每分钟采样并保留 30 天，供托盘详情图使用。 */
+export interface SystemHistorySample {
+  time: number
+  cpu: { percent: number; system: number; user: number; idle: number }
+  memory?: {
+    percent: number
+    pressure: number
+    availableBytes?: number
+    appBytes: number
+    wiredBytes: number
+    compressedBytes: number
+  }
+  network: { downloadBps: number; uploadBps: number }
+}
+
 export interface SystemInfo {
+  batteryHistory?: BatteryHistorySample[]
+  systemHistory?: SystemHistorySample[]
   cpu: { percent: number; system: number; user: number; idle: number }
   memory: {
     percent: number
     /** 压力=(联动+已压缩)/物理内存（业界通行口径，非活动监视器的压力等级） */
     pressure: number
+    availableBytes?: number
     appBytes: number
     wiredBytes: number
     compressedBytes: number
@@ -399,6 +437,7 @@ export interface ReopenApi {
   /** 拖拽的 File 对象 → 磁盘路径（Electron 32+ 需 webUtils） */
   getPathForFile(file: File): string
   listProjects(): Promise<Project[]>
+  getLogHistory(): Promise<ProjectLogEvent[]>
   detectPath(path: string): Promise<DetectOutcome>
   parseApp(path: string): Promise<DetectOutcome>
   /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null） */
@@ -433,6 +472,7 @@ export interface ReopenApi {
   /** 托盘角色清单：内置角色 + 用户导入素材，带预览 dataURL（设置页角色弹窗用；GIF 原样给浏览器原生动画） */
   listTrayCharacters(): Promise<TrayCharacterItem[]>
   stopProject(id: string): Promise<void>
+  restartProject(id: string): Promise<StartResult>
   /** 一键安装依赖：在项目目录跑 npm install，日志实时推项目日志面板（ */
   installProjectDeps(id: string): Promise<void>
   /** 终止同目录残留 dev 进程并重新启动（残留检测的「终止残留并启动」按钮） */
@@ -443,6 +483,9 @@ export interface ReopenApi {
   openProjectBrowser(id: string, entry?: string): Promise<StartResult>
   getSettings(): Promise<Settings>
   saveSettings(patch: Partial<Settings>): Promise<Settings>
+  /** 色板拖动期间仅预览菜单栏图形颜色；null 清除预览，不写入设置。 */
+  previewMenubarColors(colors: import('./menubarTheme').MenubarColors | null, historyKind?: import('./historyRanges').HistoryKind | null): void
+  onMenubarColorsPreview(cb: (colors: import('./menubarTheme').MenubarColors | null) => void): () => void
   /** 显示主窗口（托盘面板调用；可附带菜单动作） */
   showMainWindow(action?: string): Promise<void>
   quitApp(): Promise<void>
@@ -462,6 +505,8 @@ export interface ReopenApi {
   onEnvInstallEvent(cb: (e: EnvInstallEvent) => void): () => void
   /** 本机局域网 IP（局域网访问功能显示用；没有返回空串） */
   getLanIp(): Promise<string>
+  /** macOS 系统吸管：用户点取屏幕颜色；取消或不可用返回 null。 */
+  pickScreenColor(): Promise<string | null>
   /** 请求通知权限：发测试通知触发系统授权弹窗+打开系统设置通知页 */
   requestPermissions(): Promise<void>
   /** 通知授权状态查询（authorized / denied / notDetermined；设置页开关联动用） */
@@ -501,6 +546,10 @@ export interface ReopenApi {
   switchTrayCharacter(path: string): Promise<void>
   /** 水平翻转当前角色（显示层镜像帧，素材文件不动） */
   setTrayFlip(v: boolean): Promise<void>
+  /** 托盘历史图展开时同步调整原生窗口尺寸和锚点。 */
+  showHistoryRangeMenu(kind: string, selected: number): Promise<number | null>
+  setTrayHistoryExpanded(expanded: boolean, kind?: string): Promise<void>
+  onTrayHistoryClosed(cb: () => void): () => void
   /** 切回内置 Reopen 黑白主题图标（「切换动画」弹窗左下角主题按钮） */
   switchTrayTheme(): Promise<void>
   /** 打开 macOS 系统「活动监视器」App（面板图标④，同款行为） */

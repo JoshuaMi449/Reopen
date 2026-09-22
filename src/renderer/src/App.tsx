@@ -4,7 +4,6 @@ import {
   FolderOpen,
   FolderSearch,
   Group,
-  MonitorPause,
   MonitorPlay,
   Palette,
   Pencil,
@@ -25,7 +24,7 @@ import type {
   Settings,
   UpdateInfo
 } from '../../shared/types'
-import { DEFAULT_SETTINGS, isPureWeb } from '../../shared/types'
+import { DEFAULT_SETTINGS, isPureWeb, projectCategory } from '../../shared/types'
 import { AutoStartPanel } from './components/AutoStartPanel'
 import { BulkTagModal } from './components/BulkTagModal'
 import { CardView } from './components/CardView'
@@ -329,17 +328,6 @@ export default function App(): React.JSX.Element {
     window.api.listProjects().then(async (ps) => {
       setProjects(ps)
       await window.api.adoptAllRunning()
-      // 网站常驻（打开 Reopen 自动把网页项目拉回在线（服务类保持手动）
-      // ：有「成品预览」方式的都算网页项目；老数据（无 launchModes）按 type=web 兼容
-      for (const p of ps) {
-        const hasPreview =
-          (p.launchModes ?? []).some((m) => m.kind === 'preview') ||
-          (p.launchModes === undefined && p.type === 'web')
-        if (!hasPreview) continue
-        const r = await window.api.startProject(p.id, 'preview')
-        // adopt 已接管的会返回"已经在运行了"，静默；真失败由状态红点呈现
-        if (!r.ok && r.reason && r.reason !== '已经在运行了') toast(r.reason, 'error')
-      }
     })
     window.api.getSettings().then((s) => {
       setSettings(s)
@@ -349,10 +337,19 @@ export default function App(): React.JSX.Element {
     return window.api.onSettingsChanged(setSettings)
   }, [toast])
 
+  const [previewImages, setPreviewImages] = useState<Record<string, string>>({})
   // 订阅主进程推送：状态变化 + 日志（PRD 3.4）
   useEffect(() => {
     const offStatus = window.api.onStatus((e: ProjectStatusEvent) => {
       setStatuses((s) => ({ ...s, [e.id]: e }))
+      if (e.status !== 'running') {
+        setPreviewImages((m) => {
+          if (!m[e.id]) return m
+          const c = { ...m }
+          delete c[e.id]
+          return c
+        })
+      }
       // 局域网探测通过时顺带刷新本机 IP（事件里带的是探测那一刻的 IP，显示恒一致）
       if (e.lanReachable === true && e.lanIp) setLanIp(e.lanIp)
       if (e.status === 'failed') {
@@ -360,11 +357,39 @@ export default function App(): React.JSX.Element {
         toast(`「${name}」启动失败：${e.reason ?? '未知原因'}`, 'error')
       }
     })
+    let disposed = false
+    let ready = false
+    const pending: ProjectLogEvent[] = []
+    const append = (events: ProjectLogEvent[]): void => {
+      setLogs((previous) => {
+        const next = { ...previous }
+        for (const e of events) next[e.id] = [...(next[e.id] ?? []), e.line].slice(-2000)
+        return next
+      })
+    }
     const offLog = window.api.onLog((e: ProjectLogEvent) => {
-      // 每个项目最多保留最近 500 行，防止长时间运行内存无限增长
-      setLogs((ls) => ({ ...ls, [e.id]: [...(ls[e.id] ?? []), e.line].slice(-500) }))
+      if (ready) append([e])
+      else pending.push(e)
     })
+    void window.api
+      .getLogHistory()
+      .then((history) => {
+        if (disposed) return
+        const last = history.at(-1)?.sequence ?? 0
+        const restored: Record<string, string[]> = {}
+        for (const e of [...history, ...pending.filter((e) => e.sequence > last)]) {
+          restored[e.id] = [...(restored[e.id] ?? []), e.line].slice(-2000)
+        }
+        setLogs(restored)
+        ready = true
+      })
+      .catch(() => {
+        if (disposed) return
+        append(pending)
+        ready = true
+      })
     return () => {
+      disposed = true
       offStatus()
       offLog()
     }
@@ -377,7 +402,6 @@ export default function App(): React.JSX.Element {
   //   重试期间项目停止（标记被清除）立即放弃，不写回旧图。停止/失败即清除缓存。
   //   网站常驻项目由初始加载拉回 running，自动触发抓图 → 预览一直显示。
   //   截图为一次性成本（隐藏窗口截图后销毁，零常驻）
-  const [previewImages, setPreviewImages] = useState<Record<string, string>>({})
   const previewTriedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const running = Object.entries(statuses)
@@ -412,12 +436,6 @@ export default function App(): React.JSX.Element {
     // 停止/失败：清缓存 + 解除已尝试标记（下次启动重新抓一张新的）
     for (const [id, ev] of running) {
       if (ev.status === 'running') continue
-      setPreviewImages((m) => {
-        if (!m[id]) return m
-        const c = { ...m }
-        delete c[id]
-        return c
-      })
       previewTriedRef.current.delete(id)
     }
   }, [statuses])
@@ -475,7 +493,7 @@ export default function App(): React.JSX.Element {
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
-      else if (action === 'about') toast('Reopen 1.0.7（VC复活点）')
+      else if (action === 'about') toast('Reopen 1.1.0（VC复活点）')
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
@@ -528,6 +546,7 @@ export default function App(): React.JSX.Element {
 
   /** 点开项目：组 → 跳侧栏「组」页面（组不再弹右侧抽屉，页面里显示全部子项）；普通项目 → 详情抽屉 */
   const handleOpen = (p: Project): void => {
+    setSelectedIds(p.type === 'group' ? new Set() : new Set([p.id]))
     if (p.type === 'group') {
       setCategory(`group:${p.id}` as Category)
       setSelectedId(null)
@@ -541,13 +560,15 @@ export default function App(): React.JSX.Element {
   const visibleProjects = useMemo(() => {
     let list = allProjects.filter((p) => !p.parentId)
     const groupHas = (g: Project, type: 'service' | 'web'): boolean =>
-      childrenOf(g.id).some((c) => c.type === type)
+      childrenOf(g.id).some((c) => projectCategory(c) === type)
     if (category === 'service') {
       list = list.filter(
-        (p) => p.type === 'service' || (p.type === 'group' && groupHas(p, 'service'))
+        (p) => projectCategory(p) === 'service' || (p.type === 'group' && groupHas(p, 'service'))
       )
     } else if (category === 'web') {
-      list = list.filter((p) => p.type === 'web' || (p.type === 'group' && groupHas(p, 'web')))
+      list = list.filter(
+        (p) => projectCategory(p) === 'web' || (p.type === 'group' && groupHas(p, 'web'))
+      )
     } else if (category.startsWith('group:')) {
       // 组页面（点组跳到这里，平铺显示组内全部子项）
       const gid = category.slice(6)
@@ -668,14 +689,14 @@ export default function App(): React.JSX.Element {
       service: allProjects.filter(
         (p) =>
           !p.parentId &&
-          (p.type === 'service' ||
-            (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'service')))
+          (projectCategory(p) === 'service' ||
+            (p.type === 'group' && childrenOf(p.id).some((c) => projectCategory(c) === 'service')))
       ).length,
       web: allProjects.filter(
         (p) =>
           !p.parentId &&
-          (p.type === 'web' ||
-            (p.type === 'group' && childrenOf(p.id).some((c) => c.type === 'web')))
+          (projectCategory(p) === 'web' ||
+            (p.type === 'group' && childrenOf(p.id).some((c) => projectCategory(c) === 'web')))
       ).length
     }),
     [allProjects, childrenOf]
@@ -711,9 +732,7 @@ export default function App(): React.JSX.Element {
       if (from !== -1) order.splice(from, 1)
       const sortP = projects.find((p) => p.id === sortId)
       if (sortP?.parentId) {
-        const sibIds = projects
-          .filter((x) => x.parentId === sortP.parentId)
-          .map((x) => x.id)
+        const sibIds = projects.filter((x) => x.parentId === sortP.parentId).map((x) => x.id)
         const lastIdx = sibIds.reduce((m, sid) => Math.max(m, order.indexOf(sid)), -1)
         order.splice(lastIdx === -1 ? order.length : lastIdx + 1, 0, sortId)
       } else {
@@ -824,7 +843,9 @@ export default function App(): React.JSX.Element {
     const rect = listRef.current?.getBoundingClientRect()
     if (!rect) return
     marqueeStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-    setSelectedIds(new Set())
+    const initial = e.metaKey || e.ctrlKey || e.shiftKey ? new Set(selectedIds) : new Set<string>()
+    setSelectedIds(initial)
+    setSelectedId(null)
     setMarqueeBox({ x: marqueeStart.current.x, y: marqueeStart.current.y, w: 0, h: 0 })
 
     const move = (ev: MouseEvent): void => {
@@ -841,8 +862,8 @@ export default function App(): React.JSX.Element {
       }
       setMarqueeBox(box)
       // 实时计算与框相交的项目（矩形相交判定）
-      const sel = new Set<string>()
-      document.querySelectorAll<HTMLElement>('[data-pid]').forEach((el) => {
+      const sel = new Set<string>(initial)
+      listRef.current?.querySelectorAll<HTMLElement>('[data-pid]').forEach((el) => {
         const er = el.getBoundingClientRect()
         const rx = er.left - r.left
         const ry = er.top - r.top
@@ -862,15 +883,18 @@ export default function App(): React.JSX.Element {
       setMarqueeBox(null)
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
+      window.removeEventListener('blur', up)
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
+    window.addEventListener('blur', up)
   }
 
   // Esc 清空选中/关闭批量菜单
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
+        setSelectedId(null)
         setSelectedIds(new Set())
         setBulkMenu(null)
       }
@@ -879,16 +903,25 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  /** 有选中时点击项目 = 切换选中（无选中时保持打开抽屉/展开组 */
-  const selectMode = selectedIds.size > 0
+  /** 普通单击只选当前项目；修饰键显式进行多选。 */
 
-  const toggleSelect = (id: string): void => {
-    setSelectedIds((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggleSelect = (id: string, e: React.MouseEvent): void => {
+    if (e.shiftKey && selectedId) {
+      const ids = visibleProjects.map((p) => p.id)
+      const from = ids.indexOf(selectedId)
+      const to = ids.indexOf(id)
+      if (from >= 0 && to >= 0) {
+        const range = ids.slice(Math.min(from, to), Math.max(from, to) + 1)
+        setSelectedIds(new Set(e.metaKey || e.ctrlKey ? [...selectedIds, ...range] : range))
+        return
+      }
+    }
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedIds(next)
+    if (next.has(id)) setSelectedId(id)
+    else if (selectedId === id) setSelectedId([...next].at(-1) ?? null)
   }
 
   /** 项目右键：多选中且右键目标是选中之一 → 批量菜单；否则回到单项目菜单 */
@@ -1215,24 +1248,8 @@ export default function App(): React.JSX.Element {
         }
       ]
     }
-    const st = statuses[p.id]?.status ?? 'stopped'
     const items: MenuItem[] = []
-    // 纯网页（无需激活——右键菜单没有启动/停止
-    if (!isPureWeb(p)) {
-      if (st === 'running' || st === 'starting') {
-        items.push({
-          label: '停止',
-          icon: <MonitorPause size={14} />,
-          onClick: () => window.api.stopProject(p.id)
-        })
-      } else {
-        items.push({
-          label: '启动',
-          icon: <MonitorPlay size={14} />,
-          onClick: () => handleStart(p)
-        })
-      }
-    }
+    // 右键只提供项目管理动作；启动/停止和日志抽屉保留给左键界面。
     items.push({
       label: '在浏览器打开',
       icon: <ExternalLink size={14} />,
@@ -1733,7 +1750,11 @@ export default function App(): React.JSX.Element {
           childCount: childrenOf(g.id).length
         }))}
         runningCount={Object.values(statuses).filter((s) => s.status === 'running').length}
-        onSelect={setCategory}
+        onSelect={(next) => {
+          setCategory(next)
+          setSelectedIds(new Set())
+          setSelectedId(null)
+        }}
         onTagContextMenu={(tag, e) => setTagMenu({ x: e.clientX, y: e.clientY, tag })}
         onGroupContextMenu={(id, e) => {
           const g = projects.find((x) => x.id === id)
@@ -1751,7 +1772,11 @@ export default function App(): React.JSX.Element {
             {/* toolbar 属中间栏：右栏滑出时随中间整体挤压（ */}
             <Toolbar
               search={search}
-              onSearch={setSearch}
+              onSearch={(value) => {
+                setSearch(value)
+                setSelectedIds(new Set())
+                setSelectedId(null)
+              }}
               searchOpen={searchOpen}
               onSearchOpen={setSearchOpen}
               view={settings.view}
@@ -1810,8 +1835,7 @@ export default function App(): React.JSX.Element {
                         autoStartChecked={autoStartIdsForUi.includes(p.id)}
                         onContextMenu={(e) => handleItemContextMenu(e, p)}
                         selected={selectedIds.has(p.id)}
-                        selectMode={selectMode}
-                        onSelectToggle={() => toggleSelect(p.id)}
+                        onSelectToggle={(e) => toggleSelect(p.id, e)}
                         // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
                         //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
                         sortDraggable={
@@ -1833,13 +1857,12 @@ export default function App(): React.JSX.Element {
                       <ProjectRow
                         project={p}
                         status={cardStatuses[p.id]}
-                        onOpen={() => setSelectedId(p.id)}
+                        onOpen={() => handleOpen(p)}
                         onStart={() => handleStart(p)}
                         onStop={() => window.api.stopProject(p.id)}
                         onContextMenu={(e) => handleItemContextMenu(e, p)}
                         selected={selectedIds.has(p.id)}
-                        selectMode={selectMode}
-                        onSelectToggle={() => toggleSelect(p.id)}
+                        onSelectToggle={(e) => toggleSelect(p.id, e)}
                         // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
                         //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
                         sortDraggable={
@@ -1871,9 +1894,7 @@ export default function App(): React.JSX.Element {
                   autoStartIds={autoStartIdsForUi}
                   dragId={dragId}
                   // 排序模式优先级最高：「无」可拖；自动排序下点开自启面板后可拖（拖入面板）
-                  sortDraggable={
-                    !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
-                  }
+                  sortDraggable={!showOnboarding && (settings.sortMode === 'none' || autoStartOpen)}
                   onDragStart={(e, p) => handleRowDragStart(e, p)}
                   onDragOver={(e, p) => handleSortDragOver(e, p, 'card')}
                   onDragEnd={() => {
@@ -1890,8 +1911,7 @@ export default function App(): React.JSX.Element {
                   onContextMenu={(e, p) => handleItemContextMenu(e, p)}
                   childrenOf={childrenOf}
                   selected={(p) => selectedIds.has(p.id)}
-                  selectMode={selectMode}
-                  onSelectToggle={(p) => toggleSelect(p.id)}
+                  onSelectToggle={(p, e) => toggleSelect(p.id, e)}
                   lanIp={settings.lanAccess ? lanIp : ''}
                   onRehost={handleRehost}
                   demoLanIp={showOnboarding && onboardStep >= 2 ? '192.168.1.8' : undefined}
@@ -1931,6 +1951,10 @@ export default function App(): React.JSX.Element {
                 }
                 onStart={() => handleStart(drawerProject)}
                 onStop={() => window.api.stopProject(drawerProject.id)}
+                onRestart={async () => {
+                  const result = await window.api.restartProject(drawerProject.id)
+                  if (!result.ok) toast(result.reason ?? '重启失败', 'error')
+                }}
                 onEdit={() => setForm({ mode: 'edit', project: drawerProject })}
                 onDelete={() => setDeleteTarget(drawerProject)}
                 onOpenBrowser={(entry) => handleOpenBrowser(drawerProject, entry)}
@@ -1946,6 +1970,7 @@ export default function App(): React.JSX.Element {
                 onClose={() => {
                   setDrawerGhost(drawerProject)
                   setSelectedId(null)
+                  setSelectedIds(new Set())
                 }}
                 onBack={
                   drawerProject.parentId

@@ -13,12 +13,14 @@ export function RolePickerModal({
   cpuFollow,
   autoReverse,
   speed,
+  size,
   anchor,
   namingSeed,
   onSelect,
   onCpuFollow,
   onAutoReverse,
   onSpeed,
+  onSize,
   onImport,
   onRename,
   onClose
@@ -27,6 +29,7 @@ export function RolePickerModal({
   cpuFollow: boolean
   autoReverse: boolean
   speed: number
+  size: number
   anchor: { x: number; y: number; width: number } | null
   /** 拖放导入成功后传入：打开弹窗直接弹命名窗口 */
   namingSeed?: string | null
@@ -34,6 +37,7 @@ export function RolePickerModal({
   onCpuFollow(v: boolean): void
   onAutoReverse(v: boolean): void
   onSpeed(v: number): void
+  onSize(v: number): void
   /** 选文件并入库，返回新素材路径（取消返回 null；随后弹命名窗口） */
   onImport(filter: 'gif' | 'image'): Promise<string | null>
   onRename(newPath: string): void
@@ -292,6 +296,20 @@ export function RolePickerModal({
                 onPointerUp={flushSpeed}
                 onKeyUp={flushSpeed}
                 onBlur={flushSpeed}
+              />
+            </div>
+            <div className="role-picker-setting-row">
+              <span className="role-picker-setting-label">大小</span>
+              <input
+                type="range"
+                className="settings-slider"
+                min={14}
+                max={30}
+                step={1}
+                value={size}
+                aria-label="菜单栏动画大小"
+                title={`${size} pt`}
+                onChange={(e) => onSize(Number(e.target.value))}
               />
             </div>
           </div>

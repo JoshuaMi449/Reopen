@@ -1,7 +1,7 @@
 {
   "name": "reopen",
   "productName": "Reopen",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "description": "Restart your Mac without losing your projects",
   "main": "./out/main/index.js",
   "author": "JoshuaMi449",
@@ -20,7 +20,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "test": "node tests/regression.cjs && node tests/context-menu.cjs && node tests/menubar-colors.cjs && node tests/history-buckets.cjs && node tests/history-ranges.cjs && node tests/process-log-lifetime.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

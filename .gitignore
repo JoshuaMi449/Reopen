@@ -1,5 +1,9 @@
 node_modules
 dist
+/dist-*/
+/SettingsPage-*.js
+/index.js
+/index.html
 out
 .DS_Store
 .eslintcache

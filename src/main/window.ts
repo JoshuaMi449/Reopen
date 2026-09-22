@@ -9,6 +9,9 @@ import { getSettings, listProjects } from './store'
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
+let windowReady = false
+let pendingAction: string | undefined
+let pendingActivate = false
 
 export function markQuitting(): void {
   quitting = true
@@ -47,6 +50,7 @@ function setDockMode(docked: boolean): void {
 }
 
 export function createWindow(): void {
+  windowReady = false
   // 默认尺寸按主屏工作区 55% 宽、16:10 比例（默认再宽一点，比例=电脑屏幕比例）
   const { workArea } = screen.getPrimaryDisplay()
   const winWidth = Math.min(Math.max(Math.round(workArea.width * 0.55), 1200), 2000)
@@ -76,15 +80,22 @@ export function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    windowReady = true
     // 手动打开（Dock/Launchpad/open 命令）→ 窗口直接到前台（2026-09-07 用户：你打开的不显示窗口）；
     // 开机自启那次才只显示不抢焦点（不打断用户）
     const atLogin = process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin
-    showMainWindow(undefined, !atLogin)
+    showMainWindow(pendingAction, pendingActivate || !atLogin)
+    pendingAction = undefined
+    pendingActivate = false
   })
 
   // TCC 预热弹窗只在窗口前台时出现：第一次获得焦点才触发（后台启动会被系统吞掉，
   // 2026-09-07 用户反馈预热弹窗没出现）；每个签名只弹一次，已授权静默通过
-  mainWindow.on('focus', () => prewarmTccAccess())
+  mainWindow.on('show', () => setDockMode(true))
+  mainWindow.on('focus', () => {
+    setDockMode(true)
+    prewarmTccAccess()
+  })
 
   // 关闭窗口 = 最小化到托盘（默认开；⌘Q 走 before-quit 不拦截）
   mainWindow.on('close', (e) => {
@@ -118,6 +129,11 @@ export function createWindow(): void {
  *  activate=false 用于首启/重建自动显示——只 show 不抢焦点（开机自启不打断用户） */
 export function showMainWindow(action?: string, activate = true): void {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+  if (!windowReady) {
+    pendingAction = action ?? pendingAction
+    pendingActivate ||= activate
+    return
+  }
   setDockMode(true)
   mainWindow?.show()
   if (activate) {
@@ -162,34 +178,8 @@ function prewarmTccAccess(): void {
       protectedDirs.some((d) => resolve(String(p.path ?? '')).startsWith(d + '/'))
   )
   if (!hasProtected) return
-  // 异步读：弹窗挂起时不阻塞主进程；顺带 arm 焦点守卫（弹窗关闭后把 Reopen 拉回）。
-  // 只在这一个弹窗时刻武装一次——项目启动不再武装，避免用户切窗口被误拽回（2026-09-07）
+  // 异步请求目录权限，不在延时后强制抢回前台。
   for (const d of protectedDirs) {
     void readdir(d).catch(() => {})
   }
-  armFocusGuard()
-}
-
-// TCC 授权弹窗（下载/桌面/文稿访问）关闭后 macOS 不把焦点还给主窗口（2026-09-07 用户：
-// 启动项目后点允许，活跃窗口跳走）。arm 后 60 秒内主窗口一旦失焦（TCC 弹窗出现必然失焦），
-// 4 秒仍未聚焦就拉回——弹窗挂起时拉回无碍（系统弹窗是模态顶层），用户点允许后弹窗关闭，
-// Reopen 已在前台
-let focusGuardTimer: ReturnType<typeof setTimeout> | null = null
-
-export function armFocusGuard(): void {
-  if (process.platform !== 'darwin') return
-  const win = mainWindow
-  if (!win || win.isDestroyed()) return
-  const onBlur = (): void => {
-    if (focusGuardTimer) clearTimeout(focusGuardTimer)
-    focusGuardTimer = setTimeout(() => {
-      if (win && !win.isDestroyed() && win.isVisible() && !win.isFocused()) {
-        win.show()
-        app.focus({ steal: true })
-        win.focus()
-      }
-    }, 4000)
-  }
-  win.once('blur', onBlur)
-  setTimeout(() => win.removeListener('blur', onBlur), 60000)
 }

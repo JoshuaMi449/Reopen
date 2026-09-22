@@ -3,6 +3,7 @@
 //   参照业界 SwiftUI 菜单栏实现）——三图标对比实验实锤：只有 SwiftUI 管线能获得系统
 //   「非活跃屏冻结最后一帧」托管。换帧由 Swift 内部 .common Timer 驱动，
 //   JS 只传帧序列与换帧间隔（CPU 变速）。加载失败降级：全部 no-op（应用不崩，托盘功能缺失）。
+import { totalmem } from 'os'
 import type { SystemInfo } from '../shared/types'
 
 let native: {
@@ -12,6 +13,8 @@ let native: {
   setInterval(intervalMs: number): void
   setInvert(light: boolean, dark: boolean): void
   setFlip(flipped: boolean): void
+  setCpuTemperature(value: number, enabled: boolean): void
+  getCpuTemperature(): number
   getFrame(): { x: number; y: number; w: number; h: number }
   setPanelBehavior(handle: Buffer): void
   startGlobalClickMonitor(cb: (type: string, payload: string) => void): void
@@ -81,6 +84,24 @@ export function nativeSetInvert(light: boolean, dark: boolean): void {
   }
 }
 
+/** 独立的 CPU 温度菜单栏项（不参与动图/品牌图渲染） */
+export function nativeSetCpuTemperature(value: number, enabled: boolean): void {
+  try {
+    native?.setCpuTemperature(value, enabled)
+  } catch {
+    /* no-op */
+  }
+}
+
+/** Apple Silicon HID/SMC CPU 核温度平均值，读取失败返回 0 */
+export function nativeGetCpuTemperature(): number {
+  try {
+    return native?.getCpuTemperature() ?? 0
+  } catch {
+    return 0
+  }
+}
+
 export function nativeGetFrame(): { x: number; y: number; w: number; h: number } {
   try {
     return native?.getFrame() ?? { x: 0, y: 0, w: 0, h: 0 }
@@ -124,7 +145,11 @@ export function nativeDestroyStatusItem(): void {
 /** 面板系统信息采样（面板同款数据：Mach/IOKit/getifaddrs，native addon 内实现） */
 export function nativeGetSystemInfo(): SystemInfo | null {
   try {
-    return native?.getSystemInfo() ?? null
+    const info = native?.getSystemInfo() ?? null
+    if (info?.memory) {
+      info.memory.availableBytes = Math.max(0, totalmem() - info.memory.appBytes - info.memory.wiredBytes - info.memory.compressedBytes)
+    }
+    return info
   } catch {
     return null
   }

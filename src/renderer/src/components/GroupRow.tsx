@@ -23,8 +23,7 @@ interface Props {
   /** 框选多选中（高亮描边 */
   selected?: boolean
   /** 有选中时点击=切换选中（代替展开/收起） */
-  selectMode?: boolean
-  onSelectToggle?(): void
+  onSelectToggle?(e: React.MouseEvent): void
 }
 
 /** 项目组行：组名 + 标签 + 子项摘要；点击=跳侧栏「组」页面显示组内项目 */
@@ -43,7 +42,6 @@ export function GroupRow({
   onDragEnd,
   onDrop,
   selected,
-  selectMode,
   onSelectToggle
 }: Props): React.JSX.Element {
   return (
@@ -54,7 +52,7 @@ export function GroupRow({
       <div
         className={`row-main `}
         draggable={sortDraggable}
-        onClick={selectMode ? onSelectToggle : onOpen}
+        onClick={(e) => (e.metaKey || e.ctrlKey || e.shiftKey ? onSelectToggle?.(e) : onOpen())}
         onContextMenu={(e) => {
           e.preventDefault()
           onContextMenu(e)

@@ -4,6 +4,8 @@
 
 > A local project shelf for macOS: drag in your web sites and services, keep them always-on, and share them over Wi-Fi.
 
+**当前版本：1.1.0** · [更新内容](docs/1.1.0-更新说明.md)
+
 ## 功能一览
 
 - **拖入即登记**：把项目文件夹或 HTML 文件拖进窗口，自动识别类型、预填名称/命令/端口

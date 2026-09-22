@@ -14,6 +14,7 @@ import type {
 const api: ReopenApi = {
   getPathForFile: (file) => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke('project:list'),
+  getLogHistory: () => ipcRenderer.invoke('project:log-history'),
   detectPath: (path) => ipcRenderer.invoke('project:detect', path),
   /** 「+」按钮：打开访达选项目文件夹；allowFile=true 文件/文件夹都能选（取消返回 null） */
   pickProjectFolder: (allowFile?: boolean) =>
@@ -36,12 +37,19 @@ const api: ReopenApi = {
   deleteTrayIcon: (path: string) => ipcRenderer.invoke('tray:delete-icon', path),
   listTrayCharacters: () => ipcRenderer.invoke('tray:list-characters'),
   stopProject: (id) => ipcRenderer.invoke('project:stop', id),
+  restartProject: (id) => ipcRenderer.invoke('project:restart', id),
   installProjectDeps: (id) => ipcRenderer.invoke('project:install-deps', id),
   killResidual: (id) => ipcRenderer.invoke('project:kill-residual', id),
   adoptAllRunning: () => ipcRenderer.invoke('project:adopt-all'),
   openProjectBrowser: (id, entry) => ipcRenderer.invoke('project:open-browser', id, entry),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+  previewMenubarColors: (colors, historyKind) => ipcRenderer.send('settings:preview-menubar-colors', colors, historyKind),
+  onMenubarColorsPreview: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, colors: Settings['menubarColors'] | null): void => cb(colors ?? null)
+    ipcRenderer.on('menubar:colors-preview', listener)
+    return () => ipcRenderer.removeListener('menubar:colors-preview', listener)
+  },
   showMainWindow: (action) => ipcRenderer.invoke('window:show-main', action),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   openSettingsWindow: (group) => ipcRenderer.invoke('window:open-settings', group),
@@ -56,6 +64,7 @@ const api: ReopenApi = {
     return () => ipcRenderer.removeListener('system:env-install-event', listener)
   },
   getLanIp: () => ipcRenderer.invoke('system:get-lan-ip'),
+  pickScreenColor: () => ipcRenderer.invoke('system:pick-color'),
   requestPermissions: () => ipcRenderer.invoke('perm:request'),
   getNotifAuth: () => ipcRenderer.invoke('perm:notif-status'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
@@ -96,6 +105,14 @@ const api: ReopenApi = {
   },
   switchTrayCharacter: (path) => ipcRenderer.invoke('tray:switch-character', path),
   setTrayFlip: (v) => ipcRenderer.invoke('tray:set-flip', v),
+  showHistoryRangeMenu: (kind, selected) => ipcRenderer.invoke('tray:history-range-menu', kind, selected),
+  setTrayHistoryExpanded: (expanded, kind) =>
+    ipcRenderer.invoke('tray:set-history-expanded', expanded, kind),
+  onTrayHistoryClosed: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('tray:history-closed', listener)
+    return () => ipcRenderer.removeListener('tray:history-closed', listener)
+  },
   switchTrayTheme: () => ipcRenderer.invoke('tray:switch-theme'),
   openActivityMonitor: () => ipcRenderer.invoke('tray:open-activity-monitor'),
   onTrayResetView: (cb) => {

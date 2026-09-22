@@ -17,6 +17,22 @@
       ]
     },
     {
+      "target_name": "compile_color_sampler",
+      "type": "none",
+      "actions": [
+        {
+          "action_name": "compile_color_sampler_swift",
+          "inputs": ["src/color_sampler.swift"],
+          "outputs": ["build/Release/reopen_color_sampler"],
+          "action": [
+            "xcrun", "swiftc", "-O",
+            "src/color_sampler.swift",
+            "-o", "build/Release/reopen_color_sampler"
+          ]
+        }
+      ]
+    },
+    {
       "target_name": "reopen_native",
       "sources": ["addon.mm"],
       "cflags!": ["-fno-exceptions"],
@@ -30,7 +46,7 @@
       },
       "defines": ["NAPI_VERSION=8", "NAPI_CPP_EXCEPTIONS"],
       "include_dirs": ["<!@(node -p \"require('node-addon-api').include\")"],
-      "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")", "compile_tray_runner"],
+      "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")", "compile_tray_runner", "compile_color_sampler"],
       "libraries": ["-framework Cocoa", "-framework QuartzCore", "-framework IOKit", "-framework Network", "-framework UserNotifications"]
     }
   ]

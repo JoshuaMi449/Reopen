@@ -1,5 +1,5 @@
 // IPC 注册：渲染层请求的入口（PRD 八·架构：主进程管系统，渲染层画界面）
-import { execSync, spawn, ChildProcess } from 'child_process'
+import { execFile, execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import {
   appendFileSync,
@@ -26,6 +26,7 @@ import type {
 import { detectPath, parseApp } from './detect'
 import {
   adoptAllRunning,
+  getLogHistory,
   adoptRunning,
   buildPath,
   installProjectDeps,
@@ -34,6 +35,7 @@ import {
   rehostProject,
   reprobeAllLan,
   startProject,
+  restartProject,
   stopProject,
   syncGateway
 } from './projectManager'
@@ -50,7 +52,8 @@ import {
   saveSettings,
   updateProject
 } from './store'
-import { appQuit, refreshTray } from './tray'
+import { appQuit, previewMenubarColors, refreshTray, setTrayHistoryExpanded, showHistoryRangeMenu } from './tray'
+import type { MenubarColors } from '../shared/menubarTheme'
 import { invalidateGifCache } from './gifFrames'
 import { getLanIp } from './lan'
 import { showMainWindow } from './window'
@@ -65,6 +68,21 @@ function registerTrayImport(dest: string): void {
   })
 }
 
+/** macOS 原生吸管：NSColorSampler 接管一次鼠标点击，stdout 返回 #RRGGBB。 */
+function pickScreenColor(): Promise<string | null> {
+  if (process.platform !== 'darwin') return Promise.resolve(null)
+  const helper = app.isPackaged
+    ? join(process.resourcesPath, 'reopen_color_sampler')
+    : join(app.getAppPath(), 'native/build/Release/reopen_color_sampler')
+  return new Promise((resolve) => {
+    execFile(helper, { timeout: 5 * 60_000 }, (error, stdout) => {
+      if (error) return resolve(null)
+      const color = stdout.trim().match(/^#[0-9A-Fa-f]{6}$/)?.[0]
+      resolve(color ?? null)
+    })
+  })
+}
+
 /** 设置变化广播给所有窗口（主窗口/托盘面板同步） */
 // 抓图互斥链：任何时刻全应用最多一个隐藏抓图窗口（串行排队，防并发窗口叠加，2026-09-04 防循环）
 let captureChain: Promise<string | null> = Promise.resolve(null)
@@ -73,10 +91,7 @@ let captureChain: Promise<string | null> = Promise.resolve(null)
 //   低频小文件，append 失败不影响主流程（2026-09-04 3001/texpeed 无窗口排查）
 function captureLog(msg: string): void {
   try {
-    appendFileSync(
-      join(app.getPath('logs'), 'capture.log'),
-      `${new Date().toISOString()} ${msg}\n`
-    )
+    appendFileSync(join(app.getPath('logs'), 'capture.log'), `${new Date().toISOString()} ${msg}\n`)
   } catch {
     /* 日志写不进就算了，抓图照常 */
   }
@@ -578,10 +593,12 @@ export function registerIpc(): void {
     return system ? { inUse: true, bySystem: true } : { inUse: false }
   })
   ipcMain.handle('project:start', (_e, id: string, modeId?: string) => startProject(id, modeId))
+  ipcMain.handle('project:restart', (_e, id: string) => restartProject(id))
   ipcMain.handle('project:stop', (_e, id: string) => stopProject(id))
   // 切换启动方式：更新存档；运行中=停掉按新方式重启（停止态只改默认，下次启动生效）
   ipcMain.handle('project:install-deps', (_e, id: string) => installProjectDeps(id))
   ipcMain.handle('project:kill-residual', (_e, id: string) => killResidualAndStart(id))
+  ipcMain.handle('project:log-history', () => getLogHistory())
   ipcMain.handle('project:adopt-all', () => adoptAllRunning())
   ipcMain.handle('project:open-browser', (_e, id: string, entry?: string) =>
     openProjectBrowser(id, entry)
@@ -718,6 +735,10 @@ export function registerIpc(): void {
     refreshTray()
     broadcastSettings(saved)
   })
+  ipcMain.handle('tray:history-range-menu', (_e, kind: string, selected: number) => showHistoryRangeMenu(kind, selected))
+  ipcMain.handle('tray:set-history-expanded', (_e, expanded: boolean, kind: string) => {
+    setTrayHistoryExpanded(!!expanded, kind)
+  })
   // 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用）
   ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
   // 改由本应用托管：停掉手动起的旧服务重新启动（对局域网开门）
@@ -764,6 +785,8 @@ export function registerIpc(): void {
       'trayIcon' in patch ||
       'trayIconPath' in patch ||
       'trayIconSpeed' in patch ||
+      'trayIconSize' in patch ||
+      'trayCpuTemperature' in patch ||
       'cpuFollow' in patch ||
       'trayAutoReverse' in patch
     ) {
@@ -778,6 +801,9 @@ export function registerIpc(): void {
     if ('hotkey' in patch || 'quickLaunch' in patch) refreshShortcuts()
     broadcastSettings(saved)
     return saved
+  })
+  ipcMain.on('settings:preview-menubar-colors', (_e, colors: MenubarColors | null, historyKind?: string | null) => {
+    previewMenubarColors(colors, historyKind)
   })
 
   // 窗口与应用
@@ -797,6 +823,7 @@ export function registerIpc(): void {
   ipcMain.handle('system:install-env', (_e, key: string) => installEnvTool(key))
   ipcMain.handle('system:env-install-cancel', (_e, key: string) => cancelEnvInstall(key))
   ipcMain.handle('system:get-lan-ip', () => getLanIp())
+  ipcMain.handle('system:pick-color', () => pickScreenColor())
   // 检查完广播设置（pendingUpdate 可能变了：发现新版常亮红点 / 确认最新清红点）
   ipcMain.handle('update:check', async () => {
     const info = await checkUpdate()

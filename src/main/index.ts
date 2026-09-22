@@ -11,7 +11,11 @@ import { stopGateway } from './gateway'
 
 // 单例锁：重复启动时唤起已有窗口而不是开两个（PRD 四·稳定性）
 if (!app.requestSingleInstanceLock()) {
-  app.quit()
+  // A second copy can reach `before-quit` before Electron is ready.  Calling
+  // `app.quit()` there used to open the confirmation dialog too early and crash
+  // with "dialog module can only be used after app is ready".  Exit the duplicate
+  // immediately; the primary instance receives `second-instance` and shows itself.
+  process.exit(0)
 } else {
   app.on('second-instance', () => {
     showMainWindow()

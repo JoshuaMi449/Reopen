@@ -28,6 +28,7 @@ interface Props {
   logs: string[]
   onStart(): void
   onStop(): void
+  onRestart(): void
   onEdit(): void
   onDelete(): void
   /** 打开默认入口（主按钮）；带 entry 参数=打开指定入口页面（多入口列表） */
@@ -68,6 +69,7 @@ export function DetailDrawer({
   logs,
   onStart,
   onStop,
+  onRestart,
   onEdit,
   onDelete,
   onOpenBrowser,
@@ -264,12 +266,12 @@ export function DetailDrawer({
                   <MonitorPlay size={14} /> 启动
                 </button>
               )}
-              <button className="btn-secondary" onClick={onStart} disabled={active}>
+              <button className="btn-secondary" onClick={onRestart} disabled={st === 'starting'}>
                 <RotateCcw size={14} /> 重启
               </button>
             </>
           )}
-          <button className="btn-secondary" onClick={() => onOpenBrowser()}>
+          <button className="btn-secondary drawer-browser-action" onClick={() => onOpenBrowser()}>
             <ExternalLink size={14} /> 在浏览器打开
           </button>
           <button className="btn-secondary" onClick={onEdit}>
@@ -303,18 +305,28 @@ export function DetailDrawer({
         )}
 
         {/* 日志右上角复制按钮（复制面板里的全部文字，含已滚出视口的部分） */}
-        <div className="drawer-log-head">
-          <button className="btn-mini" onClick={() => void copyLogs()} disabled={logs.length === 0}>
-            {logCopied ? <Check size={12} /> : <Copy size={12} />} {logCopied ? '已复制' : '复制日志'}
-          </button>
-        </div>
+        <div className="drawer-log-shell" data-tour="log-panel">
+          <div className="drawer-log-head">
+            <span title="本次 Reopen 运行期间，项目进程的标准输出、错误输出和 Reopen 的运行诊断；最多保留 2000 行">
+              日志 · stdout / stderr / Reopen
+            </span>
+            <button
+              className="btn-mini"
+              onClick={() => void copyLogs()}
+              disabled={logs.length === 0}
+            >
+              {logCopied ? <Check size={12} /> : <Copy size={12} />}{' '}
+              {logCopied ? '已复制' : '复制日志'}
+            </button>
+          </div>
 
-        <div className="drawer-log" ref={logRef} data-tour="log-panel">
-          {logs.length === 0 ? (
-            <div className="log-empty">还没有日志。点「启动」开始运行。</div>
-          ) : (
-            logs.map((line, i) => <div key={i}>{line}</div>)
-          )}
+          <div className="drawer-log" ref={logRef}>
+            {logs.length === 0 ? (
+              <div className="log-empty">还没有日志。点「启动」开始运行。</div>
+            ) : (
+              logs.map((line, i) => <div key={i}>{line}</div>)
+            )}
+          </div>
         </div>
       </div>
     </aside>

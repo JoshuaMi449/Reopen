@@ -63,10 +63,21 @@ export function startWebServer(
       res.end('Not Found')
       return
     }
-    res.writeHead(200, {
-      'Content-Type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+    const stream = createReadStream(filePath)
+    stream.once('open', () => {
+      res.writeHead(200, {
+        'Content-Type': MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+      })
+      stream.pipe(res)
     })
-    createReadStream(filePath).pipe(res)
+    stream.once('error', (error: NodeJS.ErrnoException) => {
+      // macOS may deny a project that lives in Downloads/Desktop until the user
+      // grants folder access.  A stream without an error listener used to become
+      // an uncaught main-process exception and block the tray behind a modal.
+      console.warn('[webServer] cannot read:', filePath, error.message)
+      if (!res.headersSent) res.writeHead(error.code === 'EPERM' || error.code === 'EACCES' ? 403 : 500)
+      if (!res.writableEnded) res.end('File is not accessible')
+    })
   })
 
   return new Promise((resolvePromise, reject) => {

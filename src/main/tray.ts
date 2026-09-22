@@ -2,11 +2,15 @@
 // 动画=SwiftUI 视图 + Swift 内部 .common Timer 换帧（参照业界 SwiftUI 实现，三图标对比
 // 实验定稿：只有 SwiftUI 管线能获得系统「非活跃屏冻结最后一帧」托管，NSImageView 换图/
 // 图层动画/button.image 换图全都不行）。JS 只负责解码帧序列与 CPU 变速间隔。
-import { app, BrowserWindow, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, renameSync } from 'fs'
+import type { BatteryHistorySample, SystemHistorySample, SystemInfo } from '../shared/types'
+import type { MenubarColors } from '../shared/menubarTheme'
 import { basename, extname, join } from 'path'
+import { pathToFileURL } from 'url'
 import { getSettings } from './store'
+import { HISTORY_RANGES, SYSTEM_HISTORY_DAYS, type HistoryKind } from '../shared/historyRanges'
 import { stopAllRuntimes } from './projectManager'
 import { getMainWindow, hideMainWindow, markQuitConfirmed } from './window'
 import { loadGifFrames } from './gifFrames'
@@ -19,6 +23,8 @@ import {
   nativeSetInterval,
   nativeSetInvert,
   nativeSetFlip,
+  nativeSetCpuTemperature,
+  nativeGetCpuTemperature,
   nativeGetFrame,
   nativeSetPanelBehavior,
   nativeStartGlobalClickMonitor,
@@ -37,7 +43,9 @@ const ROLE_SIZES: Record<string, number> = { dogeza: 18 }
 
 /** 按角色拿显示高度（pt）：dogeza=18pt；其余=22pt */
 function roleSize(path: string): number {
-  return ROLE_SIZES[basename(path, extname(path))] ?? DEFAULT_CUSTOM_SIZE
+  const requested = getSettings().trayIconSize ?? DEFAULT_CUSTOM_SIZE
+  const scale = Math.max(14, Math.min(30, requested)) / DEFAULT_CUSTOM_SIZE
+  return (ROLE_SIZES[basename(path, extname(path))] ?? DEFAULT_CUSTOM_SIZE) * scale
 }
 /** 帧间隔下限（防刷爆菜单栏） */
 const MIN_INTERVAL = 40
@@ -46,6 +54,8 @@ let panel: BrowserWindow | null = null
 let nativeCreated = false
 /** CPU 变速定时器（每 2s 采样一次，把换帧间隔传给 Swift 侧 Timer） */
 let cpuTimer: ReturnType<typeof setTimeout> | null = null
+/** 菜单栏 CPU 温度定时器（与动图 CPU 变速互不依赖） */
+let cpuTemperatureTimer: ReturnType<typeof setTimeout> | null = null
 /** 系统信息采样定时器（面板打开期间每 2s 推送一次；业界通行面板默认 5s，我们更实时） */
 let sysTimer: ReturnType<typeof setInterval> | null = null
 
@@ -110,18 +120,403 @@ function stopCpuFollow(): void {
   cpuTimer = null
 }
 
+function stopCpuTemperature(): void {
+  if (cpuTemperatureTimer) clearTimeout(cpuTemperatureTimer)
+  cpuTemperatureTimer = null
+}
+
+/** CPU 温度每秒更新；关闭开关时立即收回菜单栏占用宽度。 */
+function syncCpuTemperature(): void {
+  stopCpuTemperature()
+  if (!getSettings().trayCpuTemperature) {
+    nativeSetCpuTemperature(0, false)
+    return
+  }
+  const tick = (): void => {
+    if (!nativeCreated || !getSettings().trayCpuTemperature) {
+      nativeSetCpuTemperature(0, false)
+      cpuTemperatureTimer = null
+      return
+    }
+    nativeSetCpuTemperature(nativeGetCpuTemperature(), true)
+    cpuTemperatureTimer = setTimeout(tick, 1000)
+  }
+  tick()
+}
+
+const BATTERY_WINDOW = 7 * 24 * 60 * 60 * 1000
+const SYSTEM_HISTORY_WINDOW = SYSTEM_HISTORY_DAYS * 24 * 60 * 60 * 1000
+let batteryHistory: BatteryHistorySample[] = []
+let batteryTimer: ReturnType<typeof setInterval> | null = null
+let systemHistory: SystemHistorySample[] = []
+let liveSystemHistory: SystemHistorySample[] = []
+let latestSystemInfo: SystemInfo | null = null
+let lastSystemHistoryWrite = 0
+const PANEL_COMPACT_WIDTH = 320
+const HISTORY_PANEL_WIDTH = 392
+const HISTORY_PANEL_HEIGHT = 196
+const HISTORY_PANEL_GAP = 8
+let historyPanel: BrowserWindow | null = null
+let menubarColorsPreview: MenubarColors | null = null
+let menubarPreviewActive = false
+let menubarPreviewKind: HistoryKind | null = null
+
+/** 拖动色板时更新现有图形窗口；新打开的面板会收到最后一次预览。 */
+export function previewMenubarColors(colors: MenubarColors | null, requestedKind?: string | null): void {
+  menubarColorsPreview = colors
+  for (const win of [panel, historyPanel])
+    if (win && !win.isDestroyed()) win.webContents.send('menubar:colors-preview', colors)
+  if (!colors) {
+    menubarPreviewActive = false
+    menubarPreviewKind = null
+    closeHistoryPanel(false)
+    if (panel && !panel.isDestroyed() && panel.isVisible()) panel.hide()
+    return
+  }
+  if (!getSettings().trayEnabled) return
+  menubarPreviewActive = true
+  const kind: HistoryKind | null =
+    requestedKind === 'cpu' || requestedKind === 'memory' ||
+    requestedKind === 'battery' || requestedKind === 'network' ? requestedKind : null
+  if (!panel || panel.isDestroyed()) createPanel()
+  const previewPanel = panel
+  if (!previewPanel) return
+  if (!previewPanel.isVisible()) {
+    positionPanel(previewPanel)
+    previewPanel.showInactive()
+  }
+  const needsHistory = kind !== menubarPreviewKind || (kind !== null && (!historyPanel || historyPanel.isDestroyed()))
+  menubarPreviewKind = kind
+  if (!kind) {
+    closeHistoryPanel(false)
+  } else if (needsHistory) {
+    const openHistory = (): void => {
+      if (menubarPreviewActive && menubarPreviewKind === kind &&
+          panel === previewPanel && previewPanel.isVisible())
+        setTrayHistoryExpanded(true, kind)
+    }
+    if (previewPanel.webContents.isLoadingMainFrame())
+      previewPanel.webContents.once('did-finish-load', openHistory)
+    else openHistory()
+  }
+}
+let historyRangeMenuOpen = false
+let historyHoverTimer: ReturnType<typeof setInterval> | null = null
+
+function positionPanel(p: BrowserWindow): void {
+  const f = nativeGetFrame()
+  const bounds = p.getBounds()
+  const display = screen.getDisplayNearestPoint(
+    f.w > 0 ? { x: f.x, y: f.y } : screen.getCursorScreenPoint()
+  )
+  const { workArea } = display
+  let x =
+    f.w > 0
+      ? Math.round(f.x + f.w / 2 - bounds.width / 2)
+      : workArea.x + workArea.width - bounds.width - 8
+  let y = f.w > 0 ? f.y + f.h + 6 : 30
+  x = Math.min(Math.max(x, workArea.x + 4), workArea.x + workArea.width - bounds.width - 4)
+  if (y + bounds.height > workArea.y + workArea.height)
+    y = (f.w > 0 ? f.y : workArea.y + workArea.height) - bounds.height - 6
+  p.setPosition(x, y)
+}
+
+function pointInside(bounds: Electron.Rectangle, point: Electron.Point): boolean {
+  return (
+    point.x >= bounds.x &&
+    point.x < bounds.x + bounds.width &&
+    point.y >= bounds.y &&
+    point.y < bounds.y + bounds.height
+  )
+}
+
+function closeHistoryPanel(notify = true): void {
+  if (historyHoverTimer) clearInterval(historyHoverTimer)
+  historyHoverTimer = null
+  const old = historyPanel
+  historyPanel = null
+  if (old && !old.isDestroyed()) old.destroy()
+  if (notify && panel && !panel.isDestroyed()) panel.webContents.send('tray:history-closed')
+}
+
+function positionHistoryPanel(history: BrowserWindow): void {
+  if (!panel || panel.isDestroyed()) return
+  const anchor = panel.getBounds()
+  const display = screen.getDisplayNearestPoint({ x: anchor.x, y: anchor.y })
+  let x = anchor.x - history.getBounds().width - HISTORY_PANEL_GAP
+  if (x < display.workArea.x + 4) x = anchor.x + anchor.width + HISTORY_PANEL_GAP
+  const y = Math.max(
+    display.workArea.y + 4,
+    Math.min(anchor.y + 10, display.workArea.y + display.workArea.height - history.getBounds().height - 4)
+  )
+  history.setPosition(x, y)
+}
+
+/** Native range menu participates in the history interaction until it closes. */
+export function showHistoryRangeMenu(kind: string, selected: number): Promise<number | null> {
+  const window = historyPanel
+  if (!window || window.isDestroyed() || historyRangeMenuOpen) return Promise.resolve(null)
+  const ranges = HISTORY_RANGES[kind as HistoryKind] ?? HISTORY_RANGES.cpu
+  historyRangeMenuOpen = true
+  return new Promise((resolve) => {
+    let result: number | null = null
+    const menu = Menu.buildFromTemplate(ranges.map((minutes) => ({
+      label: minutes < 60 ? `${minutes} 分钟` : minutes < 1440 ? `${minutes / 60} 小时` : `${minutes / 1440} 天`,
+      type: 'radio' as const,
+      checked: minutes === selected,
+      click: () => { result = minutes }
+    })))
+    menu.popup({ window, x: window.getBounds().width - 88, y: 12, callback: () => {
+      historyRangeMenuOpen = false
+      if (historyPanel && !historyPanel.isDestroyed()) startHistoryHoverMonitor()
+      resolve(result)
+    } })
+  })
+}
+
+function startHistoryHoverMonitor(): void {
+  if (historyHoverTimer) clearInterval(historyHoverTimer)
+  let outsideSince = 0
+  historyHoverTimer = setInterval(() => {
+    if (menubarPreviewActive) return
+    if (!panel || panel.isDestroyed() || !historyPanel || historyPanel.isDestroyed()) {
+      closeHistoryPanel()
+      return
+    }
+    if (historyRangeMenuOpen) { outsideSince = 0; return }
+    const point = screen.getCursorScreenPoint()
+    const mainBounds = panel.getBounds()
+    const historyBounds = historyPanel.getBounds()
+    const bridge = {
+      x: Math.min(mainBounds.x, historyBounds.x),
+      y: Math.max(mainBounds.y, historyBounds.y),
+      width:
+        Math.max(mainBounds.x + mainBounds.width, historyBounds.x + historyBounds.width) -
+        Math.min(mainBounds.x, historyBounds.x),
+      height:
+        Math.min(mainBounds.y + mainBounds.height, historyBounds.y + historyBounds.height) -
+        Math.max(mainBounds.y, historyBounds.y)
+    }
+    if (
+      pointInside(mainBounds, point) ||
+      pointInside(historyBounds, point) ||
+      (bridge.height > 0 && pointInside(bridge, point))
+    ) {
+      outsideSince = 0
+      return
+    }
+    if (!outsideSince) outsideSince = Date.now()
+    if (Date.now() - outsideSince >= 180) closeHistoryPanel()
+  }, 80)
+}
+
+/** 创建一个只包住图表的独立浮窗；主菜单窗口尺寸始终保持不变。 */
+export function setTrayHistoryExpanded(expanded: boolean, kind = 'cpu'): void {
+  if (!expanded && menubarPreviewActive) return
+  if (!expanded || !panel || panel.isDestroyed() || !panel.isVisible()) {
+    closeHistoryPanel(false)
+    return
+  }
+  closeHistoryPanel(false)
+  const history = new BrowserWindow({
+    width: (kind === 'cpu' || kind === 'network' || kind === 'memory') ? 392 : HISTORY_PANEL_WIDTH,
+    height: (kind === 'cpu' || kind === 'network' || kind === 'memory') ? 216 : HISTORY_PANEL_HEIGHT,
+    show: false,
+    frame: false,
+    resizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    ...(process.platform === 'darwin'
+      ? {
+          vibrancy: 'popover' as const,
+          visualEffectState: 'active' as const,
+          transparent: true,
+          roundedCorners: true,
+          hasShadow: true
+        }
+      : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+  historyPanel = history
+  if (mainMouseHandler) history.webContents.removeListener('before-mouse-event', mainMouseHandler)
+  history.on('closed', () => {
+    if (historyPanel !== history) return
+    historyPanel = null
+    if (historyHoverTimer) clearInterval(historyHoverTimer)
+    historyHoverTimer = null
+    if (panel && !panel.isDestroyed()) panel.webContents.send('tray:history-closed')
+  })
+  try {
+    nativeSetPanelBehavior(history.getNativeWindowHandle())
+  } catch {
+    /* no-op */
+  }
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    void history.loadURL(
+      `${process.env['ELECTRON_RENDERER_URL']}/tray.html?history=${encodeURIComponent(kind)}`
+    )
+  } else {
+    // Build the file URL ourselves.  `loadFile(..., { query })` has intermittently
+    // resolved the ASAR root as the document in packaged builds, which makes the
+    // popup render raw archive bytes as mojibake.  A complete file URL keeps the
+    // renderer entry and its query unambiguous.
+    const url = pathToFileURL(join(__dirname, '../renderer/tray.html'))
+    url.searchParams.set('history', kind)
+    void history.loadURL(url.toString())
+  }
+  history.webContents.once('did-finish-load', () => {
+    if (history.isDestroyed()) return
+    if (menubarColorsPreview) history.webContents.send('menubar:colors-preview', menubarColorsPreview)
+    const payload = systemInfoPayload()
+    if (payload) history.webContents.send('tray:system-info', payload)
+  })
+  // Do not expose a half-loaded native surface.  This also removes the one-frame
+  // flash of the previous/blank layout when a history popup is opened.
+  history.once('ready-to-show', () => {
+    if (history.isDestroyed() || historyPanel !== history) return
+    positionHistoryPanel(history)
+    history.showInactive()
+    startHistoryHoverMonitor()
+  })
+}
+
+function recordBattery(info: SystemInfo): void {
+  if (!info.battery.installed || !Number.isFinite(info.battery.percent)) return
+  const now = Date.now()
+  const plugged = !!info.battery.adapterName || info.battery.charging
+  if (now - (batteryHistory.at(-1)?.time ?? 0) < 55_000) return
+  batteryHistory = batteryHistory.filter((sample) => sample.time >= now - BATTERY_WINDOW)
+  batteryHistory.push({
+    time: now,
+    percent: info.battery.percent,
+    plugged,
+    charging: info.battery.charging
+  })
+  try {
+    const file = join(app.getPath('userData'), 'battery-history.json')
+    writeFileSync(file + '.tmp', JSON.stringify(batteryHistory))
+    renameSync(file + '.tmp', file)
+  } catch (error) {
+    console.warn('保存电池历史失败', error)
+  }
+}
+
+function recordSystemHistory(): void {
+  const now = Date.now()
+  const boundary = Math.floor(now / 30_000) * 30_000
+  if ((systemHistory.at(-1)?.time ?? 0) >= boundary - 1) return
+  const samples = liveSystemHistory.filter((sample) => sample.time >= boundary - 30_000 && sample.time < boundary)
+  if (!samples.length) return
+  const mean = (read: (sample: SystemHistorySample) => number): number =>
+    samples.reduce((total, sample) => total + read(sample), 0) / samples.length
+  const memorySamples = samples.filter((sample) => sample.memory)
+  const memoryMean = (key: 'percent' | 'pressure' | 'appBytes' | 'wiredBytes' | 'compressedBytes' | 'availableBytes'): number =>
+    memorySamples.reduce((sum, sample) => sum + (sample.memory![key] ?? 0), 0) / memorySamples.length
+  systemHistory = systemHistory.filter((sample) => sample.time >= now - SYSTEM_HISTORY_WINDOW)
+  systemHistory.push({
+    time: boundary - 1,
+    cpu: { percent: mean(s => s.cpu.percent), user: mean(s => s.cpu.user), system: mean(s => s.cpu.system), idle: mean(s => s.cpu.idle) },
+    network: { uploadBps: mean(s => s.network.uploadBps), downloadBps: mean(s => s.network.downloadBps) },
+    memory: memorySamples.length ? { percent: memoryMean('percent'), pressure: memoryMean('pressure'), availableBytes: memoryMean('availableBytes'), appBytes: memoryMean('appBytes'), wiredBytes: memoryMean('wiredBytes'), compressedBytes: memoryMean('compressedBytes') } : undefined
+  })
+  if (now - lastSystemHistoryWrite < 60_000) return
+  lastSystemHistoryWrite = now
+  try {
+    const file = join(app.getPath('userData'), 'system-history.json')
+    writeFileSync(file + '.tmp', JSON.stringify([...systemHistory.filter((s) => s.time < (liveSystemHistory[0]?.time ?? Infinity)), ...liveSystemHistory]))
+    renameSync(file + '.tmp', file)
+  } catch (error) {
+    console.warn('保存系统历史失败', error)
+  }
+}
+
+function startBatteryHistory(): void {
+  if (batteryTimer) return
+  try {
+    const saved: unknown = JSON.parse(
+      readFileSync(join(app.getPath('userData'), 'battery-history.json'), 'utf8')
+    )
+    if (Array.isArray(saved))
+      batteryHistory = saved.filter(
+        (s) =>
+          s &&
+          Number.isFinite(s.time) &&
+          s.time <= Date.now() &&
+          s.time >= Date.now() - BATTERY_WINDOW &&
+          Number.isFinite(s.percent) &&
+          s.percent >= 0 &&
+          s.percent <= 1 &&
+          typeof s.plugged === 'boolean' &&
+          typeof s.charging === 'boolean'
+      )
+  } catch {
+    /* 首次运行尚无历史 */
+  }
+  try {
+    const saved: unknown = JSON.parse(
+      readFileSync(join(app.getPath('userData'), 'system-history.json'), 'utf8')
+    )
+    if (Array.isArray(saved)) {
+      systemHistory = saved.filter(
+        (s) =>
+          s &&
+          Number.isFinite(s.time) &&
+          s.time <= Date.now() &&
+          s.time >= Date.now() - SYSTEM_HISTORY_WINDOW &&
+          s.cpu &&
+          s.network &&
+          Number.isFinite(s.cpu.percent) &&
+          Number.isFinite(s.network.uploadBps) &&
+          Number.isFinite(s.network.downloadBps)
+      )
+    }
+  } catch {
+    /* 首次运行尚无历史 */
+  }
+  liveSystemHistory = systemHistory.filter((s) => s.time >= Date.now() - 600_000)
+  const sample = (): void => {
+    const info = nativeGetSystemInfo()
+    latestSystemInfo = info
+    if (info) {
+      const now = Date.now()
+      liveSystemHistory = [...liveSystemHistory.filter((s) => s.time > now - 600_000),
+        { time: now, cpu: info.cpu, memory: info.memory, network: info.network }]
+    }
+    if (info) {
+      recordBattery(info)
+      recordSystemHistory()
+    }
+  }
+  sample()
+  batteryTimer = setInterval(sample, 1000)
+}
+
 /** 系统信息推送（面板打开期间）：立即推一帧 + 每 2s 采样（native getSystemInfo，
  *  业界通行口径）。第一帧 CPU/网速是差值可能为 0，第二帧起正常。 */
+function systemInfoPayload(): SystemInfo | null {
+  if (!latestSystemInfo) return null
+  const recentStart = liveSystemHistory[0]?.time ?? Infinity
+  return { ...latestSystemInfo, batteryHistory,
+    systemHistory: [...systemHistory.filter((s) => s.time < recentStart), ...liveSystemHistory] }
+}
+
 function startSystemInfoFeed(): void {
   stopSystemInfoFeed()
   const push = (): void => {
-    const info = nativeGetSystemInfo()
-    if (info && panel && !panel.isDestroyed()) {
-      panel.webContents.send('tray:system-info', info)
+    const payload = systemInfoPayload()
+    if (payload && panel && !panel.isDestroyed()) {
+      panel.webContents.send('tray:system-info', payload)
+      if (historyPanel && !historyPanel.isDestroyed())
+        historyPanel.webContents.send('tray:system-info', payload)
     }
   }
   push()
-  sysTimer = setInterval(push, 2000)
+  sysTimer = setInterval(push, 1000)
 }
 
 function stopSystemInfoFeed(): void {
@@ -180,12 +575,13 @@ let mainMouseHandler: ((e: Electron.Event, mouse: Electron.MouseInputEvent) => v
 function hookOtherWindows(): void {
   unhookOtherWindows()
   mainMouseHandler = (_e, mouse) => {
+    if (menubarPreviewActive) return
     if (mouse.type === 'mouseDown' && panel && !panel.isDestroyed() && panel.isVisible()) {
       panel.hide()
     }
   }
   for (const win of BrowserWindow.getAllWindows()) {
-    if (win === panel || win.isDestroyed()) continue
+    if (win === panel || win === historyPanel || win.isDestroyed()) continue
     win.webContents.on('before-mouse-event', mainMouseHandler)
   }
 }
@@ -205,18 +601,25 @@ app.on('browser-window-created', (_e, win) => {
 
 function createPanel(): BrowserWindow {
   panel = new BrowserWindow({
-    width: 360,
-    height: 500,
+    width: PANEL_COMPACT_WIDTH,
+    height: 424,
     show: false,
     frame: false,
     resizable: false,
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    // Liquid Glass 系统玻璃（macOS 26 材质，系统升级自动跟随新风格；同款面板质感）。
+    backgroundColor: '#00000000',
+    // 系统 Popover 材质由 macOS 自己绘制并随系统深浅切换；项目主窗口主题不参与。
     // 透明窗口 + CSS 圆角面板，窗口边缘透出纯玻璃（.tray-panel margin 区）
     ...(process.platform === 'darwin'
-      ? { vibrancy: 'sidebar' as const, visualEffectState: 'active' as const, transparent: true }
+      ? {
+          vibrancy: 'popover' as const,
+          visualEffectState: 'active' as const,
+          transparent: true,
+          roundedCorners: true,
+          hasShadow: true
+        }
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -235,16 +638,25 @@ function createPanel(): BrowserWindow {
     startSystemInfoFeed()
     hookOtherWindows()
     nativeStartGlobalClickMonitor((type, payload) => {
+      if (menubarPreviewActive) return
+      if (historyRangeMenuOpen) return
       if (type !== 'click' || !panel || panel.isDestroyed() || !panel.isVisible()) return
       const [x, y] = payload.split(',').map(Number)
       const b = panel.getBounds()
       if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) return
+      if (
+        historyPanel &&
+        !historyPanel.isDestroyed() &&
+        pointInside(historyPanel.getBounds(), { x, y })
+      )
+        return
       const f = nativeGetFrame()
       if (f.w > 0 && x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h) return
       panel.hide()
     })
   })
   panel.on('hide', () => {
+    closeHistoryPanel()
     stopSystemInfoFeed()
     nativeStopGlobalClickMonitor()
     unhookOtherWindows()
@@ -265,6 +677,10 @@ function createPanel(): BrowserWindow {
   } else {
     panel.loadFile(join(__dirname, '../renderer/tray.html'))
   }
+  panel.webContents.once('did-finish-load', () => {
+    if (panel && !panel.isDestroyed() && menubarColorsPreview)
+      panel.webContents.send('menubar:colors-preview', menubarColorsPreview)
+  })
   return panel
 }
 
@@ -283,22 +699,7 @@ function togglePanel(): void {
     return
   }
   // 面板定位在托盘图标下方（原生 getFrame 顶部原点坐标）
-  const f = nativeGetFrame()
-  const winBounds = p.getBounds()
-  const display = screen.getDisplayNearestPoint(
-    f.w > 0 ? { x: f.x, y: f.y } : screen.getCursorScreenPoint()
-  )
-  const { workArea } = display
-  let x =
-    f.w > 0
-      ? Math.round(f.x + f.w / 2 - winBounds.width / 2)
-      : workArea.x + workArea.width - winBounds.width - 8
-  let y = f.w > 0 ? f.y + f.h + 6 : 30
-  x = Math.min(Math.max(x, workArea.x + 4), workArea.x + workArea.width - winBounds.width - 4)
-  if (y + winBounds.height > workArea.y + workArea.height) {
-    y = (f.w > 0 ? f.y : workArea.y + workArea.height) - winBounds.height - 6
-  }
-  p.setPosition(x, y)
+  positionPanel(p)
   // 非激活弹出：不抢焦点、不激活应用、主窗口不被带前台（面板纯鼠标交互无输入框）
   p.showInactive()
 }
@@ -314,6 +715,7 @@ export function refreshTray(): void {
   const { trayEnabled } = getSettings()
   if (!trayEnabled) {
     stopCpuFollow()
+    stopCpuTemperature()
     nativeDestroyStatusItem()
     nativeCreated = false
     panel?.destroy()
@@ -332,16 +734,22 @@ export function refreshTray(): void {
     nativeCreated = true
   }
   applyTrayIcon()
+  syncCpuTemperature()
 }
 
 /** 应用启动时创建托盘 */
 export function initTray(): void {
   refreshTray()
+  startBatteryHistory()
 }
 
 /** 退出前清理 */
 export function destroyTray(): void {
+  closeHistoryPanel(false)
+  if (batteryTimer) clearInterval(batteryTimer)
+  batteryTimer = null
   stopCpuFollow()
+  stopCpuTemperature()
   stopSystemInfoFeed()
   nativeDestroyStatusItem()
   nativeCreated = false

@@ -11,10 +11,12 @@ import type {
   LaunchMode,
   Project,
   ProjectFix,
+  ProjectLogEvent,
   ProjectStatus,
   ProjectStatusEvent,
   StartResult
 } from '../shared/types'
+import { createProcessLogs } from './processLogs'
 import { isPureWeb } from '../shared/types'
 import { getSettings, listProjects, touchLanSlug, touchLastPort, touchStartedAt } from './store'
 import { getLanIp, probeLan } from './lan'
@@ -85,9 +87,21 @@ function emit(event: ProjectStatusEvent): void {
   }
 }
 
+const logHistory = new Map<string, ProjectLogEvent[]>()
+let logSequence = 0
+
+export function getLogHistory(): ProjectLogEvent[] {
+  return [...logHistory.values()].flat().sort((a, b) => a.sequence - b.sequence)
+}
+
 function emitLog(id: string, line: string): void {
+  const event = { id, line, sequence: ++logSequence }
+  const history = logHistory.get(id) ?? []
+  history.push(event)
+  if (history.length > 2000) history.splice(0, history.length - 2000)
+  logHistory.set(id, history)
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('project:log', { id, line })
+    win.webContents.send('project:log', event)
   }
 }
 
@@ -537,7 +551,7 @@ function tryReinstallAndRetry(
     env: { ...process.env, PATH: buildPath() }
   })
   child.stdout?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
-  child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
+  child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString(), 'stderr'))
   child.on('exit', (code) => {
     if (rt.status !== 'starting') return
     if (code === 0) {
@@ -596,10 +610,11 @@ function tryFixAndRetry(
 }
 
 /** 日志按行拆完再推给界面 */
-function pipeLog(id: string, chunk: string): void {
-  const buf = (lineBuffers.get(id) ?? '') + chunk
+function pipeLog(id: string, chunk: string, stream = 'stdout'): void {
+  const key = `${id}:${stream}`
+  const buf = (lineBuffers.get(key) ?? '') + chunk
   const lines = buf.split('\n')
-  lineBuffers.set(id, lines.pop() ?? '')
+  lineBuffers.set(key, lines.pop() ?? '')
   const recent = recentLogs.get(id) ?? []
   recent.push(...lines)
   if (recent.length > 200) recent.splice(0, recent.length - 200)
@@ -739,11 +754,10 @@ export async function startProject(
     return { ok: false, reason: '组不能直接启动——展开组，启动里面的子项' }
   }
   const rt = getRuntime(id)
-  // 每次启动重设（自启拉起传 true；手动启动恢复跟随项目设置）
-  rt.noOpenBrowser = opts?.noOpenBrowser ?? false
   if (rt.status === 'running' || rt.status === 'starting') {
     return { ok: false, reason: '已经在运行了' }
   }
+  rt.noOpenBrowser = opts?.noOpenBrowser ?? false
   if (!existsSync(project.path)) {
     return { ok: false, reason: '项目路径不存在（可能被移动或删除了）' }
   }
@@ -772,7 +786,10 @@ async function startService(
     setStatus(rt, project, 'running', port)
     touchStartedAt(project.id)
     touchLastPort(project.id, port)
-    emitLog(project.id, `端口 ${port} 已有服务在响应，直接显示为运行中（没有新开进程）`)
+    emitLog(
+      project.id,
+      `端口 ${port} 已有服务在响应，直接显示为运行中（没有新开进程）。外部进程的历史 stdout/stderr 无法补读；重启项目后可记录完整启动输出`
+    )
     probeAndEmitLan(rt, project, port)
     return { ok: true, reason: `检测到端口 ${port} 已有服务在响应，已直接显示为运行中` }
   }
@@ -981,7 +998,12 @@ function spawnAndWatch(
   if (isNextCommand(command, cwd) && getSettings().lanAccess) {
     finalCommand = `${finalCommand}${wrapped ? ' -- ' : ' '}--hostname 0.0.0.0`
   }
+  const processLogs = createProcessLogs(
+    join(app.getPath('userData'), 'service-logs', project.id),
+    (text, stream) => pipeLog(project.id, text, stream)
+  )
   const child = spawn(finalCommand, {
+    stdio: processLogs.stdio,
     cwd,
     shell: true,
     detached: true, // 独立进程组：停止时整树终止
@@ -995,11 +1017,18 @@ function spawnAndWatch(
   })
   rt.child = child
   rt.port = effectivePort
-
-  child.stdout?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
-  child.stderr?.on('data', (d: Buffer) => pipeLog(project.id, d.toString()))
-
+  emitLog(project.id, `[Reopen] 启动命令：${finalCommand}`)
+  emitLog(project.id, '[Reopen] 以下为项目进程的 stdout / stderr 原始输出')
+  const finishLogs = (): void => {
+    processLogs.close()
+    for (const stream of ['stdout', 'stderr']) {
+      const key = `${project.id}:${stream}`
+      if (lineBuffers.get(key)) pipeLog(project.id, '\n', stream)
+      lineBuffers.delete(key)
+    }
+  }
   child.on('error', (err) => {
+    finishLogs()
     // 命令不存在（python3/docker 没装）→ 用大白话提示（跨平台失败翻译）
     const code = (err as NodeJS.ErrnoException).code
     const enoent = code === 'ENOENT'
@@ -1013,6 +1042,7 @@ function spawnAndWatch(
     fail(rt, project, enoent && missingHint ? missingHint : `启动进程失败：${err.message}`)
   })
   child.on('exit', (code, signal) => {
+    finishLogs()
     if (rt.healthTimer) clearInterval(rt.healthTimer)
     rt.child = undefined
     if (rt.status === 'starting') {
@@ -1213,6 +1243,12 @@ export async function adoptRunning(project: Project): Promise<void> {
   const port = project.port ?? project.lastPort
   if (!port) return
   if (await checkPortOpen(port)) {
+    if (!rt.child && !rt.server && rt.status !== 'running') {
+      emitLog(
+        project.id,
+        '[Reopen] 检测到已运行的外部服务，仅同步状态，没有自动启动。无法补读外部进程的历史 stdout/stderr；重启项目后可记录启动输出。'
+      )
+    }
     rt.port = port
     setStatus(rt, project, 'running', port)
     probeAndEmitLan(rt, project, port)
@@ -1230,11 +1266,22 @@ export async function adoptAllRunning(): Promise<void> {
  *  组在自启里 = 只拉组内成品子项（web 类型），开发子项保留手动启动 */
 export async function autoStartAll(): Promise<void> {
   const { autoStartEnabled, autoStartIds } = getSettings()
-  if (!autoStartEnabled || autoStartIds.length === 0) return
   const projects = listProjects()
+  // Pure HTML sites belong to Reopen's static hosting, independently of service autostart.
+  // Always choose preview so a mixed development project never starts its dev command here.
+  const hosted = new Set<string>()
+  for (const project of projects.filter(isPureWeb)) {
+    try {
+      await startProject(project.id, 'preview', { noOpenBrowser: true })
+      hosted.add(project.id)
+    } catch {
+      // A missing website folder must not prevent other sites or services from starting.
+    }
+  }
+  if (!autoStartEnabled || autoStartIds.length === 0) return
   for (const id of autoStartIds) {
     const project = projects.find((p) => p.id === id)
-    if (!project) continue
+    if (!project || hosted.has(id)) continue
     try {
       if (project.type === 'group') {
         // 组自启只拉成品（有「成品预览」方式的子项按 preview 启动；
@@ -1246,7 +1293,7 @@ export async function autoStartAll(): Promise<void> {
             (p.launchModes === undefined && p.type === 'web')
           )
         })) {
-          await startProject(child.id, 'preview', { noOpenBrowser: true })
+          if (!hosted.has(child.id)) await startProject(child.id, 'preview', { noOpenBrowser: true })
         }
       } else {
         await startProject(id, undefined, { noOpenBrowser: true })
@@ -1270,7 +1317,7 @@ export function installProjectDeps(id: string): void {
     env: { ...process.env, PATH: buildPath() }
   })
   child.stdout?.on('data', (d: Buffer) => pipeLog(id, d.toString()))
-  child.stderr?.on('data', (d: Buffer) => pipeLog(id, d.toString()))
+  child.stderr?.on('data', (d: Buffer) => pipeLog(id, d.toString(), 'stderr'))
   child.on('exit', (code) => {
     emitLog(
       id,
@@ -1417,6 +1464,16 @@ export function startAdoptedWatch(): void {
   }, 10_000)
 }
 
+export async function restartProject(id: string): Promise<StartResult> {
+  await stopProject(id)
+  const deadline = Date.now() + 6500
+  while (isProjectRunning(id) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  if (isProjectRunning(id)) return { ok: false, reason: '项目尚未停止，请稍后重试' }
+  return startProject(id)
+}
+
 export async function stopProject(id: string): Promise<void> {
   const project = listProjects().find((p) => p.id === id)
   const rt = runtimes.get(id)
@@ -1491,6 +1548,16 @@ export async function stopProject(id: string): Promise<void> {
 
   if (rt.child && rt.child.pid) {
     // 服务类：杀整个进程组（整树终止），3 秒没退就强杀；exit 事件里会推送 stopped
+    setStatus(rt, project, 'stopped')
     killTree(rt)
+    const child = rt.child
+    if (child)
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, KILL_GRACE_MS + 1000)
+        child.once('close', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
   }
 }

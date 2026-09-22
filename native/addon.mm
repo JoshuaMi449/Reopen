@@ -16,16 +16,48 @@
 #include <string>
 #include <chrono>
 #include <mutex>
+#include <vector>
+#include <algorithm>
 // SystemMonitor 依赖（业界开源 SystemInfoKit 同源 API）：
 #include <mach/mach_host.h>
 #import <IOKit/IOKitLib.h>
+#include <IOKit/hidsystem/IOHIDEventSystemClient.h>
+#include <sys/sysctl.h>
+#include <cmath>
 #include <ifaddrs.h>
 #include <net/if.h>
 #import <Network/Network.h>
 #import <UserNotifications/UserNotifications.h>
 
 static NSStatusItem *gStatusItem = nil;
+static NSStatusItem *gCpuTemperatureStatusItem = nil;
 static Napi::ThreadSafeFunction gTsFn = nullptr;
+static bool gCpuTemperatureEnabled = false;
+static NSView *gHostingView = nil;     // 图标子视图（NSHostingView）
+
+static NSString *const ReopenAnimationStatusItemName =
+    @"com.joshuami.reopen.status.animation";
+static NSString *const ReopenCpuTemperatureStatusItemName =
+    @"com.joshuami.reopen.status.cpu-temperature";
+
+// Apple Silicon 温度走 Apple HID/SMC 传感器。IOHID 温度接口未出现在公开 SDK
+// 头文件中，但符号由 IOKit 提供（Stats/iSMC 同一路径）。
+typedef struct __IOHIDEvent *IOHIDEventRef;
+typedef struct __IOHIDServiceClient *IOHIDServiceClientRef;
+#ifdef __LP64__
+typedef double IOHIDFloat;
+#else
+typedef float IOHIDFloat;
+#endif
+#define REOPEN_IOHID_EVENT_FIELD_BASE(type) (type << 16)
+#define REOPEN_IOHID_EVENT_TYPE_TEMPERATURE 15
+extern "C" {
+IOHIDEventSystemClientRef IOHIDEventSystemClientCreate(CFAllocatorRef allocator);
+int IOHIDEventSystemClientSetMatching(IOHIDEventSystemClientRef client, CFDictionaryRef match);
+IOHIDEventRef IOHIDServiceClientCopyEvent(IOHIDServiceClientRef, int64_t, int32_t, int64_t);
+CFTypeRef IOHIDServiceClientCopyProperty(IOHIDServiceClientRef service, CFStringRef property);
+IOHIDFloat IOHIDEventGetFloatValue(IOHIDEventRef event, int32_t field);
+}
 
 // Swift dylib 的 C 接口（native/src/tray_runner.swift）
 static void *(*pTrModelCreate)(void) = nullptr;
@@ -37,7 +69,6 @@ static void (*pTrModelSetDark)(void *, bool) = nullptr;
 static void *(*pTrViewCreate)(void *) = nullptr;
 static void (*pTrDestroy)(void *) = nullptr;
 static void *gRunnerModel = nullptr;   // RunnerModel 指针
-static NSView *gHostingView = nil;     // 图标子视图（NSHostingView）
 
 struct EventData {
   std::string type;  // "click" / "menu"
@@ -188,7 +219,20 @@ Napi::Value CreateStatusItem(const Napi::CallbackInfo &info) {
   gTsFn = Napi::ThreadSafeFunction::New(env, info[0].As<Napi::Function>(), "reopen-tray-events", 0, 1);
   // 长度固定 22pt（业界通行）：所有 GIF 占位一致；自适应长度算不出
   //  addSubview 的 hostingView 宽度，会偏窄导致图标右边被相邻内容遮挡（裁剪根因）
+  // 旧版本只有一个未命名状态项（AppKit 自动保存为 Item-0）。首次升级到双状态项
+  // 时把旧位置迁给动图项，避免新增温度项后原来的 Reopen 图标跳位。
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSString *oldPositionKey = @"NSStatusItem Preferred Position Item-0";
+  NSString *animationPositionKey = [@"NSStatusItem Preferred Position "
+      stringByAppendingString:ReopenAnimationStatusItemName];
+  if (![defaults objectForKey:animationPositionKey] && [defaults objectForKey:oldPositionKey]) {
+    [defaults setObject:[defaults objectForKey:oldPositionKey] forKey:animationPositionKey];
+  }
   gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:22];
+  // 同一应用有多个状态项时必须使用不同且稳定的 autosaveName。
+  // 不用 AppKit 常见的 Item-0/Item-1，避免开发中的其他菜单栏程序使用
+  // 同名自动项时，Liquid Glass 恢复/排列成一组。
+  gStatusItem.autosaveName = ReopenAnimationStatusItemName;
   gStatusItem.button.title = @"";
   gTarget = [[StatusItemTarget alloc] init];
   gStatusItem.button.target = gTarget;
@@ -268,7 +312,6 @@ Napi::Value SetFrames(const Napi::CallbackInfo &info) {
     [images addObject:img];
   }
   if (images.count == 0) return env.Undefined();
-  gStatusItem.length = 22;  // 固定 22pt（见 CreateStatusItem 注释）
   if (isTemplate) {
     // mono 主题图标（静态单帧）：走系统模板图渲染——button.image=template NSImage，
     //   系统按每屏壁纸自动着色（暗壁纸→白/亮壁纸→黑）+ 非活跃屏自动变灰，
@@ -285,6 +328,50 @@ Napi::Value SetFrames(const Napi::CallbackInfo &info) {
   }
   // 保险推：JS 换图标（mono↔GIF 切换）后立即推当前外观，不依赖 KVO 时机
   PushAppearance();
+  return env.Undefined();
+}
+
+// setCpuTemperature(value, enabled)：独立的文字菜单栏项。
+// 它不共用动图/品牌图的 NSStatusItem，因此不改动图宽度、帧内容、
+// 模板着色或 SwiftUI 渲染管线；文字颜色由 macOS 菜单栏自动适配。
+Napi::Value SetCpuTemperature(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (!gStatusItem || info.Length() < 2 || !info[0].IsNumber() || !info[1].IsBoolean())
+    return env.Undefined();
+  double value = info[0].As<Napi::Number>().DoubleValue();
+  gCpuTemperatureEnabled = info[1].As<Napi::Boolean>().Value();
+  if (!gCpuTemperatureEnabled) {
+    if (gCpuTemperatureStatusItem) {
+      [[NSStatusBar systemStatusBar] removeStatusItem:gCpuTemperatureStatusItem];
+      gCpuTemperatureStatusItem = nil;
+    }
+    return env.Undefined();
+  }
+
+  if (!gCpuTemperatureStatusItem) {
+    gCpuTemperatureStatusItem =
+        // AppKit 会在显式 length 外增加 2pt 的状态项边界；24pt 最终 AX 尺寸
+        // 为 26×24pt，和 iStat 温度项一致。
+        [[NSStatusBar systemStatusBar] statusItemWithLength:24.0];
+    gCpuTemperatureStatusItem.autosaveName = ReopenCpuTemperatureStatusItemName;
+    NSStatusBarButton *button = gCpuTemperatureStatusItem.button;
+    button.image = nil;
+    button.imagePosition = NSNoImage;
+    // iStat 的独立温度项最终占位固定 26pt。等宽数字让 68°→71°
+    // 只替换字形，不改变占位，也不会把相邻图标推来推去。
+    button.font = [NSFont monospacedDigitSystemFontOfSize:14.0
+                                                  weight:NSFontWeightRegular];
+    button.alignment = NSTextAlignmentCenter;
+    button.toolTip = @"Reopen CPU 温度";
+    // 温度是独立的只读状态项，和 iStat 的单独温度项一样。它不复用动图项的
+    // target/action，点击不会打开 Reopen 面板，也不会影响动图或品牌图。
+    button.target = nil;
+    button.action = nil;
+  }
+  gCpuTemperatureStatusItem.button.title =
+      (std::isfinite(value) && value > 0 && value < 130)
+          ? [NSString stringWithFormat:@"%.0f°", value]
+          : @"--°";
   return env.Undefined();
 }
 
@@ -363,6 +450,11 @@ Napi::Value SetPanelBehavior(const Napi::CallbackInfo &info) {
 // 托盘销毁=恢复常规应用身份（否则 Dock 不回来，用户失去入口）
 Napi::Value DestroyStatusItem(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
+  if (gCpuTemperatureStatusItem) {
+    [[NSStatusBar systemStatusBar] removeStatusItem:gCpuTemperatureStatusItem];
+    gCpuTemperatureStatusItem = nil;
+  }
+  gCpuTemperatureEnabled = false;
   if (gStatusItem) {
     // 先摘外观观察（视图还活着时摘，防 removeStatusItem 后野指针）
     if (gTarget) {
@@ -465,6 +557,194 @@ static double DictDouble(NSDictionary *d, NSString *k, double def = 0) {
   if (!d) return def;
   NSNumber *n = d[k];
   return n ? n.doubleValue : def;
+}
+
+// ---- CPU 温度：Apple Silicon 优先 HID CPU 核传感器；缺失时按芯片代际读 SMC 核心键 ----
+// macOS/SoC 会改变传感器键，因此不能把电池 Temperature 或单个固定键当 CPU 温度。
+static IOHIDEventSystemClientRef gHidTemperatureClient = nullptr;
+static CFArrayRef gHidTemperatureServices = nullptr;
+static std::vector<IOHIDServiceClientRef> gHidPerformanceServices;
+static std::vector<IOHIDServiceClientRef> gHidEfficiencyServices;
+
+static void EnsureHidCpuServices(void) {
+  if (gHidTemperatureClient) return;
+  gHidTemperatureClient = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+  if (!gHidTemperatureClient) return;
+  NSDictionary *matching = @{ @"PrimaryUsagePage": @(0xff00), @"PrimaryUsage": @(0x0005) };
+  IOHIDEventSystemClientSetMatching(gHidTemperatureClient, (__bridge CFDictionaryRef)matching);
+  gHidTemperatureServices = IOHIDEventSystemClientCopyServices(gHidTemperatureClient);
+  if (!gHidTemperatureServices) return;
+  for (CFIndex i = 0; i < CFArrayGetCount(gHidTemperatureServices); ++i) {
+    auto service = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(gHidTemperatureServices, i);
+    CFTypeRef prop = IOHIDServiceClientCopyProperty(service, CFSTR("Product"));
+    NSString *name = CFBridgingRelease(prop);
+    if ([name hasPrefix:@"pACC MTR Temp"]) gHidPerformanceServices.push_back(service);
+    else if ([name hasPrefix:@"eACC MTR Temp"]) gHidEfficiencyServices.push_back(service);
+  }
+}
+
+static double ReadHidGroupTemperature(const std::vector<IOHIDServiceClientRef> &services) {
+  double total = 0;
+  size_t count = 0;
+  for (auto service : services) {
+    IOHIDEventRef event = IOHIDServiceClientCopyEvent(
+        service, REOPEN_IOHID_EVENT_TYPE_TEMPERATURE, 0, 0);
+    if (!event) continue;
+    double value = IOHIDEventGetFloatValue(
+        event, REOPEN_IOHID_EVENT_FIELD_BASE(REOPEN_IOHID_EVENT_TYPE_TEMPERATURE));
+    CFRelease(event);
+    if (std::isfinite(value) && value >= 10 && value <= 110) {
+      total += value;
+      ++count;
+    }
+  }
+  return count ? total / count : 0;
+}
+
+static double ReadHidCpuTemperature(void) {
+  EnsureHidCpuServices();
+  // iStat 左上角 CPU 温度是所有 CPU 核心传感器的整体平均值，不取较热分组。
+  std::vector<IOHIDServiceClientRef> cores;
+  cores.reserve(gHidPerformanceServices.size() + gHidEfficiencyServices.size());
+  cores.insert(cores.end(), gHidPerformanceServices.begin(), gHidPerformanceServices.end());
+  cores.insert(cores.end(), gHidEfficiencyServices.begin(), gHidEfficiencyServices.end());
+  return ReadHidGroupTemperature(cores);
+}
+
+struct ReopenSMCVersion {
+  uint8_t major, minor, build, reserved;
+  uint16_t release;
+};
+struct ReopenSMCPLimit {
+  uint16_t version, length;
+  uint32_t cpu, gpu, memory;
+};
+struct ReopenSMCKeyInfo {
+  uint32_t size, type;
+  uint8_t attributes;
+};
+struct ReopenSMCParam {
+  uint32_t key;
+  ReopenSMCVersion version;
+  ReopenSMCPLimit limit;
+  ReopenSMCKeyInfo info;
+  uint8_t result, status, command;
+  uint32_t data32;
+  uint8_t bytes[32];
+};
+
+static io_connect_t gSmcConnection = IO_OBJECT_NULL;
+
+static uint32_t FourCC(const char *s) {
+  return ((uint32_t)(uint8_t)s[0] << 24) | ((uint32_t)(uint8_t)s[1] << 16) |
+         ((uint32_t)(uint8_t)s[2] << 8) | (uint8_t)s[3];
+}
+
+static bool EnsureSmcConnection(void) {
+  if (gSmcConnection != IO_OBJECT_NULL) return true;
+  io_service_t service = IOServiceGetMatchingService(
+      kIOMainPortDefault, IOServiceMatching("AppleSMC"));
+  if (service == IO_OBJECT_NULL) return false;
+  kern_return_t kr = IOServiceOpen(service, mach_task_self(), 0, &gSmcConnection);
+  IOObjectRelease(service);
+  return kr == KERN_SUCCESS;
+}
+
+static bool ReadSmcTemperature(const char *key, double *temperature) {
+  if (!EnsureSmcConnection()) return false;
+  ReopenSMCParam input = {}, info = {}, output = {};
+  size_t outputSize = sizeof(info);
+  input.key = FourCC(key);
+  input.command = 9;  // read key info
+  if (IOConnectCallStructMethod(gSmcConnection, 2, &input, sizeof(input), &info,
+                                &outputSize) != KERN_SUCCESS || info.info.size == 0)
+    return false;
+  input.info = info.info;
+  input.command = 5;  // read bytes
+  outputSize = sizeof(output);
+  if (IOConnectCallStructMethod(gSmcConnection, 2, &input, sizeof(input), &output,
+                                &outputSize) != KERN_SUCCESS || output.result != 0)
+    return false;
+
+  double value = 0;
+  const uint32_t flt = FourCC("flt ");
+  const uint32_t sp78 = FourCC("sp78");
+  if (info.info.type == flt && info.info.size >= 4) {
+    float f = 0;
+    memcpy(&f, output.bytes, sizeof(f));
+    value = f;
+  } else if (info.info.type == sp78 && info.info.size >= 2) {
+    value = (((uint16_t)output.bytes[0] << 8) | output.bytes[1]) / 256.0;
+  } else {
+    return false;
+  }
+  if (!std::isfinite(value) || value < 10 || value > 110) return false;
+  *temperature = value;
+  return true;
+}
+
+static std::string CpuBrand(void) {
+  size_t size = 0;
+  if (sysctlbyname("machdep.cpu.brand_string", nullptr, &size, nullptr, 0) != 0 || !size)
+    return {};
+  std::string brand(size, '\0');
+  if (sysctlbyname("machdep.cpu.brand_string", brand.data(), &size, nullptr, 0) != 0)
+    return {};
+  return brand;
+}
+
+static double ReadSmcCpuTemperature(void) {
+  static const char *m1[] = {"Tp09", "Tp0T", "Tp01", "Tp05", "Tp0D", "Tp0H", "Tp0L", "Tp0P", "Tp0X", "Tp0b"};
+  static const char *m2[] = {"Tp1h", "Tp1t", "Tp1p", "Tp1l", "Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j"};
+  // M3 Max（12P+4E）与 iStat 7 同一口径：每个核心取其核心温度键，再对
+  // 16 个核心做整体平均。旧实现中的 Tf* 是 GPU Fabric 温度，混入后会比
+  // iStat 的 CPU 温度高 5–10°C。
+  static const char *m3Max[] = {
+      "Tp05", "Tp0D", "Tp0L", "Tp0S", "Tp0V", "Tp0b",
+      "Tp0h", "Tp0n", "Tp0v", "Tp0z", "Tp17", "Tp1F",
+      "Te06", "Te0Q", "Te0M", "Te0T"};
+  static const char *m3[] = {
+      "Tp05", "Tp0D", "Tp0L", "Tp0b", "Tp0h", "Tp0n",
+      "Tp1F", "Tp1R", "Te06", "Te0Q", "Te0M", "Te0T"};
+  static const char *m4[] = {"Te05", "Te0S", "Te09", "Te0H", "Tp01", "Tp05", "Tp09", "Tp0D", "Tp0V", "Tp0Y", "Tp0b", "Tp0e"};
+  static const char *m5[] = {"Tp00", "Tp04", "Tp08", "Tp0C", "Tp0G", "Tp0K", "Tp0O", "Tp0R", "Tp0U", "Tp0X", "Tp0a", "Tp0d", "Tp0g", "Tp0j", "Tp0m", "Tp0p", "Tp0u", "Tp0y"};
+  static const char *intel[] = {"TC0D", "TC0P", "TCAD", "TC0H"};
+  const char **keys = intel;
+  size_t count = sizeof(intel) / sizeof(intel[0]);
+  size_t firstGroupCount = count;
+  const std::string brand = CpuBrand();
+  if (brand.find("Apple M1") != std::string::npos) { keys = m1; count = sizeof(m1) / sizeof(m1[0]); firstGroupCount = 2; }
+  else if (brand.find("Apple M2") != std::string::npos) { keys = m2; count = sizeof(m2) / sizeof(m2[0]); firstGroupCount = 4; }
+  else if (brand.find("Apple M3 Max") != std::string::npos) { keys = m3Max; count = sizeof(m3Max) / sizeof(m3Max[0]); firstGroupCount = count; }
+  else if (brand.find("Apple M3") != std::string::npos) { keys = m3; count = sizeof(m3) / sizeof(m3[0]); firstGroupCount = count; }
+  else if (brand.find("Apple M4") != std::string::npos) { keys = m4; count = sizeof(m4) / sizeof(m4[0]); firstGroupCount = 4; }
+  else if (brand.find("Apple M5") != std::string::npos) { keys = m5; count = sizeof(m5) / sizeof(m5[0]); firstGroupCount = 6; }
+
+  double firstTotal = 0, secondTotal = 0;
+  size_t firstValid = 0, secondValid = 0;
+  for (size_t i = 0; i < count; ++i) {
+    double value = 0;
+    if (!ReadSmcTemperature(keys[i], &value)) continue;
+    if (i < firstGroupCount) { firstTotal += value; ++firstValid; }
+    else { secondTotal += value; ++secondValid; }
+  }
+  const double first = firstValid ? firstTotal / firstValid : 0;
+  const double second = secondValid ? secondTotal / secondValid : 0;
+  if (first <= 0) return second;
+  if (second <= 0) return first;
+  // CPU 核心键已按目标芯片筛选；iStat 左上角口径是所有有效核心的整体平均。
+  if (!secondValid) return first;
+  if (!firstValid) return second;
+  return (firstTotal + secondTotal) / (firstValid + secondValid);
+}
+
+static double ReadCpuTemperature(void) {
+  double value = ReadHidCpuTemperature();
+  return value > 0 ? value : ReadSmcCpuTemperature();
+}
+
+Napi::Value GetCpuTemperature(const Napi::CallbackInfo &info) {
+  return Napi::Number::New(info.Env(), ReadCpuTemperature());
 }
 
 // getSystemInfo() → {
@@ -650,6 +930,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setInterval", Napi::Function::New(env, SetInterval));
   exports.Set("setInvert", Napi::Function::New(env, SetInvert));
   exports.Set("setFlip", Napi::Function::New(env, SetFlip));
+  exports.Set("setCpuTemperature", Napi::Function::New(env, SetCpuTemperature));
+  exports.Set("getCpuTemperature", Napi::Function::New(env, GetCpuTemperature));
   exports.Set("getFrame", Napi::Function::New(env, GetFrame));
   exports.Set("setPanelBehavior", Napi::Function::New(env, SetPanelBehavior));
   exports.Set("startGlobalClickMonitor", Napi::Function::New(env, StartGlobalClickMonitor));

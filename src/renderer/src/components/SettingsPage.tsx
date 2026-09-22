@@ -1,3 +1,6 @@
+import { ArcColorPicker } from './ArcColorPicker'
+import { createPortal } from 'react-dom'
+import { MENUBAR_THEME_GROUPS, allowsTransparentColor, menubarColor, adaptedColor } from '../../../shared/menubarTheme'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
@@ -394,6 +397,39 @@ export function SettingsPage({
     </div>
   )
 
+  const [activeColor,setActiveColor]=useState<{key: typeof MENUBAR_THEME_GROUPS[number]['colors'][number]['key'];label:string;original:string;draft:string;arrow:number;left:number;top:number}|null>(null)
+  const paletteDark=systemDark
+  const colorCommitInFlight = useRef(false)
+  const confirmColorPicker = useCallback((): void => {
+    if (!activeColor || colorCommitInFlight.current) return
+    colorCommitInFlight.current = true
+    const next = { ...settings.menubarColors, [activeColor.key]: activeColor.draft }
+    void update({ menubarColors: next }).catch(() => {}).finally(() => {
+      window.api.previewMenubarColors(null)
+      setActiveColor(null)
+      colorCommitInFlight.current = false
+    })
+  }, [activeColor, settings.menubarColors, update])
+  useEffect(() => {
+    if (activeColor) {
+      const kind = activeColor.key.startsWith('storage-') ? null
+        : activeColor.key.startsWith('cpu-') ? 'cpu'
+        : activeColor.key.startsWith('memory-') ? 'memory'
+        : activeColor.key.startsWith('battery-') ? 'battery' : 'network'
+      window.api.previewMenubarColors({ ...settings.menubarColors, [activeColor.key]: activeColor.draft }, kind)
+    }
+  }, [activeColor?.key, activeColor?.draft, settings.menubarColors])
+  useEffect(() => () => window.api.previewMenubarColors(null), [])
+  useEffect(() => {
+    if (!activeColor) return
+    const closeOnScroll = (): void => confirmColorPicker()
+    document.documentElement.classList.add('arc-picker-open')
+    document.addEventListener('scroll', closeOnScroll, true)
+    return () => {
+      document.documentElement.classList.remove('arc-picker-open')
+      document.removeEventListener('scroll', closeOnScroll, true)
+    }
+  }, [activeColor, confirmColorPicker])
   // 菜单栏组
   const menubar = (
     <div className="settings-group">
@@ -417,6 +453,13 @@ export function SettingsPage({
               >
                 自定义
               </button>
+            </div>
+            <div className="settings-cpu-temp-toggle">
+              <span>CPU 温度</span>
+              <Switch
+                checked={settings.trayCpuTemperature}
+                onChange={(v) => update({ trayCpuTemperature: v })}
+              />
             </div>
           </div>
         </SettingRow>
@@ -456,6 +499,41 @@ export function SettingsPage({
             </div>
           </SettingRow>
         )}
+        <div className="menubar-theme">
+          <div className="menubar-theme-heading"><strong>菜单栏主题</strong><button className="btn-secondary" onClick={() => update({ menubarColors: {} })}>恢复默认</button></div>
+          <div className="menubar-theme-grid">
+            {MENUBAR_THEME_GROUPS.map(group => (
+              <div className="menubar-theme-tile" key={group.label}>
+                <strong>{group.label}</strong>
+                <div className="menubar-theme-colors">
+                  {group.colors.map(color => (
+                    <div className="menubar-color-item" key={color.key} title={`${group.label} · ${color.label}`}>
+                      <button className="color-chip" aria-label={`${group.label} · ${color.label}颜色`}
+                        aria-expanded={activeColor?.key===color.key}
+                        style={{background:activeColor?.key===color.key && activeColor ? activeColor.draft : adaptedColor(menubarColor(settings.menubarColors,color.key,color.value),paletteDark,allowsTransparentColor(color.key)?0:0.7)}}
+                        onClick={event=>{const r=event.currentTarget.getBoundingClientRect();const tile=event.currentTarget.closest('.menubar-theme-tile')!.getBoundingClientRect();const current=adaptedColor(menubarColor(settings.menubarColors,color.key,color.value),paletteDark,allowsTransparentColor(color.key)?0:0.7);const left=Math.max(8,Math.min(window.innerWidth-222,tile.left+tile.width/2-107));setActiveColor({key:color.key,label:`${group.label} · ${color.label}`,original:current,draft:current,arrow:r.left+r.width/2-left,left,top:tile.bottom+12})}} />
+                      <span>{color.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {activeColor && createPortal(<>
+            <div
+              className="arc-picker-dismiss"
+              aria-hidden="true"
+              onPointerDown={(event) => {
+                event.preventDefault()
+                confirmColorPicker()
+              }}
+            />
+            <ArcColorPicker
+              value={activeColor.draft} confirmedValue={activeColor.original} label={activeColor.label} dark={paletteDark} arrow={activeColor.arrow} left={activeColor.left} top={activeColor.top}
+              allowTransparent={allowsTransparentColor(activeColor.key)}
+              onChange={value=>setActiveColor(current=>current?{...current,draft:value}:current)} />
+          </>, document.body)}
+        </div>
       </div>
     </div>
   )
@@ -599,7 +677,7 @@ export function SettingsPage({
   const about = (
     <div className="settings-group">
       <div className="settings-about-app">Reopen</div>
-      <div className="settings-about-line">版本 1.0.7（VC复活点）</div>
+      <div className="settings-about-line">版本 1.1.0（VC复活点）</div>
       <div className="settings-about-line">Restart your Mac without losing your projects</div>
       <div className="settings-about-line">
         <a
@@ -782,12 +860,14 @@ export function SettingsPage({
           cpuFollow={settings.cpuFollow}
           autoReverse={settings.trayAutoReverse}
           speed={settings.trayIconSpeed}
+          size={settings.trayIconSize}
           anchor={pickerAnchor}
           namingSeed={namingSeed}
           onSelect={(c) => update({ trayIcon: 'custom', trayIconPath: c.path })}
           onCpuFollow={(v) => update({ cpuFollow: v })}
           onAutoReverse={(v) => update({ trayAutoReverse: v })}
           onSpeed={(v) => update({ trayIconSpeed: v })}
+          onSize={(v) => update({ trayIconSize: v })}
           onImport={async (filter) => {
             // 返回新素材路径（弹窗内随后弹命名窗口；pick-icon 已入库）
             try {

@@ -57,8 +57,7 @@ interface Props {
   /** 框选多选中（高亮描边 */
   selected(p: Project): boolean
   /** 有选中时点击=切换选中（代替打开抽屉） */
-  selectMode: boolean
-  onSelectToggle(p: Project): void
+  onSelectToggle(p: Project, e: React.MouseEvent): void
   /** 本机局域网 IP（非空=局域网访问开着，端口旁显示局域网地址）*/
   lanIp?: string
   /** 引导期演示卡片的假局域网地址（demo 卡片专用，引导结束消失）*/
@@ -88,7 +87,6 @@ export function CardView({
   onContextMenu,
   childrenOf,
   selected,
-  selectMode,
   onSelectToggle,
   lanIp,
   demoLanIp,
@@ -115,7 +113,9 @@ export function CardView({
                 className={`card ${selected(p) ? 'selected' : ''}`}
                 data-pid={p.id}
                 draggable={sortDraggable}
-                onClick={selectMode ? () => onSelectToggle(p) : () => onOpen(p)}
+                onClick={(e) =>
+                  e.metaKey || e.ctrlKey || e.shiftKey ? onSelectToggle(p, e) : onOpen(p)
+                }
                 onContextMenu={(e) => {
                   e.preventDefault()
                   onContextMenu(e, p)
@@ -175,7 +175,7 @@ export function CardView({
         const st = statuses[p.id]?.status ?? 'stopped'
         const failed = st === 'failed'
         const active = st === 'running' || st === 'starting'
-        const port = statuses[p.id]?.port ?? p.port
+        const port = statuses[p.id]?.port ?? p.port ?? p.lastPort
         const ev = statuses[p.id]
         // 引导期 demo 卡片显示假局域网地址（演示用，引导结束消失）；
         // 正常项目以主进程实测为准：通→显示地址；不通→灰字（接管服务没开门时给托管按钮）
@@ -209,7 +209,9 @@ export function CardView({
               onDragOver={(e) => onDragOver(e, p)}
               onDragEnd={onDragEnd}
               onDrop={(e) => onDrop(e, p)}
-              onClick={selectMode ? () => onSelectToggle(p) : () => onOpen(p)}
+              onClick={(e) =>
+                e.metaKey || e.ctrlKey || e.shiftKey ? onSelectToggle(p, e) : onOpen(p)
+              }
               onContextMenu={(e) => {
                 e.preventDefault()
                 onContextMenu(e, p)
@@ -367,9 +369,7 @@ export function CardView({
                       仅本机可访问
                       {ev.spawned !== true && (
                         <button
-                          className={`lan-rehost ${
-                            lanFlashId === p.id ? 'lan-rehost-flash' : ''
-                          }`}
+                          className={`lan-rehost ${lanFlashId === p.id ? 'lan-rehost-flash' : ''}`}
                           onClick={(e) => {
                             e.stopPropagation()
                             onRehost?.(p)
@@ -401,10 +401,7 @@ export function CardView({
               {/* 右下角预览窗：四分之一椭圆蒙版（渐变边缘与卡片渐隐融合），
                   截图由启动时隐藏窗口抓一张生成；停止即消失 */}
               {previewOf?.(p) && (
-                <div
-                  className="card-preview"
-                  style={{ backgroundImage: `url(${previewOf(p)})` }}
-                />
+                <div className="card-preview" style={{ backgroundImage: `url(${previewOf(p)})` }} />
               )}
             </div>
           </Fragment>

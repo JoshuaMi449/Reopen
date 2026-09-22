@@ -45,6 +45,8 @@ mac:
   extraResources:
     - from: native/build/Release/libtray_runner.dylib
       to: libtray_runner.dylib
+    - from: native/build/Release/reopen_color_sampler
+      to: reopen_color_sampler
   notarize: false
 dmg:
   artifactName: ${productName}-${version}.${ext}
