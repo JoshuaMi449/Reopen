@@ -172,6 +172,14 @@ export interface DetectDuplicate {
 export type DetectOutcome =
   DetectSuccess | DetectMulti | DetectNeedParseApp | DetectFailed | DetectDuplicate
 
+/** 失败归属：回答用户心里的"这事该找谁" */
+export type Culprit =
+  | 'reopen' // Reopen 自己能修
+  | 'user-env' // 这台电脑上缺东西
+  | 'project' // 项目自身的代码 / 配置问题
+  | 'external' // 项目依赖的外部资源（数据库、内网、私有源）
+  | 'unknown' // 没认出来
+
 /** 失败后界面可提供的自动修复动作（小白一键装依赖；同目录残留进程一键终止重启） */
 export interface ProjectFix {
   kind: 'npm-install' | 'kill-residue'
@@ -201,6 +209,12 @@ export interface ProjectStatusEvent {
   gatewayPort?: number
   /** 失败时可自动修复的动作（有则界面显示按钮） */
   fix?: ProjectFix
+  /** 失败归属（决定界面徽章与配色）；缺省=没走诊断链的失败，界面不显示徽章 */
+  culprit?: Culprit
+  /** 定位到的具体对象（命令名 / 包名 / 端口），只进详情抽屉 */
+  located?: string
+  /** Reopen 帮不上时的做法说明（如 TCC 权限问题该怎么挪项目）；有则界面出提示框而不是按钮 */
+  guide?: string
 }
 
 /** 日志事件（主进程推送 → 行内面板实时显示） */

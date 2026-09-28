@@ -7,6 +7,7 @@ import {
   Eye,
   FileCode2,
   Folder,
+  Info,
   MonitorPause,
   MonitorPlay,
   Pencil,
@@ -18,9 +19,19 @@ import {
 import {
   hasPreviewFallback,
   isPureWeb,
+  type Culprit,
   type Project,
   type ProjectStatusEvent
 } from '../../../shared/types'
+
+/** 归属徽章文案：回答用户"这事该找谁" */
+const CULPRIT_TEXT: Record<Culprit, string> = {
+  reopen: '我能修',
+  'user-env': '电脑上缺东西',
+  project: '项目自己的问题',
+  external: '要连外部服务',
+  unknown: '没认出来'
+}
 
 interface Props {
   project: Project
@@ -285,22 +296,49 @@ export function DetailDrawer({
         {/* 失败原因放在日志上方（用户报错信息显示在日志的上面） */}
         {st === 'failed' && status?.reason && (
           <div className="drawer-fail-reason">
-            {status.reason}
-            {hasPreviewFallback(project) && (
-              <button className="btn-mini" onClick={onViewPreview}>
-                <Eye size={12} /> 看成品
-              </button>
+            {/* 卡在哪 + 该找谁：归属徽章 + 一句人话 */}
+            <div className="fail-head">
+              {status.culprit && (
+                <span className="fail-badge" data-culprit={status.culprit}>
+                  {CULPRIT_TEXT[status.culprit]}
+                </span>
+              )}
+              <span className="fail-title">{status.reason}</span>
+            </div>
+            {/* 定位：到底卡在哪个具体对象上（命令名/包名/端口） */}
+            {status.located && <div className="fail-located">{status.located}</div>}
+            {/* Reopen 帮不上时的做法说明（有按钮可点的走下面 fail-actions） */}
+            {status.guide && (
+              <div className="fail-guide">
+                <Info size={12} />
+                <span>{status.guide}</span>
+              </div>
             )}
-            {status.fix?.kind === 'npm-install' && (
-              <button className="btn-mini" onClick={onInstallDeps}>
-                <Wrench size={12} /> {status.fix.label}
+            <div className="fail-actions">
+              {hasPreviewFallback(project) && (
+                <button className="btn-mini" onClick={onViewPreview}>
+                  <Eye size={12} /> 看成品
+                </button>
+              )}
+              {status.fix?.kind === 'npm-install' && (
+                <button className="btn-mini" onClick={onInstallDeps}>
+                  <Wrench size={12} /> {status.fix.label}
+                </button>
+              )}
+              {status.fix?.kind === 'kill-residue' && (
+                <button className="btn-mini" onClick={onKillResidual}>
+                  <Wrench size={12} /> {status.fix.label}
+                </button>
+              )}
+              <button
+                className="btn-mini"
+                onClick={() => void copyLogs()}
+                disabled={logs.length === 0}
+              >
+                {logCopied ? <Check size={12} /> : <Copy size={12} />}{' '}
+                {logCopied ? '已复制' : '复制日志'}
               </button>
-            )}
-            {status.fix?.kind === 'kill-residue' && (
-              <button className="btn-mini" onClick={onKillResidual}>
-                <Wrench size={12} /> {status.fix.label}
-              </button>
-            )}
+            </div>
           </div>
         )}
 

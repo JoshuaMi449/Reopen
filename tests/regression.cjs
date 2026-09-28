@@ -92,6 +92,7 @@ async function main() {
       touchStartedAt: noop,
       touchLastPort: noop
     },
+    './diagnose': load('src/main/diagnose.ts', {}),
     './processLogs': load('src/main/processLogs.ts', {}),
     './lan': {},
     './detect': {},

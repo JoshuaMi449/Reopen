@@ -1,12 +1,21 @@
 // 进程启动模块：拉起/停止项目进程、端口健康检查、日志推送（PRD 八·技术方案 进程管理+端口检测）
 import { execSync, spawn, ChildProcess } from 'child_process'
 import { app, BrowserWindow, Notification, shell } from 'electron'
-import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync } from 'fs'
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync
+} from 'fs'
 import { get } from 'http'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { connect } from 'net'
 import type {
+  Culprit,
   LanMode,
   LaunchMode,
   Project,
@@ -16,6 +25,7 @@ import type {
   ProjectStatusEvent,
   StartResult
 } from '../shared/types'
+import { diagnose, type Diagnosis } from './diagnose'
 import { createProcessLogs } from './processLogs'
 import { isPureWeb } from '../shared/types'
 import { getSettings, listProjects, touchLanSlug, touchLastPort, touchStartedAt } from './store'
@@ -60,6 +70,10 @@ interface Runtime {
   residualPids?: number[]
   /** 本次启动不自动打开浏览器（自启拉起专用：即使项目勾了「启动后打开浏览器」也不开） */
   noOpenBrowser?: boolean
+  /** 本轮启动尝试的日志（诊断专用）：与跨尝试累积的 recentLogs 分开，避免拿上一次失败的报错下结论 */
+  attemptLogs?: string[]
+  /** 本次 spawn 的时刻：exit 时算存活时长，兜底诊断据此补一句方向感 */
+  spawnedAt?: number
 }
 
 const runtimes = new Map<string, Runtime>()
@@ -407,8 +421,15 @@ export async function rehostProject(id: string): Promise<StartResult> {
   return startProject(id)
 }
 
-function fail(rt: Runtime, project: Project, reason: string, fix?: ProjectFix): void {
-  emit({ id: project.id, status: 'failed', port: rt.port, reason, fix })
+function fail(
+  rt: Runtime,
+  project: Project,
+  reason: string,
+  fix?: ProjectFix,
+  /** 诊断附加信息（归属徽章 + 定位行）；只有走诊断链的失败才带，旧的调用点不传即保持原样 */
+  diag?: { culprit?: Culprit; located?: string; guide?: string }
+): void {
+  emit({ id: project.id, status: 'failed', port: rt.port, reason, fix, ...diag })
   rt.status = 'failed'
   // 设置开着"启动失败通知"时发系统通知（PRD 3.6 通知方式）
   if (getSettings().notifyOnFail) {
@@ -423,95 +444,42 @@ function fail(rt: Runtime, project: Project, reason: string, fix?: ProjectFix): 
 const recentLogs = new Map<string, string[]>()
 
 /** 失败兜底：日志里有常见错误特征时，翻译成人话原因（PRD 3.4：通知带失败原因）。
- *  补齐 9 条高频病：依赖没装/端口占用 Mac 版/Docker 没开/python 缺包/
- *  npm 版本打架/网络/缺 .env/数据库没开/磁盘满 */
-function failWithLogHint(rt: Runtime, project: Project, fallback: string): void {
-  const text = (recentLogs.get(project.id) ?? []).join('\n')
-  const portBusy = text.match(/EADDRINUSE[\s\S]*?port:\s*(\d+)/)
-  if (portBusy) {
-    fail(
-      rt,
-      project,
-      `端口 ${portBusy[1]} 已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动`
+ *  规则本体在 diagnose.ts（纯函数、可单测）——这里只负责取本次日志、把结果交给 fail()。 */
+function failWithLogHint(
+  rt: Runtime,
+  project: Project,
+  fallback: string,
+  /** 本次尝试存活了多久；缺省=拿不到（如预检阶段直接失败），此时诊断不补时长提示 */
+  durationMs?: number
+): void {
+  // 只喂本轮尝试的日志：recentLogs 跨尝试累积，全量喂进去会命中上一次失败的报错
+  const d = diagnose({
+    logText: (rt.attemptLogs ?? []).join('\n'),
+    fallback,
+    durationMs
+  })
+  appendDiagnosisLog(project, d)
+  fail(rt, project, d.title, d.fix, {
+    culprit: d.culprit,
+    located: d.located,
+    guide: d.guide
+  })
+}
+
+/** 诊断留痕：追加一行到项目日志目录，事后能查"当时为什么这么判"。
+ *  写不进去也不影响诊断本身，所以整体吞掉异常。 */
+function appendDiagnosisLog(project: Project, d: Diagnosis): void {
+  try {
+    const dir = join(app.getPath('userData'), 'service-logs', project.id)
+    mkdirSync(dir, { recursive: true })
+    const located = d.located ? `\t${d.located}` : ''
+    appendFileSync(
+      join(dir, 'diagnosis.log'),
+      `${new Date().toISOString()}\t${d.code}\t${d.culprit}\t${d.confidence}\t${d.title}${located}\n`
     )
-    return
+  } catch {
+    // 留痕是锦上添花，失败不打扰用户
   }
-  if (/EADDRINUSE|Errno 48|Address already in use/i.test(text)) {
-    fail(rt, project, '端口已被占用——是不是这个项目之前已经手动启动了？先停掉旧的再启动')
-    return
-  }
-  // 跨平台拷贝的依赖（/22 实测：Windows 项目整个拷到 Mac——二进制不兼容 / 缺 Mac 平台组件 / 权限自动修复后仍有权限问题）
-  if (
-    /Permission denied/.test(text) ||
-    /bad cpu type|exec format error|wrong architecture|not compatible/i.test(text) ||
-    /Cannot find module @rollup\/rollup-darwin|npm has a bug related to optional dependencies/i.test(
-      text
-    ) ||
-    // 原生模块是 Windows 二进制（my-app 实测：better-sqlite3 从 Windows 拷来，Mac 加载不了）
-    /ERR_DLOPEN_FAILED|not valid mach-o file|is not a valid Win32 application/i.test(text)
-  ) {
-    fail(
-      rt,
-      project,
-      '这个项目的依赖没装好（从 Windows 电脑拷贝过来的常见问题）——删掉项目里的 node_modules 和 package-lock.json 重新安装。下面有「帮我装依赖」按钮，点一下就行',
-      { kind: 'npm-install', label: '帮我装依赖' }
-    )
-    return
-  }
-  // 依赖根本没装/启动命令不存在（SCADA 实测：删了 node_modules 没重装 → vite: command not found）
-  if (
-    /command not found|not recognized as an internal or external command|^sh: .*: not found/m.test(
-      text
-    )
-  ) {
-    fail(rt, project, '这个项目的依赖没装好——点下面的「帮我装依赖」按钮自动安装，装完再点启动', {
-      kind: 'npm-install',
-      label: '帮我装依赖'
-    })
-    return
-  }
-  if (/npm ERR! Missing script/.test(text)) {
-    fail(
-      rt,
-      project,
-      '这个项目的 package.json 里没有对应的启动脚本——右键项目选「编辑」，检查启动命令对不对'
-    )
-    return
-  }
-  if (/Cannot connect to the Docker daemon|Is the docker daemon running/i.test(text)) {
-    fail(rt, project, 'Docker 没开——先打开 Docker Desktop，等它启动完成再点启动')
-    return
-  }
-  const pyMissing = text.match(/ModuleNotFoundError: No module named ['"]([^'"]+)['"]/)
-  if (pyMissing) {
-    fail(
-      rt,
-      project,
-      `这个 Python 项目缺一个包「${pyMissing[1]}」——在项目文件夹的终端里跑 pip install ${pyMissing[1]} 装上再启动`
-    )
-    return
-  }
-  if (/ERESOLVE|Could not resolve dependency|peer dep/i.test(text)) {
-    fail(rt, project, '依赖版本打架——在项目文件夹的终端里跑 npm install --legacy-peer-deps 再试')
-    return
-  }
-  if (/ETIMEDOUT|ECONNRESET|getaddrinfo ENOTFOUND|network request failed/i.test(text)) {
-    fail(rt, project, '网络问题——下载依赖连不上软件源，检查网络或代理，或换个 npm 源再试')
-    return
-  }
-  if (/Missing environment variable|process\.env|\.env file/i.test(text)) {
-    fail(rt, project, '这个项目缺配置（密钥之类的 .env 文件）——看看项目说明文档，把配置补上再启动')
-    return
-  }
-  if (/ECONNREFUSED.*(5432|3306|27017|6379|5433)|connect ECONNREFUSED/s.test(text)) {
-    fail(rt, project, '数据库没启动——先把这个项目用的数据库服务跑起来（或检查数据库地址）')
-    return
-  }
-  if (/ENOSPC|no space left on device/i.test(text)) {
-    fail(rt, project, '磁盘满了——清理磁盘空间后再启动')
-    return
-  }
-  fail(rt, project, fallback)
 }
 
 /** 最近日志里是否出现过 Permission denied（npm 调无执行位脚本的典型输出） */
@@ -619,6 +587,13 @@ function pipeLog(id: string, chunk: string, stream = 'stdout'): void {
   recent.push(...lines)
   if (recent.length > 200) recent.splice(0, recent.length - 200)
   recentLogs.set(id, recent)
+  // 本轮启动尝试的日志单独攒一份：recentLogs 跨尝试累积，诊断直接拿它会命中上一次失败的报错
+  const rt = runtimes.get(id)
+  if (rt) {
+    const attempt = rt.attemptLogs ?? (rt.attemptLogs = [])
+    attempt.push(...lines)
+    if (attempt.length > 200) attempt.splice(0, attempt.length - 200)
+  }
   for (const line of lines) emitLog(id, line)
 }
 
@@ -1002,6 +977,8 @@ function spawnAndWatch(
     join(app.getPath('userData'), 'service-logs', project.id),
     (text, stream) => pipeLog(project.id, text, stream)
   )
+  // 本轮尝试的日志重新开始记：诊断只看这一轮的输出，不带上一次失败的残留
+  rt.attemptLogs = []
   const child = spawn(finalCommand, {
     stdio: processLogs.stdio,
     cwd,
@@ -1017,6 +994,7 @@ function spawnAndWatch(
   })
   rt.child = child
   rt.port = effectivePort
+  rt.spawnedAt = Date.now() // 存活时长起点：exit 时算差值，兜底诊断据此补方向感
   emitLog(project.id, `[Reopen] 启动命令：${finalCommand}`)
   emitLog(project.id, '[Reopen] 以下为项目进程的 stdout / stderr 原始输出')
   const finishLogs = (): void => {
@@ -1061,7 +1039,12 @@ function spawnAndWatch(
         return
       }
       // 健康检查没过就退了 = 启动失败（不重试，PRD 3.4）
-      failWithLogHint(rt, project, `进程提前退出（退出码 ${code ?? signal}）`)
+      failWithLogHint(
+        rt,
+        project,
+        `进程提前退出（退出码 ${code ?? signal}）`,
+        rt.spawnedAt ? Date.now() - rt.spawnedAt : undefined
+      )
     } else if (rt.status === 'running') {
       setStatus(rt, project, 'stopped')
     }
@@ -1117,7 +1100,12 @@ function spawnAndWatch(
             clearInterval(rt.healthTimer)
             // 进程可能还活着：启动被判失败也不能留僵尸占端口（SCADA 事故：误判后僵尸越点越多）
             killTree(rt)
-            failWithLogHint(rt, project, `30 秒内端口 ${checkPort} 没有就绪（日志面板有完整输出）`)
+            failWithLogHint(
+              rt,
+              project,
+              `30 秒内端口 ${checkPort} 没有就绪（日志面板有完整输出）`,
+              rt.spawnedAt ? Date.now() - rt.spawnedAt : undefined
+            )
           }
         }
       })

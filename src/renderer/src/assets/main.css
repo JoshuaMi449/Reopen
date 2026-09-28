@@ -10,6 +10,17 @@
              --accent 强调色（浅色=主色同值；深色=主色的亮版，小按钮描边/彩色文字可读）；
              --accent-foreground 强调色底上的文字色。 */
 
+/* ---- 滚动条：全项目一律不出现可见滚动条 ----
+   内容照常滚（触控板 / 滚轮 / 拖拽都不受影响），只是不画轨道和滑块。
+   这是全局兜底：各处零散的 ::-webkit-scrollbar 规则都归它统管，新增容器也不必再单独处理。 */
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
 /* ---- 浅色三套 ---- */
 :root,
 :root[data-theme='morandi'] {
@@ -916,6 +927,88 @@ html.dark .sidebar-logo-word,
 .drawer-fail-reason {
   color: var(--danger);
   line-height: 1.5;
+}
+
+/* 失败卡片四层：归属徽章 + 人话标题 / 定位 / 指引 / 按钮组 */
+.fail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 归属徽章：容器继承了 --danger，这里必须逐个显式设色，否则四层糊成一片红 */
+.fail-badge {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+
+/* 能修=绿 / 电脑缺东西=琥珀 / 项目问题=红 / 外部服务=强调色 */
+.fail-badge[data-culprit='reopen'] {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.fail-badge[data-culprit='user-env'] {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
+.fail-badge[data-culprit='project'] {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.fail-badge[data-culprit='external'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.fail-title {
+  color: var(--danger);
+}
+
+/* 定位行：等宽显示抠出来的具体对象（路径可能很长，必须允许断词） */
+.fail-located {
+  margin-top: 3px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* Reopen 帮不上时的做法说明 */
+.fail-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fail-guide svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.fail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* .btn-mini 自带 margin-left: 6px，进 flex 容器会双重间距 */
+.fail-actions .btn-mini {
+  margin-left: 0;
 }
 
 .drawer-tags {
@@ -2715,22 +2808,7 @@ body.tray-window #root {
   color: var(--tray-text);
 }
 
-/* 玻璃上的细滚动条（卡片区/项目列表共用） */
-.tray-cards::-webkit-scrollbar,
-.tray-projects-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.tray-cards::-webkit-scrollbar-thumb,
-.tray-projects-list::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.45);
-  border-radius: 3px;
-}
-
-.tray-cards::-webkit-scrollbar-track,
-.tray-projects-list::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* 卡片区/项目列表的滚动条：统一由文件顶部的全局规则隐藏，不再单独画细条 */
 
 .tray-empty {
   font-size: 12px;
