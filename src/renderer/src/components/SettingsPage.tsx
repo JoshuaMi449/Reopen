@@ -89,10 +89,18 @@ export function SettingsPage({
     applyTheme(settings.theme, settings.darkMode, systemDark, settings.specialStyle)
   }, [settings.theme, settings.darkMode, systemDark, settings.specialStyle])
 
+  // 环境监测：打开设置页查一次 + 窗口每次重新获得焦点再查——
+  // 用户中途去装 Docker/Node（或改 PATH），切回应用立即反映（同下方通知授权那段的处理）。
+  // 起因：v1.2.0 前只在挂载时查一次，用户装完 Docker 回到还开着的设置页，看到的仍是「未安装」
   useEffect(() => {
+    const refreshEnv = (): void => {
+      void window.api.checkEnvironment().then(setEnvItems)
+    }
     window.api.getSettings().then(setSettings)
     window.api.listProjects().then(setProjects)
-    window.api.checkEnvironment().then(setEnvItems)
+    refreshEnv()
+    window.addEventListener('focus', refreshEnv)
+    return () => window.removeEventListener('focus', refreshEnv)
   }, [])
 
   // 通知授权状态：打开设置页查一次 + 窗口每次重新获得焦点再查——
@@ -677,7 +685,7 @@ export function SettingsPage({
   const about = (
     <div className="settings-group">
       <div className="settings-about-app">Reopen</div>
-      <div className="settings-about-line">版本 1.1.0（VC复活点）</div>
+      <div className="settings-about-line">{`版本 ${__APP_VERSION__}（VC复活点）`}</div>
       <div className="settings-about-line">Restart your Mac without losing your projects</div>
       <div className="settings-about-line">
         <a

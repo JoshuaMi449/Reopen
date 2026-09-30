@@ -1,11 +1,19 @@
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+
+// 构建时把 package.json 的版本号注入渲染层：关于页与托盘面板直接读 __APP_VERSION__。
+// 起因：v1.2.0 发版时漏改了 3 处手写版本号，整个界面还显示 1.1.0。
+const appVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version as string
 
 export default defineConfig({
   main: {},
   preload: {},
   renderer: {
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion)
+    },
     // 专属端口：用户项目（vite 系）默认端口都是 5173，开发环境若也用 5173 会撞车——
     // 用户的 vite 项目抢到 5173 后，托盘面板/主窗口请求会串到用户项目页面（事故）
     server: {
