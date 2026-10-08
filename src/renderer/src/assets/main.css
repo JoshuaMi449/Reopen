@@ -5139,8 +5139,17 @@ html.dark .settings-card {
   -webkit-app-region: drag;
 }
 
-.tray-panel .sys-bar { background: var(--theme-storage-free, #5b5b60); }
-.tray-panel .sys-bar-fill { background: var(--theme-storage-used, #007aff); }
+/* ⚠️ 必须同时写 :root.dark 版本：`:root.dark .sys-bar` 的特异性是 (0,3,0)，
+   会盖过单独的 `.tray-panel .sys-bar` (0,2,0)——深色模式下曾导致「储存·可用」的
+   自定义颜色完全不生效（一直显示 .sys-bar 自带的半透明白）。 */
+.tray-panel .sys-bar,
+:root.dark .tray-panel .sys-bar {
+  background: var(--theme-storage-free, #5b5b60);
+}
+.tray-panel .sys-bar-fill,
+:root.dark .tray-panel .sys-bar-fill {
+  background: var(--theme-storage-used, #007aff);
+}
 .menubar-theme { padding: 14px 16px; border-top: 1px solid var(--border); }
 .menubar-theme-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .menubar-theme-heading > strong { font-size:13px; }
