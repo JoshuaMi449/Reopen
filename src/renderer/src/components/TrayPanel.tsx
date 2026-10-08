@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowLeft,
@@ -757,14 +757,24 @@ function HistoryDetail(props: {
       : bucketHistory(systemHistory, end, minutes, columns, averageSystem)
     return kind === 'battery' ? batteryBuckets(raw as HistoryBucket<BatteryHistorySample>[]) : raw
   }, [kind, batteryHistory, systemHistory, end, minutes])
+  // 图表 rect 缓存 + 上次索引：历史图窗口固定尺寸不可缩放，进入某张图时量一次即可。
+  // 之前每次 mousemove 都调 getBoundingClientRect()，它会强制浏览器同步重排——
+  // 鼠标一秒动几十次就是几十次重排，这是十字线跟手卡顿的根因（iStat 是原生绘制，没这层开销）。
+  const chartRectRef = useRef<{ el: Element; rect: DOMRect } | null>(null)
+  const hoverIndexRef = useRef<number | null>(null)
   const onChartMove = (event: React.MouseEvent<SVGSVGElement>): void => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setHoverIndex(
-      Math.min(
-        buckets.length - 1,
-        Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * buckets.length))
-      )
+    const el = event.currentTarget
+    if (chartRectRef.current?.el !== el) {
+      chartRectRef.current = { el, rect: el.getBoundingClientRect() }
+    }
+    const rect = chartRectRef.current.rect
+    const next = Math.min(
+      buckets.length - 1,
+      Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * buckets.length))
     )
+    if (next === hoverIndexRef.current) return // 同一列内移动不重复 setState
+    hoverIndexRef.current = next
+    setHoverIndex(next)
   }
   const hovered = hoverIndex === null ? null : buckets[hoverIndex]
   const tooltipLeft =
