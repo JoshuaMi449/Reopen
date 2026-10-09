@@ -106,8 +106,8 @@ const api: ReopenApi = {
   switchTrayCharacter: (path) => ipcRenderer.invoke('tray:switch-character', path),
   setTrayFlip: (v) => ipcRenderer.invoke('tray:set-flip', v),
   showHistoryRangeMenu: (kind, selected) => ipcRenderer.invoke('tray:history-range-menu', kind, selected),
-  setTrayHistoryExpanded: (expanded, kind) =>
-    ipcRenderer.invoke('tray:set-history-expanded', expanded, kind),
+  setTrayHistoryExpanded: (expanded, kind, anchorTop) =>
+    ipcRenderer.invoke('tray:set-history-expanded', expanded, kind, anchorTop),
   onTrayHistoryClosed: (cb) => {
     const listener = (): void => cb()
     ipcRenderer.on('tray:history-closed', listener)

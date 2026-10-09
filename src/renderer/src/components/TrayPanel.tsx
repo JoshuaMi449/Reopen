@@ -128,7 +128,13 @@ export function TrayPanel(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    void window.api.setTrayHistoryExpanded(historyKind !== null, historyKind ?? undefined)
+    if (historyKind === null) {
+      void window.api.setTrayHistoryExpanded(false)
+      return
+    }
+    // 历史图弹窗顶部对齐被点开的那张卡片，而不是面板顶部
+    const card = document.querySelector(`.sys-card[data-history="${historyKind}"]`)
+    void window.api.setTrayHistoryExpanded(true, historyKind, card?.getBoundingClientRect().top)
   }, [historyKind])
 
   useEffect(() => window.api.onTrayHistoryClosed(() => setHistoryKind(null)), [])
@@ -314,7 +320,7 @@ function SystemCards(props: {
   const network = sysInfo?.network
   return (
     <div className="tray-cards">
-      <div className="sys-card sys-card-interactive" onClick={() => onOpenHistory('cpu')}>
+      <div className="sys-card sys-card-interactive" data-history="cpu" onClick={() => onOpenHistory('cpu')}>
         <div className="sys-row">
           <Cpu size={28} className="sys-icon" />
           <div className="sys-main">
@@ -338,7 +344,7 @@ function SystemCards(props: {
         </div>
       </div>
 
-      <div className="sys-card sys-card-interactive" onClick={() => onOpenHistory('memory')}>
+      <div className="sys-card sys-card-interactive" data-history="memory" onClick={() => onOpenHistory('memory')}>
         <div className="sys-row">
           <MemoryStick size={28} className="sys-icon" />
           <div className="sys-main">
@@ -383,7 +389,7 @@ function SystemCards(props: {
         </div>
       </div>
 
-      <div className="sys-card sys-card-interactive" onClick={() => onOpenHistory('battery')}>
+      <div className="sys-card sys-card-interactive" data-history="battery" onClick={() => onOpenHistory('battery')}>
         <div className="sys-row">
           {battery?.charging ? (
             <BatteryCharging size={28} className="sys-icon" />
@@ -418,7 +424,7 @@ function SystemCards(props: {
         </div>
       </div>
 
-      <div className="sys-card sys-card-interactive" onClick={() => onOpenHistory('network')}>
+      <div className="sys-card sys-card-interactive" data-history="network" onClick={() => onOpenHistory('network')}>
         <div className="sys-row">
           <Wifi size={28} className="sys-icon" />
           <div className="sys-main">

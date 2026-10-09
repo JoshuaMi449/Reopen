@@ -239,15 +239,20 @@ function closeHistoryPanel(notify = true): void {
   if (notify && panel && !panel.isDestroyed()) panel.webContents.send('tray:history-closed')
 }
 
-function positionHistoryPanel(history: BrowserWindow): void {
+function positionHistoryPanel(history: BrowserWindow, anchorTop?: number): void {
   if (!panel || panel.isDestroyed()) return
   const anchor = panel.getBounds()
   const display = screen.getDisplayNearestPoint({ x: anchor.x, y: anchor.y })
   let x = anchor.x - history.getBounds().width - HISTORY_PANEL_GAP
   if (x < display.workArea.x + 4) x = anchor.x + anchor.width + HISTORY_PANEL_GAP
+  // 顶部对齐被点开的那张卡片（面板无边框、无内边距偏移，CSS 顶部坐标即窗口内偏移）；
+  // 没给就用面板顶部往下 10px——设置里拖色板时的颜色预览走这条。
   const y = Math.max(
     display.workArea.y + 4,
-    Math.min(anchor.y + 10, display.workArea.y + display.workArea.height - history.getBounds().height - 4)
+    Math.min(
+      anchor.y + (anchorTop ?? 10),
+      display.workArea.y + display.workArea.height - history.getBounds().height - 4
+    )
   )
   history.setPosition(x, y)
 }
@@ -311,7 +316,7 @@ function startHistoryHoverMonitor(): void {
 }
 
 /** 创建一个只包住图表的独立浮窗；主菜单窗口尺寸始终保持不变。 */
-export function setTrayHistoryExpanded(expanded: boolean, kind = 'cpu'): void {
+export function setTrayHistoryExpanded(expanded: boolean, kind = 'cpu', anchorTop?: number): void {
   if (!expanded && menubarPreviewActive) return
   if (!expanded || !panel || panel.isDestroyed() || !panel.isVisible()) {
     closeHistoryPanel(false)
@@ -379,7 +384,7 @@ export function setTrayHistoryExpanded(expanded: boolean, kind = 'cpu'): void {
   // flash of the previous/blank layout when a history popup is opened.
   history.once('ready-to-show', () => {
     if (history.isDestroyed() || historyPanel !== history) return
-    positionHistoryPanel(history)
+    positionHistoryPanel(history, anchorTop)
     history.showInactive()
     startHistoryHoverMonitor()
   })

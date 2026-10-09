@@ -568,7 +568,9 @@ export interface ReopenApi {
   setTrayFlip(v: boolean): Promise<void>
   /** 托盘历史图展开时同步调整原生窗口尺寸和锚点。 */
   showHistoryRangeMenu(kind: string, selected: number): Promise<number | null>
-  setTrayHistoryExpanded(expanded: boolean, kind?: string): Promise<void>
+  /** `anchorTop` = 被点开的那张卡片在面板里的顶部坐标（CSS 像素）；
+   *  历史图弹窗顶部与它对齐。不传则退回面板顶部（设置里的颜色预览走这条）。 */
+  setTrayHistoryExpanded(expanded: boolean, kind?: string, anchorTop?: number): Promise<void>
   onTrayHistoryClosed(cb: () => void): () => void
   /** 切回内置 Reopen 黑白主题图标（「切换动画」弹窗左下角主题按钮） */
   switchTrayTheme(): Promise<void>

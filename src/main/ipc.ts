@@ -736,8 +736,8 @@ export function registerIpc(): void {
     broadcastSettings(saved)
   })
   ipcMain.handle('tray:history-range-menu', (_e, kind: string, selected: number) => showHistoryRangeMenu(kind, selected))
-  ipcMain.handle('tray:set-history-expanded', (_e, expanded: boolean, kind: string) => {
-    setTrayHistoryExpanded(!!expanded, kind)
+  ipcMain.handle('tray:set-history-expanded', (_e, expanded: boolean, kind: string, anchorTop?: number) => {
+    setTrayHistoryExpanded(!!expanded, kind, anchorTop)
   })
   // 重新探测所有运行中项目的局域网可达性（换网 IP 变化后调用）
   ipcMain.handle('system:recheck-lan', () => reprobeAllLan())
