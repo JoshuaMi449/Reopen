@@ -505,10 +505,26 @@ function systemInfoPayload(): SystemInfo | null {
     systemHistory: [...systemHistory.filter((s) => s.time < recentStart), ...liveSystemHistory] }
 }
 
+/** 已经发给渲染进程的存档水位（时间戳）。 */
+let lastSentSavedTime = 0
+
+/** 每秒推送用的载荷：只带实时窗口 + 新增存档。
+ *  整段存档（实测 8.7 万条 / 35MB）每秒重发一次会让渲染进程主线程有一半时间
+ *  卡在结构化克隆的反序列化上——鼠标滑动时的「顿」就来自这里，与图表渲染无关。 */
+function systemInfoStream(): SystemInfo | null {
+  if (!latestSystemInfo) return null
+  const tail = systemHistory.filter((s) => s.time > lastSentSavedTime)
+  const newest = tail[tail.length - 1]
+  if (newest) lastSentSavedTime = newest.time
+  return { ...latestSystemInfo, batteryHistory, liveHistory: liveSystemHistory, savedTail: tail }
+}
+
 function startSystemInfoFeed(): void {
   stopSystemInfoFeed()
+  // 水位只在首次对齐：面板窗口跨显示/隐藏常驻，重置会让它丢掉隐藏期间的存档样本。
+  if (!lastSentSavedTime) lastSentSavedTime = systemHistory.at(-1)?.time ?? 0
   const push = (): void => {
-    const payload = systemInfoPayload()
+    const payload = systemInfoStream()
     if (payload && panel && !panel.isDestroyed()) {
       panel.webContents.send('tray:system-info', payload)
       if (historyPanel && !historyPanel.isDestroyed())
@@ -678,8 +694,11 @@ function createPanel(): BrowserWindow {
     panel.loadFile(join(__dirname, '../renderer/tray.html'))
   }
   panel.webContents.once('did-finish-load', () => {
-    if (panel && !panel.isDestroyed() && menubarColorsPreview)
-      panel.webContents.send('menubar:colors-preview', menubarColorsPreview)
+    if (!panel || panel.isDestroyed()) return
+    if (menubarColorsPreview) panel.webContents.send('menubar:colors-preview', menubarColorsPreview)
+    // 整段存档只在这里发一次；之后每秒推送只补增量（见 systemInfoStream）
+    const payload = systemInfoPayload()
+    if (payload) panel.webContents.send('tray:system-info', payload)
   })
   return panel
 }

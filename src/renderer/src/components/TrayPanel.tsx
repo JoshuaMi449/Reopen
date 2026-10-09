@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowLeft,
@@ -87,6 +87,8 @@ export function TrayPanel(): React.JSX.Element {
   const [sampledAt, setSampledAt] = useState(() => Date.now())
   const [systemHistory, setSystemHistory] = useState<SystemHistorySample[]>([])
   const [historyKind, setHistoryKind] = useState<HistoryKind | null>(null)
+  // 整段存档（最长 30 天 / 8.7 万条）常驻在 ref 里，不进 state
+  const savedHistoryRef = useRef<SystemHistorySample[]>([])
 
   // 切换动画弹菜单：角色类型页（动图=GIF 角色 / 图片=静态素材）
   const [charMenuOpen, setCharMenuOpen] = useState(false)
@@ -101,17 +103,12 @@ export function TrayPanel(): React.JSX.Element {
       setStatuses((s) => ({ ...s, [e.id]: e }))
     })
     const offSys = window.api.onSystemInfo((s: SystemInfo) => {
-      const now = Date.now()
-      setSampledAt(now)
+      setSampledAt(Date.now())
       setSysInfo(s)
-      setSystemHistory((current) => {
-        const saved = s.systemHistory ?? []
-        const savedEnd = saved.at(-1)?.time ?? 0
-        const live = current.filter(
-          (sample) => sample.time > savedEnd && sample.time >= now - 10 * 60_000
-        )
-        return [...saved, ...live]
-      })
+      // 整段存档只在窗口加载时发一次，之后每秒推送只补增量（见 tray.ts systemInfoStream）
+      if (s.systemHistory) savedHistoryRef.current = s.systemHistory
+      savedHistoryRef.current = appendSavedHistory(savedHistoryRef.current, s.savedTail)
+      setSystemHistory(historyTimeline(savedHistoryRef.current, s.liveHistory))
     })
     const offLog = window.api.onLog(() => {
       // 面板不显示日志，忽略
@@ -605,6 +602,25 @@ const LARGE_GRAPH_HEIGHT = 180
 // Detail percentages span the full plot; bar width stays two CSS pixels.
 const PERCENT_PLOT_HEIGHT = 167
 
+/** 把存档增量并进来。幂等：重复收到已经有的样本不会重复追加。 */
+function appendSavedHistory(
+  saved: SystemHistorySample[],
+  tail?: SystemHistorySample[]
+): SystemHistorySample[] {
+  const end = saved.at(-1)?.time ?? 0
+  const added = (tail ?? []).filter((sample) => sample.time > end)
+  return added.length ? [...saved, ...added] : saved
+}
+
+/** 图表时间线 = 整段存档 + 实时窗口（去掉与存档重叠的那截）。 */
+function historyTimeline(
+  saved: SystemHistorySample[],
+  live?: SystemHistorySample[]
+): SystemHistorySample[] {
+  const end = saved.at(-1)?.time ?? 0
+  return [...saved, ...(live ?? []).filter((sample) => sample.time > end)]
+}
+
 interface HistoryBucket<T> {
   time: number
   value?: T
@@ -885,18 +901,15 @@ interface LargeGraphProps<T> {
   onMove: (event: React.MouseEvent<SVGSVGElement>) => void
 }
 
-function LargeCpuGraph({
-  buckets,
-  activeIndex,
-  onMove
-}: LargeGraphProps<SystemHistorySample>): React.JSX.Element {
+/** 柱子只取决于数据，与十字线位置无关——单独 memo，鼠标扫过时不必重建整棵图。 */
+const CpuBars = memo(function CpuBars({
+  buckets
+}: {
+  buckets: HistoryBucket<SystemHistorySample>[]
+}): React.JSX.Element {
   const fallback = buckets.find((bucket) => bucket.value)?.value
   return (
-    <svg
-      className="large-history-chart"
-      viewBox={`0 0 ${360} ${PERCENT_PLOT_HEIGHT}`}
-      onMouseMove={onMove}
-    >
+    <>
       {buckets.map((bucket, i) => {
         if (!bucket.value) {
           const height = fallback
@@ -931,15 +944,35 @@ function LargeCpuGraph({
           </g>
         )
       })}
+    </>
+  )
+})
+
+function LargeCpuGraph({
+  buckets,
+  activeIndex,
+  onMove
+}: LargeGraphProps<SystemHistorySample>): React.JSX.Element {
+  return (
+    <svg
+      className="large-history-chart"
+      viewBox={`0 0 ${360} ${PERCENT_PLOT_HEIGHT}`}
+      onMouseMove={onMove}
+    >
+      <CpuBars buckets={buckets} />
       <CursorLine index={activeIndex} height={PERCENT_PLOT_HEIGHT} stride={360 / buckets.length} />
     </svg>
   )
 }
 
-function LargeMemoryGraph({ buckets, activeIndex, onMove }: LargeGraphProps<SystemHistorySample>): React.JSX.Element {
+const MemoryBars = memo(function MemoryBars({
+  buckets
+}: {
+  buckets: HistoryBucket<SystemHistorySample>[]
+}): React.JSX.Element {
   const fallback = buckets.find((bucket) => bucket.value?.memory)?.value?.memory
   return (
-    <svg className="large-history-chart" viewBox={`0 0 360 ${PERCENT_PLOT_HEIGHT}`} onMouseMove={onMove}>
+    <>
       {buckets.map((bucket, i) => {
         const memory = bucket.value?.memory
         const x = i * (360 / buckets.length)
@@ -959,26 +992,32 @@ function LargeMemoryGraph({ buckets, activeIndex, onMove }: LargeGraphProps<Syst
           <rect x={x} y={PERCENT_PLOT_HEIGHT - app - wired - compressed} width="2" height={compressed} fill="var(--theme-memory-compressed, #ffcc00)" />
         </g>
       })}
+    </>
+  )
+})
+
+function LargeMemoryGraph({
+  buckets,
+  activeIndex,
+  onMove
+}: LargeGraphProps<SystemHistorySample>): React.JSX.Element {
+  return (
+    <svg className="large-history-chart" viewBox={`0 0 360 ${PERCENT_PLOT_HEIGHT}`} onMouseMove={onMove}>
+      <MemoryBars buckets={buckets} />
       <CursorLine index={activeIndex} height={PERCENT_PLOT_HEIGHT} stride={360 / buckets.length} />
     </svg>
   )
 }
 
-function LargeNetworkGraph({
-  buckets,
-  activeIndex,
-  onMove,
-  compact = false
-}: LargeGraphProps<SystemHistorySample> & { compact?: boolean }): React.JSX.Element {
+const NetworkBars = memo(function NetworkBars({
+  buckets
+}: {
+  buckets: HistoryBucket<SystemHistorySample>[]
+}): React.JSX.Element {
   const uploadCeiling = Math.max(1, ...buckets.map((b) => b.value?.network.uploadBps ?? 0))
   const downloadCeiling = Math.max(1, ...buckets.map((b) => b.value?.network.downloadBps ?? 0))
   return (
-    <svg
-      className={compact ? "network-wave network-history-crop" : "large-history-chart"}
-      viewBox={compact ? "270 57.5 90 34" : "0 0 360 149"}
-      onMouseMove={onMove}
-    >
-      <line x1="0" x2={360} y1="74.5" y2="74.5" className="history-baseline" />
+    <>
       {buckets.map((bucket, i) => {
         if (!bucket.value) return null
         const up = Math.max(
@@ -996,16 +1035,34 @@ function LargeNetworkGraph({
           </g>
         )
       })}
+    </>
+  )
+})
+
+function LargeNetworkGraph({
+  buckets,
+  activeIndex,
+  onMove,
+  compact = false
+}: LargeGraphProps<SystemHistorySample> & { compact?: boolean }): React.JSX.Element {
+  return (
+    <svg
+      className={compact ? "network-wave network-history-crop" : "large-history-chart"}
+      viewBox={compact ? "270 57.5 90 34" : "0 0 360 149"}
+      onMouseMove={onMove}
+    >
+      <line x1="0" x2={360} y1="74.5" y2="74.5" className="history-baseline" />
+      <NetworkBars buckets={buckets} />
       <CursorLine index={activeIndex} height={149} stride={360 / buckets.length} />
     </svg>
   )
 }
 
-function LargeBatteryGraph({
-  buckets,
-  activeIndex,
-  onMove
-}: LargeGraphProps<BatteryHistorySample>): React.JSX.Element {
+const BatteryBars = memo(function BatteryBars({
+  buckets
+}: {
+  buckets: HistoryBucket<BatteryHistorySample>[]
+}): React.JSX.Element {
   const fallback = buckets.find((bucket) => bucket.value)?.value
   const ranges: { start: number; end: number; plugged: boolean; charging: boolean }[] = []
   buckets.forEach((bucket, index) => {
@@ -1026,11 +1083,7 @@ function LargeBatteryGraph({
       })
   })
   return (
-    <svg
-      className="large-history-chart battery-history-chart"
-      viewBox={`0 0 ${buckets.length * 3} ${147}`}
-      onMouseMove={onMove}
-    >
+    <>
       {buckets.map((bucket, i) =>
         bucket.value ? (
           <rect
@@ -1071,6 +1124,22 @@ function LargeBatteryGraph({
             d="M7 0 L0 8 L4 8 L2 14 L10 5 L6 5 Z"
             fill="white" stroke="#303136" strokeWidth="0.8" />
         ))}
+    </>
+  )
+})
+
+function LargeBatteryGraph({
+  buckets,
+  activeIndex,
+  onMove
+}: LargeGraphProps<BatteryHistorySample>): React.JSX.Element {
+  return (
+    <svg
+      className="large-history-chart battery-history-chart"
+      viewBox={`0 0 ${buckets.length * 3} ${147}`}
+      onMouseMove={onMove}
+    >
+      <BatteryBars buckets={buckets} />
       <CursorLine index={activeIndex} height={135} />
     </svg>
   )
@@ -1225,11 +1294,15 @@ export function TrayHistoryWindow(): React.JSX.Element {
     requested === 'battery' || requested === 'network' || requested === 'memory' ? requested : 'cpu'
   const [info, setInfo] = useState<SystemInfo | null>(null)
   const [history, setHistory] = useState<SystemHistorySample[]>([])
+  // 整段存档只在这个窗口加载时来一次，之后靠 savedTail 增量补齐
+  const savedHistoryRef = useRef<SystemHistorySample[]>([])
   useEffect(
     () =>
       window.api.onSystemInfo((sample) => {
         setInfo(sample)
-        setHistory(sample.systemHistory ?? [])
+        if (sample.systemHistory) savedHistoryRef.current = sample.systemHistory
+        savedHistoryRef.current = appendSavedHistory(savedHistoryRef.current, sample.savedTail)
+        setHistory(historyTimeline(savedHistoryRef.current, sample.liveHistory))
       }),
     []
   )

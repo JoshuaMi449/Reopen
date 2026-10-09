@@ -422,7 +422,13 @@ export interface SystemHistorySample {
 
 export interface SystemInfo {
   batteryHistory?: BatteryHistorySample[]
+  /** 整段存档（30 秒分辨率，最多 30 天）。只在窗口 did-finish-load 时发一次——
+   *  它实测有 8.7 万条 / 35MB，每秒重发会让渲染进程主线程有一半时间卡在反序列化上。 */
   systemHistory?: SystemHistorySample[]
+  /** 实时窗口（1 秒分辨率，最近 10 分钟）。每秒推送带这个，整体替换。 */
+  liveHistory?: SystemHistorySample[]
+  /** 自上次推送以来新增的存档样本（通常 0~1 条），用于让常驻窗口补齐存档。 */
+  savedTail?: SystemHistorySample[]
   cpu: { percent: number; system: number; user: number; idle: number }
   memory: {
     percent: number
