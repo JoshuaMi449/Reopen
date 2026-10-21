@@ -145,6 +145,10 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" data-tour="sidebar" {...containerHandlers('tag')}>
+      <div className="sidebar-brand">
+        <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
+      </div>
+
       <nav className="sidebar-nav">
         {items.map((item) => (
           <button
@@ -177,6 +181,9 @@ export function Sidebar({
                   onGroupContextMenu(g.id, e)
                 }}
               >
+                <span className="sidebar-icon">
+                  <Folder size={14} />
+                </span>
                 <span className="sidebar-label">{g.name}</span>
                 <span className="sidebar-count">{g.childCount}</span>
               </button>
@@ -224,9 +231,9 @@ export function Sidebar({
           {runningCount} 个运行中
         </div>
         <div className="sidebar-bottom" onClick={() => window.api.openSettingsWindow()}>
-          <img className="sidebar-logo-word" src={wordmark} alt="Reopen" draggable={false} />
           <button className="sidebar-settings-btn" title="设置" data-tour="settings">
             <SettingsIcon size={15} />
+            <span className="sidebar-settings-label">设置</span>
             {showUpdateDot && <span className="update-dot" />}
           </button>
         </div>

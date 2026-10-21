@@ -14,6 +14,7 @@ import {
   List,
   MemoryStick,
   PawPrint,
+  Pin,
   Power,
   RefreshCw,
   Settings as SettingsIcon,
@@ -82,6 +83,7 @@ function fmtPct(v: number, digits = 1): string {
 export function TrayPanel(): React.JSX.Element {
   const [view, setView] = useState<PanelView>('dashboard')
   const [projects, setProjects] = useState<Project[]>([])
+  const [pinnedIds, setPinnedIds] = useState<string[]>([])
   const [statuses, setStatuses] = useState<Record<string, ProjectStatusEvent>>({})
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null)
   const [sampledAt, setSampledAt] = useState(() => Date.now())
@@ -97,6 +99,7 @@ export function TrayPanel(): React.JSX.Element {
 
   useEffect(() => {
     window.api.listProjects().then(setProjects)
+    window.api.getSettings().then((s) => setPinnedIds(s.pinnedIds ?? []))
     window.api.adoptAllRunning()
     window.api.listTrayCharacters().then(setCharacters)
     const offStatus = window.api.onStatus((e: ProjectStatusEvent) => {
@@ -118,6 +121,9 @@ export function TrayPanel(): React.JSX.Element {
       setView('dashboard')
       setCharMenuOpen(false)
       setHistoryKind(null)
+      // 面板常驻：重新拉项目与置顶清单，主窗口里改完置顶/改名后弹出即是最新
+      void window.api.listProjects().then(setProjects)
+      void window.api.getSettings().then((s) => setPinnedIds(s.pinnedIds ?? []))
     })
     return () => {
       offStatus()
@@ -149,13 +155,22 @@ export function TrayPanel(): React.JSX.Element {
     [statuses]
   )
 
+  // 置顶项目（按置顶先后）：面板顶部单独一组，网页/服务两组里不再重复出现
+  const pinnedProjects = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p]))
+    return pinnedIds
+      .map((id) => byId.get(id))
+      .filter((p): p is Project => !!p && p.type !== 'group')
+  }, [pinnedIds, projects])
+  const pinnedSet = useMemo(() => new Set(pinnedProjects.map((p) => p.id)), [pinnedProjects])
+
   const webProjects = useMemo(
-    () => projects.filter((p) => projectCategory(p) === 'web'),
-    [projects]
+    () => projects.filter((p) => projectCategory(p) === 'web' && !pinnedSet.has(p.id)),
+    [projects, pinnedSet]
   )
   const serviceProjects = useMemo(
-    () => projects.filter((p) => projectCategory(p) === 'service'),
-    [projects]
+    () => projects.filter((p) => projectCategory(p) === 'service' && !pinnedSet.has(p.id)),
+    [projects, pinnedSet]
   )
 
   const openBrowser = (p: Project): void => {
@@ -192,6 +207,7 @@ export function TrayPanel(): React.JSX.Element {
           {view === 'projects' && (
             <ProjectsView
               runningCount={runningCount}
+              pinnedProjects={pinnedProjects}
               webProjects={webProjects}
               serviceProjects={serviceProjects}
               statuses={statuses}
@@ -1154,12 +1170,14 @@ function LargeBatteryGraph({
 /** 项目状态页：顶部运行计数 + 网页/服务两组只读列表 + 底部打开主窗口 */
 function ProjectsView(props: {
   runningCount: number
+  /** 置顶项目（按置顶先后）：永远排在最上面，不再出现在网页/服务分组里 */
+  pinnedProjects: Project[]
   webProjects: Project[]
   serviceProjects: Project[]
   statuses: Record<string, ProjectStatusEvent>
   onOpen: (p: Project) => void
 }): React.JSX.Element {
-  const { runningCount, webProjects, serviceProjects, statuses, onOpen } = props
+  const { runningCount, pinnedProjects, webProjects, serviceProjects, statuses, onOpen } = props
   return (
     <div className="tray-projects">
       <div className="tray-projects-count">
@@ -1167,10 +1185,23 @@ function ProjectsView(props: {
         {runningCount} 个运行中
       </div>
       <div className="tray-projects-list">
-        {webProjects.length + serviceProjects.length === 0 ? (
+        {pinnedProjects.length + webProjects.length + serviceProjects.length === 0 ? (
           <div className="tray-empty">还没有项目。打开 Reopen 拖入你的项目吧。</div>
         ) : (
           <>
+            {pinnedProjects.length > 0 && (
+              <div className="tray-group">
+                <div className="tray-group-title">
+                  <span className="tray-group-pin">
+                    <Pin size={11} />
+                  </span>
+                  置顶
+                </div>
+                {pinnedProjects.map((p) => (
+                  <ProjectRow key={p.id} p={p} statuses={statuses} onOpen={onOpen} />
+                ))}
+              </div>
+            )}
             {webProjects.length > 0 && (
               <div className="tray-group">
                 <div className="tray-group-title">网页</div>

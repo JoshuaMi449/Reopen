@@ -8,32 +8,37 @@ interface TourStep {
   desc: string
 }
 
-// 引导步骤：5 步 + 收尾幕（收尾幕与欢迎幕同款大幕，背景半透明）
+// 引导步骤：6 步 + 收尾幕（收尾幕与欢迎幕同款大幕，背景半透明）
 const STEPS: TourStep[] = [
   {
     target: 'sidebar',
-    title: '按类型和标签浏览',
-    desc: '左侧分类栏：全部 / 服务 / 网页。\n项目多了，按照项目类型编成组收纳，再贴上彩色标签；\n底部是设置入口。'
+    title: '分类、组和标签',
+    desc: '左侧按类型浏览：全部 / 服务 / 网页。\n项目多了，框选右键「添加成组」收成文件夹，再贴彩色标签。'
   },
   {
     target: 'log-panel',
-    title: '启动和停止项目',
-    desc: '点一下启动，代码跑起来；\n日志在这里实时输出运行内容。'
+    title: '启动、停下、看日志',
+    desc: '卡片左下角启动或停止，运行状态和端口一眼可见；\n点卡片打开右侧详情，日志实时输出。'
   },
   {
     target: 'lan-link',
     title: '局域网分享',
-    desc: '点 localhost 地址跳转打开；\n局域网地址点击即复制，分享给同一 Wi-Fi 的设备。'
+    desc: '点 localhost 地址直接打开；\n局域网地址点一下即复制，同一 Wi-Fi 的手机电脑都能访问。'
+  },
+  {
+    target: 'pin',
+    title: '置顶常用项目',
+    desc: '点卡片右上角的图钉，项目会固定在主界面「置顶」区；\n菜单栏面板最上方也会出现它，随时点开。'
   },
   {
     target: 'autostart',
     title: '自启项',
-    desc: '点工具栏的闪电图标打开面板，把项目拖进去；\n以后打开 Reopen，它们会随着应用一起激活。'
+    desc: '点工具栏闪电图标打开面板，把项目拖进去；\n打开 Reopen 它们会自动激活，重启 Mac 也不丢。'
   },
   {
     target: 'add',
     title: '把项目拖进来',
-    desc: '把项目文件夹或 html 文件直接拖进窗口，自动识别登记；\n也可以点「+」手动添加。'
+    desc: '把项目文件夹或 html 文件直接拖进窗口，自动识别登记；\n也可以点右上角「添加项目」手动选。'
   }
 ]
 
@@ -62,9 +67,6 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
   /** 权限幕已结束（继续/跳过/非 Mac 平台自动） */
   const [permDone, setPermDone] = useState(false)
   const [pos, setPos] = useState<CardPos | null>(null)
-  const [highlight, setHighlight] = useState<{ x: number; y: number; w: number; h: number } | null>(
-    null
-  )
 
   // 平台检测：非 Mac 没有这两项权限，自动跳过权限幕
   useEffect(() => {
@@ -91,7 +93,6 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
       els.forEach((el) => el.classList.add('tour-highlight'))
       if (els.length === 0) {
         // 兜底：目标找不到时卡片放窗口中央，保证引导永不卡死
-        setHighlight(null)
         setPos({ x: window.innerWidth / 2, y: window.innerHeight / 2 - 60 })
         return
       }
@@ -105,17 +106,6 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
       }
       const bw = box.right - box.left
       const bh = box.bottom - box.top
-      // 侧栏贴窗口左缘：高亮框内缩进侧栏内，四边与侧栏边距一致、圆角与 macOS 窗口圆角统一；
-      // 内缩 6px = 框外到窗口边间距（12px）的一半，不压侧栏按钮文字（用户反馈 12px 挡字）
-      const pad = STEPS[step].target === 'sidebar' ? -6 : 5
-      const hx = Math.max(box.left - pad, 0)
-      const hy = Math.max(box.top - pad, 0)
-      setHighlight({
-        x: hx,
-        y: hy,
-        w: Math.min(box.right + pad, window.innerWidth) - hx,
-        h: Math.min(box.bottom + pad, window.innerHeight) - hy
-      })
       const GAP = 14
       const CARD_W = 320
       const CARD_H = 200
@@ -240,9 +230,14 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
       <div className={`welcome ${welcomeLeaving ? 'welcome-leaving' : ''}`}>
         <img className="welcome-logo" src={logo} alt="Reopen" draggable={false} />
         <h1 className="welcome-line1">你的本地项目陈列架</h1>
-        <p className="welcome-line2">网站项目拖进来自动识别，常驻在线分享</p>
-        <p className="welcome-line3">打开 Reopen，自启项目一键激活</p>
-        <p className="welcome-line4">分组收纳 · 彩色标签 · 局域网分享</p>
+        <p className="welcome-line2">重启 Mac 之后，项目、端口和网页都还在原处</p>
+        <div className="welcome-pills">
+          <span>截图卡片</span>
+          <span>分组收纳</span>
+          <span>置顶常驻</span>
+          <span>局域网分享</span>
+          <span>菜单栏面板</span>
+        </div>
         <button
           className="btn-primary welcome-btn"
           onClick={() => {
@@ -250,7 +245,7 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
             setTimeout(() => setWelcomeDone(true), 260)
           }}
         >
-          开始
+          开始使用
         </button>
       </div>
     )
@@ -264,18 +259,11 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
     setStep(next)
     onStepChange(next)
     setPos(null)
-    setHighlight(null)
   }
 
   return (
     <>
       <div className="tour-overlay" />
-      {highlight && (
-        <div
-          className="tour-highlight-box"
-          style={{ left: highlight.x, top: highlight.y, width: highlight.w, height: highlight.h }}
-        />
-      )}
       {pos && (
         <div
           key={step}
@@ -283,8 +271,15 @@ export function Onboarding({ onDone, onStepChange }: Props): React.JSX.Element {
           data-arrow={pos.arrow ?? 'none'}
           style={{ left: pos.x, top: pos.y }}
         >
-          <div className="tour-step">
-            第 {step + 1} / {STEPS.length} 步
+          <div className="tour-head">
+            <div className="tour-dots">
+              {STEPS.map((_, i) => (
+                <span key={i} className={i === step ? 'is-on' : i < step ? 'is-done' : ''} />
+              ))}
+            </div>
+            <div className="tour-step">
+              {step + 1} / {STEPS.length}
+            </div>
           </div>
           <h3>{s.title}</h3>
           <p>{s.desc}</p>

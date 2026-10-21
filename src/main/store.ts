@@ -172,6 +172,19 @@ export function getSettings(): Settings {
       saveSettings({ autoStartIds: cleaned })
     }
   }
+  // 置顶清单清洗：孤儿 id（项目已删）/ 组 id（组不参与置顶）会在置顶区留空位，加载时清掉并写回
+  if (!Array.isArray(settings.pinnedIds)) settings.pinnedIds = []
+  if (settings.pinnedIds.length > 0) {
+    const byId = new Map(listProjects().map((p) => [p.id, p]))
+    const cleaned = settings.pinnedIds.filter((id) => {
+      const p = byId.get(id)
+      return p && p.type !== 'group' && !p.parentId
+    })
+    if (cleaned.length !== settings.pinnedIds.length) {
+      settings = { ...settings, pinnedIds: cleaned }
+      saveSettings({ pinnedIds: cleaned })
+    }
+  }
   // 旧数据迁移：排序方式重做后 'manual' 已更名为 'none'（
   if ((settings.sortMode as string) === 'manual') settings.sortMode = 'none'
   // 旧数据迁移：动图速度语义重做（倍率 0.25~3 → 只因速 0~1），老值超出范围回落默认 0.5

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ExternalLink,
   FolderOpen,
@@ -7,6 +7,8 @@ import {
   MonitorPlay,
   Palette,
   Pencil,
+  Pin,
+  PinOff,
   Tag,
   Trash2,
   Ungroup,
@@ -33,10 +35,9 @@ import { ContextMenu, MenuItem } from './components/ContextMenu'
 import { DetailDrawer } from './components/DetailDrawer'
 import { GroupNameDialog } from './components/GroupNameDialog'
 import { GroupPreviewModal } from './components/GroupPreviewModal'
-import { GroupRow } from './components/GroupRow'
 import { Onboarding } from './components/Onboarding'
+import { PageHeader } from './components/PageHeader'
 import { ProjectFormModal } from './components/ProjectFormModal'
-import { ProjectRow } from './components/ProjectRow'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar, Category } from './components/Sidebar'
 import { TagColorSlider } from './components/TagColorSlider'
@@ -184,8 +185,6 @@ export default function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [search, setSearch] = useState('')
-  /** 搜索框是否展开（点搜索 icon / ⌘F 展开；Esc/再点 icon/失焦收起） */
-  const [searchOpen, setSearchOpen] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
   /** 多项目容器候选（S2，组预览勾选式）：确认后登记成组 */
   const [multi, setMulti] = useState<DetectMulti | null>(null)
@@ -468,13 +467,12 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('focus', onFocus)
   }, [statuses, previewImages])
 
-  // ⌘F 展开并聚焦搜索框（应用内快捷键；搜索改收起式后同步调整）
+  // ⌘F 聚焦搜索框（搜索框现在常显）
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
-        setSearchOpen(true)
-        requestAnimationFrame(() => searchRef.current?.focus())
+        searchRef.current?.focus()
       }
     }
     window.addEventListener('keydown', handler)
@@ -488,8 +486,6 @@ export default function App(): React.JSX.Element {
       if (showOnboarding) return
       if (action === 'add-project') setForm({ mode: 'manual' })
       else if (action === 'focus-search') searchRef.current?.focus()
-      else if (action === 'set-view-list') updateSettings({ view: 'list' })
-      else if (action === 'set-view-card') updateSettings({ view: 'card' })
       else if (action === 'settings' || action === 'settings-open') {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
@@ -764,10 +760,10 @@ export default function App(): React.JSX.Element {
     setDragId(p.id)
   }
 
-  // 自启项（PRD 3.5）；引导第 4 步演示：演示脚本自动出现在面板里（引导结束消失）
+  // 自启项（PRD 3.5）；引导第 5 步演示：演示脚本自动出现在面板里（引导结束消失）
   const autoStartItems = useMemo(() => {
     const ids =
-      showOnboarding && onboardStep >= 3
+      showOnboarding && onboardStep >= 4
         ? [...settings.autoStartIds, 'demo-script']
         : settings.autoStartIds
     return ids.map((id) => allProjects.find((p) => p.id === id)).filter(Boolean) as Project[]
@@ -776,14 +772,14 @@ export default function App(): React.JSX.Element {
   // 引导期演示脚本的卡片/行亮自启闪电标记（与面板内容一致）
   const autoStartIdsForUi = useMemo(
     () =>
-      showOnboarding && onboardStep >= 3
+      showOnboarding && onboardStep >= 4
         ? [...settings.autoStartIds, 'demo-script']
         : settings.autoStartIds,
     [settings.autoStartIds, showOnboarding, onboardStep]
   )
 
-  // 引导第 4 步自动滑出自启面板（演示脚本在里面）；其它步随真实开关状态
-  const autoStartVisible = autoStartOpen || (showOnboarding && onboardStep === 3)
+  // 引导第 5 步自动滑出自启面板（演示脚本在里面）；其它步随真实开关状态
+  const autoStartVisible = autoStartOpen || (showOnboarding && onboardStep === 4)
 
   const addToAutoStart = (id: string): void => {
     if (settings.autoStartIds.includes(id)) return
@@ -820,9 +816,9 @@ export default function App(): React.JSX.Element {
       const panel = document.querySelector('.autostart-panel')
       if (!panel || panel.contains(e.target as Node)) return
       if (autoStartBtnRef.current?.contains(e.target as Node)) return
-      // 按在项目行/卡片上=准备拖拽进面板，不能关（/21 实测反馈：一按下面板就关了，拖不进去）
-      if ((e.target as Element).closest('.project-row')) return
-      if ((e.target as Element).closest('.card')) return
+      // 按在项目行/卡片上=准备拖拽进面板，不能关（/21 实测反馈：一按下面板就关了，拖不进去）。
+      // 新卡片是 .wf-card / .folder-card，旧 .card 一并留着兜底
+      if ((e.target as Element).closest('.project-row, .card, .wf-card, .folder-card')) return
       setAutoStartOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -1047,7 +1043,10 @@ export default function App(): React.JSX.Element {
     for (const t of targets.filter((x) => x.type === 'group')) {
       childrenOf(t.id).forEach((c) => removedIds.add(c.id))
     }
-    updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => !removedIds.has(x)) })
+    updateSettings({
+      autoStartIds: settings.autoStartIds.filter((x) => !removedIds.has(x)),
+      pinnedIds: settings.pinnedIds.filter((x) => !removedIds.has(x))
+    })
     setBulkDelete(null)
     setSelectedIds(new Set())
     toast(`已移除 ${ids.length} 个项目`, 'success')
@@ -1070,6 +1069,10 @@ export default function App(): React.JSX.Element {
       setProjects((ps) =>
         ps.map((x) => (ids.includes(x.id) ? { ...x, parentId: group.id } : x)).concat(group)
       )
+      // 收进组的项目不能再置顶（置顶只认顶层），同步清掉
+      if (settings.pinnedIds.some((id) => ids.includes(id))) {
+        void updateSettings({ pinnedIds: settings.pinnedIds.filter((id) => !ids.includes(id)) })
+      }
       toast(`已创建「${group.name}」收纳 ${ids.length} 个项目，右键组可改名`, 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : '成组失败', 'error')
@@ -1190,6 +1193,15 @@ export default function App(): React.JSX.Element {
     setDragId(null)
     setSortOver(null)
     if (!id || !over || id === over.id) return
+    // 置顶区里的拖动 = 调整置顶先后（不写手动排序；标题顺序也跟着变）
+    if (settings.pinnedIds.includes(id) && settings.pinnedIds.includes(over.id)) {
+      const pins = [...settings.pinnedIds]
+      pins.splice(pins.indexOf(id), 1)
+      const to = pins.indexOf(over.id)
+      pins.splice(over.before ? to : to + 1, 0, id)
+      void updateSettings({ pinnedIds: pins })
+      return
+    }
     const order =
       settings.manualOrder.length > 0 ? [...settings.manualOrder] : projects.map((p) => p.id)
     const from = order.indexOf(id)
@@ -1225,6 +1237,22 @@ export default function App(): React.JSX.Element {
     if (!res.ok) toast(res.reason ?? '打开成品失败', 'error')
   }
 
+  /** 置顶/取消置顶（只对顶层普通项目；组和组内子项不参与）：主界面与菜单栏面板共用这份顺序 */
+  const handleTogglePin = async (p: Project): Promise<void> => {
+    if (p.type === 'group' || p.parentId) return
+    // 引导期的演示项目不写进置顶（假 id 会留在设置里，只能等下次启动清洗）
+    if (p.id.startsWith('demo-')) return
+    const pinned = settings.pinnedIds.includes(p.id)
+    const next = pinned
+      ? settings.pinnedIds.filter((id) => id !== p.id)
+      : [...settings.pinnedIds, p.id]
+    await updateSettings({ pinnedIds: next })
+    toast(
+      pinned ? `已取消置顶「${p.name}」` : `已置顶「${p.name}」，菜单栏面板顶部也能看到`,
+      'success'
+    )
+  }
+
   // 右键菜单项（随运行状态变化；PRD 3.3）
   const menuItems = (p: Project): MenuItem[] => {
     // 组（项目组）：不启动，编辑/解散/删除（解散组）
@@ -1250,6 +1278,14 @@ export default function App(): React.JSX.Element {
     }
     const items: MenuItem[] = []
     // 右键只提供项目管理动作；启动/停止和日志抽屉保留给左键界面。
+    if (!p.parentId) {
+      const pinned = settings.pinnedIds.includes(p.id)
+      items.push({
+        label: pinned ? '取消置顶' : '置顶',
+        icon: pinned ? <PinOff size={14} /> : <Pin size={14} />,
+        onClick: () => void handleTogglePin(p)
+      })
+    }
     items.push({
       label: '在浏览器打开',
       icon: <ExternalLink size={14} />,
@@ -1401,6 +1437,10 @@ export default function App(): React.JSX.Element {
         ...ps.map((p) => (movedIds.has(p.id) ? { ...p, parentId: group.id } : p)),
         ...added
       ])
+      // 被收进新组的项目不能再置顶（置顶只认顶层），同步清掉
+      if (movedIds.size > 0 && settings.pinnedIds.some((id) => movedIds.has(id))) {
+        void updateSettings({ pinnedIds: settings.pinnedIds.filter((id) => !movedIds.has(id)) })
+      }
       setMulti(null)
       // 新组登记完直接跳组页面
       setCategory(`group:${group.id}` as Category)
@@ -1489,7 +1529,10 @@ export default function App(): React.JSX.Element {
       deleteTarget.type === 'group'
         ? [deleteTarget.id, ...childrenOf(deleteTarget.id).map((c) => c.id)]
         : [deleteTarget.id]
-    updateSettings({ autoStartIds: settings.autoStartIds.filter((x) => !removedIds.includes(x)) })
+    updateSettings({
+      autoStartIds: settings.autoStartIds.filter((x) => !removedIds.includes(x)),
+      pinnedIds: settings.pinnedIds.filter((x) => !removedIds.includes(x))
+    })
     if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
   }
@@ -1683,12 +1726,18 @@ export default function App(): React.JSX.Element {
     if (!showOnboarding || onboardStep < 2) return statuses
     return { ...statuses, 'demo-app': { id: 'demo-app', status: 'running' as const, port: 5321 } }
   }, [statuses, showOnboarding, onboardStep])
-  const demoLanOf = (p: Project): string =>
-    p.id === 'demo-app' && showOnboarding && onboardStep >= 2
-      ? '192.168.1.8'
-      : settings.lanAccess
-        ? lanIp
-        : ''
+  // 页头大标题：按当前分类
+  const pageTitle = (() => {
+    if (category === 'all') return '全部项目'
+    if (category === 'service') return '本地服务'
+    if (category === 'web') return '网页文件'
+    if (category.startsWith('group:')) {
+      const g = allProjects.find((p) => p.id === category.slice(6))
+      return g?.name ?? '项目组'
+    }
+    if (category.startsWith('tag:')) return `#${category.slice(4)}`
+    return '全部项目'
+  })()
 
   return (
     <div
@@ -1777,18 +1826,19 @@ export default function App(): React.JSX.Element {
                 setSelectedIds(new Set())
                 setSelectedId(null)
               }}
-              searchOpen={searchOpen}
-              onSearchOpen={setSearchOpen}
-              view={settings.view}
-              onView={(v) => updateSettings({ view: v })}
-              sortMode={settings.sortMode}
-              onSort={(m) => updateSettings({ sortMode: m })}
               onAdd={handlePickFolder}
               onOpenAutoStart={() => setAutoStartOpen(!autoStartOpen)}
               autoStartCount={autoStartItems.length}
               autoStartEnabled={settings.autoStartEnabled}
               searchInputRef={searchRef}
               autoStartBtnRef={autoStartBtnRef}
+            />
+
+            <PageHeader
+              title={pageTitle}
+              count={visibleProjects.length}
+              sortMode={settings.sortMode}
+              onSort={(m) => updateSettings({ sortMode: m })}
             />
 
             <main
@@ -1817,76 +1867,6 @@ export default function App(): React.JSX.Element {
                 </div>
               ) : visibleProjects.length === 0 ? (
                 <div className="empty">没有符合条件的项目。</div>
-              ) : settings.view === 'list' ? (
-                listItems.map(({ p, header }) =>
-                  p.type === 'group' ? (
-                    // 组行（项目组）：展开/收起，子项由 listItems 顺序跟随
-                    <Fragment key={p.id}>
-                      {header && <div className="list-group-header">{header.label}</div>}
-                      <GroupRow
-                        group={p}
-                        onOpen={() => handleOpen(p)}
-                        childrenCount={childrenOf(p.id).length}
-                        onlineCount={
-                          childrenOf(p.id).filter((c) => statuses[c.id]?.status === 'running')
-                            .length
-                        }
-                        tagColor={tagColor}
-                        autoStartChecked={autoStartIdsForUi.includes(p.id)}
-                        onContextMenu={(e) => handleItemContextMenu(e, p)}
-                        selected={selectedIds.has(p.id)}
-                        onSelectToggle={(e) => toggleSelect(p.id, e)}
-                        // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
-                        //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
-                        sortDraggable={
-                          !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
-                        }
-                        dragging={dragId === p.id}
-                        onDragStart={(e) => handleRowDragStart(e, p)}
-                        onDragOver={(e) => handleSortDragOver(e, p, 'row')}
-                        onDragEnd={() => {
-                          setDragId(null)
-                          setSortOver(null)
-                        }}
-                        onDrop={(e) => handleRowDrop(e)}
-                      />
-                    </Fragment>
-                  ) : (
-                    <Fragment key={p.id}>
-                      {header && <div className="list-group-header">{header.label}</div>}
-                      <ProjectRow
-                        project={p}
-                        status={cardStatuses[p.id]}
-                        onOpen={() => handleOpen(p)}
-                        onStart={() => handleStart(p)}
-                        onStop={() => window.api.stopProject(p.id)}
-                        onContextMenu={(e) => handleItemContextMenu(e, p)}
-                        selected={selectedIds.has(p.id)}
-                        onSelectToggle={(e) => toggleSelect(p.id, e)}
-                        // 排序模式优先级最高：只有「无」（手动）排序可拖；自动排序下
-                        //   点开自启面板后可拖（拖入面板用，不做排序落点，2026-09-03 拍板）
-                        sortDraggable={
-                          !showOnboarding && (settings.sortMode === 'none' || autoStartOpen)
-                        }
-                        dragging={dragId === p.id}
-                        onDragStart={(e) => handleRowDragStart(e, p)}
-                        onDragOver={(e) => handleSortDragOver(e, p, 'row')}
-                        onDragEnd={() => {
-                          setDragId(null)
-                          setSortOver(null)
-                        }}
-                        onDrop={(e) => handleRowDrop(e)}
-                        autoStartChecked={autoStartIdsForUi.includes(p.id)}
-                        tagColor={tagColor}
-                        onOpenBrowser={() => handleOpenBrowser(p)}
-                        onViewPreview={() => handleViewPreview(p)}
-                        isChild={Boolean(p.parentId)}
-                        lanIp={demoLanOf(p)}
-                        onRehost={() => handleRehost(p)}
-                      />
-                    </Fragment>
-                  )
-                )
               ) : (
                 <CardView
                   items={listItems}
@@ -1916,6 +1896,8 @@ export default function App(): React.JSX.Element {
                   onRehost={handleRehost}
                   demoLanIp={showOnboarding && onboardStep >= 2 ? '192.168.1.8' : undefined}
                   previewOf={(p) => previewImages[p.id]}
+                  pinnedIds={settings.pinnedIds}
+                  onTogglePin={(p) => void handleTogglePin(p)}
                 />
               )}
             </main>

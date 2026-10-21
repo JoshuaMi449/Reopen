@@ -52,12 +52,7 @@ export function createAppMenu(): void {
     },
     {
       label: '视图',
-      submenu: [
-        { label: '列表视图', click: () => send('set-view-list') },
-        { label: '卡片视图', click: () => send('set-view-card') },
-        { type: 'separator' },
-        { label: '搜索', accelerator: 'CmdOrCtrl+F', click: () => send('focus-search') }
-      ]
+      submenu: [{ label: '搜索', accelerator: 'CmdOrCtrl+F', click: () => send('focus-search') }]
     },
     {
       label: '窗口',

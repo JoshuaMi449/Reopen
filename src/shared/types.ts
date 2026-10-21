@@ -235,8 +235,8 @@ export interface Settings {
   menubarColors?: import('./menubarTheme').MenubarColors
   /** 手动排序的 id 顺序（访达式"手动拖拽"排序） */
   manualOrder: string[]
-  /** 列表/卡片视图 */
-  view: 'list' | 'card'
+  /** 置顶项目 id（按置顶先后排；主界面「置顶」区与菜单栏面板顶部都按它显示） */
+  pinnedIds: string[]
   /** 当前排序方式（名称/最近打开/添加日期/种类/标签/无） */
   sortMode: 'name' | 'recent' | 'created' | 'type' | 'tag' | 'none'
   /** 种类排序的类型顺序（group=项目组「文件夹」/service/web；设置里拖动调整） */
@@ -308,7 +308,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   manualOrder: [],
-  view: 'card',
+  pinnedIds: [],
   sortMode: 'recent',
   typeOrder: ['group', 'service', 'web'],
   tagOrder: [],

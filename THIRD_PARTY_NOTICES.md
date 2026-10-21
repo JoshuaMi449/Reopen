@@ -45,3 +45,12 @@ SOFTWARE.
 ## 再分发前的处理
 
 要发布一个权利清晰的安装包，优先用原创或具有明确再分发许可的动画替换待核实素材，并在打包清单中逐项记录来源和许可。仅写署名或“仅供学习”不能代替权利人许可。既有 v1.1.0 安装包已经含有上述动画文件；本说明不会追溯改变它们的授权状态。
+
+## 字体（2026-10-21 加入）
+
+| 字体 | 用途 | 授权 | 来源 |
+| --- | --- | --- | --- |
+| Inter | 拉丁字母与数字（界面字体） | SIL Open Font License 1.1 | https://github.com/rsms/inter |
+| Smiley Sans（得意黑） | 中文大标题（展示字体） | SIL Open Font License 1.1 | https://github.com/atelier-anchor/smiley-sans |
+
+两者均以 woff2 形式打包在 `src/renderer/src/assets/fonts/`（离线可用），未修改字形；中文正文仍使用系统苹方（如已安装 MiSans / HarmonyOS Sans 则优先使用）。

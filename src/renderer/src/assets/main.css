@@ -2,6 +2,27 @@
    六套主题（PRD 3.8）：莫兰迪（默认）/海洋/石墨 × 亮暗，CSS 变量驱动；
    风格由 <html data-theme> 切换，亮暗由 <html class="dark"> 切换（theme.ts 应用）。 */
 
+/* 字体（2026-10-21）：
+   - Inter：拉丁/数字（与参考界面同款几何无衬线，打包在本地，离线可用）
+   - 中文正文：系统苹方 PingFang SC（若装了 MiSans / HarmonyOS Sans 优先用）
+   - 大标题：得意黑 Smiley Sans（展示字体，中文字形有性格）
+   授权：Inter 与得意黑均为 SIL Open Font License 1.1，见 THIRD_PARTY_NOTICES.md */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Smiley Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/smiley-sans.woff2') format('woff2');
+}
+
 /* ---- 六套主题全量配色（不止背景，所有颜色搭配对齐参考主题样式） ----
    映射：莫兰迪浅←macOS 白灰（石墨强调）/ 海洋浅←ocean-light / 石墨浅←默认 light（黑白灰）；
          莫兰迪深←macOS 黑灰 / 海洋深←ocean-dark / 石墨深←默认 dark。
@@ -157,7 +178,9 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  font-family:
+    'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'MiSans', 'HarmonyOS Sans SC',
+    'Helvetica Neue', sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
@@ -3562,18 +3585,6 @@ html.dark .settings-card {
   margin-bottom: 9px;
 }
 
-.welcome-line3 {
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-/* 欢迎幕补充介绍：上方留空行，与上面内容隔开 */
-.welcome-line4 {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-top: 18px;
-}
-
 .welcome-btn {
   margin-top: 38px;
   padding: 10px 44px;
@@ -3588,26 +3599,17 @@ html.dark .settings-card {
   animation: tour-fade-in 0.25s ease-out;
 }
 
-/* 目标元素浮起到蒙层之上（描边由下方独立的 tour-highlight-box 负责，可平滑滑动） */
+/* 目标元素浮起到蒙层之上；不再画外框，用淡色底 + 提亮表示 */
 .tour-highlight {
   position: relative !important;
   z-index: 901 !important;
-  background: var(--card) !important;
+  background: color-mix(in srgb, var(--primary-strong) 10%, var(--card)) !important;
+  border-radius: 8px;
 }
 
 /* 日志区浮起保持深色终端底——var(--card) 覆盖会让日志发白 */
 .tour-highlight[data-tour='log-panel'] {
   background: #23202a !important;
-}
-
-.tour-highlight-box {
-  position: fixed;
-  z-index: 901;
-  border: 2px solid var(--primary-strong);
-  /* 圆角与 macOS 窗口圆角一致（侧栏框内缩后四边与窗口边距=圆角半径，视觉同心） */
-  border-radius: 12px;
-  pointer-events: none;
-  animation: tour-fade-in 0.25s ease-out;
 }
 
 /* 半透明卡片（color-mix 保持主题感知；毛玻璃模糊背后文字，避免与主界面文字重叠；
@@ -5227,3 +5229,1114 @@ body > .arc-picker { z-index:100000; }
 .arc-picker.is-dragging-color .arc-saved-color { box-shadow:inset 0 0 0 2px #fff,0 0 0 1px #0007,0 2px 7px #0005; cursor:copy; }
 .arc-palette-color.is-empty { background:linear-gradient(45deg,#aaa 25%,transparent 25% 75%,#aaa 75%),linear-gradient(45deg,#aaa 25%,#fff 25% 75%,#aaa 75%); background-position:0 0,4px 4px; background-size:8px 8px; opacity:.42; }
 .arc-confirmed-color:disabled { cursor:default; }
+
+/* ============================================================
+   2026-10-21 主界面重做（参考 Floe）
+   —— 左栏导航 / 常显搜索 / 大标题 + 筛选药丸 /
+      组=文件夹卡、项目=网页静态截图卡
+   只覆盖主窗口的布局与卡片，列表行、抽屉、设置、托盘不动
+   ============================================================ */
+
+/* ---------- 整体：去掉浮动卡，改成左栏 + 内容两层 ---------- */
+
+.app {
+  background: var(--bg);
+}
+
+.app-right {
+  padding: 0;
+  gap: 0;
+}
+
+.app-body {
+  gap: 0;
+}
+
+.app-main {
+  background: var(--card);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---------- 侧边栏 ---------- */
+
+.sidebar {
+  width: 208px;
+  padding: 46px 12px 12px;
+  gap: 6px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+/* 顶部红绿灯可拖区同宽（原写死 190px） */
+.sidebar::before {
+  width: 208px;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 14px;
+}
+
+.sidebar-logo-word {
+  height: 22px;
+  margin-left: 0;
+}
+
+.sidebar-nav {
+  gap: 2px;
+}
+
+.sidebar-item {
+  padding: 8px 10px;
+  gap: 9px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.sidebar-item:hover {
+  background: var(--hover);
+}
+
+/* 选中态：浅灰药丸（参考界面），不再是主色实底 */
+.sidebar-item-active,
+.sidebar-item-active:hover {
+  background: var(--hover);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sidebar-item-active .sidebar-count {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.sidebar-icon {
+  color: var(--text-dim);
+}
+
+.sidebar-item-active .sidebar-icon {
+  color: var(--text);
+}
+
+.sidebar-count {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sidebar-tags {
+  gap: 1px;
+}
+
+/* 区块标题：参考界面是无衬线小字，去掉虚线 */
+.sidebar-section-title {
+  padding: 14px 10px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.sidebar-section-title::after {
+  display: none;
+}
+
+.sidebar-tag-icon {
+  color: var(--text-dim);
+}
+
+.sidebar-item-active .sidebar-tag-icon {
+  color: var(--text-dim);
+}
+
+/* 底部：运行状态 + 设置行 */
+.sidebar-bottom-area {
+  gap: 2px;
+  margin-top: auto;
+}
+
+.sidebar-running {
+  justify-content: flex-start;
+  margin-left: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sidebar-running-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-bottom {
+  padding: 0;
+}
+
+.sidebar-settings-btn {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--text);
+}
+
+.sidebar-settings-btn:hover {
+  background: var(--hover);
+}
+
+.sidebar-settings-label {
+  font-size: 13px;
+}
+
+.sidebar-settings-btn .update-dot {
+  top: 9px;
+  left: 22px;
+  right: auto;
+}
+
+/* ---------- 顶部：常显搜索 + 添加药丸 ---------- */
+
+.toolbar {
+  height: 64px;
+  padding: 0 28px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.search-box {
+  width: 100%;
+  max-width: 400px;
+  min-width: 96px;
+  flex: 1 1 auto;
+  padding: 8px 10px;
+  opacity: 1;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--input-bg);
+}
+
+.search-box:focus-within {
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.search-box input {
+  font-size: 13px;
+}
+
+.search-kbd {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.toolbar-right {
+  gap: 8px;
+}
+
+.add-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  height: 34px;
+  padding: 0 15px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  -webkit-app-region: no-drag;
+  transition:
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.16s ease;
+}
+
+.add-pill:hover {
+  opacity: 0.86;
+  transform: translateY(-1px);
+}
+
+.add-pill:active {
+  transform: translateY(0);
+}
+
+/* ---------- 页头：大标题 + 数量 + 筛选药丸 ---------- */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-shrink: 0;
+  padding: 26px 28px 0;
+}
+
+.page-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.page-title {
+  min-width: 0;
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-chip,
+.sec-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.page-filters {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.filter-pill:hover,
+.filter-pill-on {
+  background: var(--hover);
+}
+
+.filter-menu {
+  min-width: 150px;
+}
+
+/* ---------- 内容区与分节 ---------- */
+
+.project-list {
+  padding: 0 28px 36px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 26px 0 14px;
+}
+
+.sec-title {
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.sec-chip {
+  height: 20px;
+  font-size: 11px;
+}
+
+/* 列宽固定 220 / 间距 12：与右栏对齐规则绑定 ——
+   详情抽屉 456=2 列、自启面板 224=1 列，1200 窗口无面板时正好 4 列。
+   这三者的数字不能各自改。 */
+.card-grid {
+  grid-template-columns: repeat(auto-fill, 220px);
+  justify-content: center;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.list-group-header {
+  padding: 4px 2px 0;
+}
+
+/* ---------- 组卡：文件夹 ---------- */
+
+.folder-grid {
+  align-items: start;
+}
+
+.folder-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 140px;
+  padding: 34px 16px 14px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 整块文件夹轮廓（SVG 一体成形），填充/描边随组色与主题走 */
+.folder-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: filter 0.18s ease;
+}
+
+.folder-shape path {
+  fill: color-mix(in srgb, hsl(var(--fh) 60% 60%) 16%, var(--card));
+  stroke: none;
+  transition: fill 0.18s ease;
+}
+
+.folder-card:hover {
+  transform: translateY(-2px);
+}
+
+.folder-card:hover .folder-shape {
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.1));
+}
+
+.folder-card:hover .folder-shape path {
+  fill: color-mix(in srgb, hsl(var(--fh) 60% 60%) 23%, var(--card));
+}
+
+.folder-card.selected .folder-shape path {
+  stroke: var(--primary-strong);
+  stroke-width: 2;
+}
+
+.folder-card.dragging {
+  opacity: 0.45;
+}
+
+/* 文字层必须压在 SVG 轮廓之上（绝对定位的 SVG 会盖住静态内容） */
+.folder-name,
+.folder-port,
+.folder-foot,
+.folder-zap {
+  position: relative;
+  z-index: 1;
+}
+
+.folder-kebab {
+  top: 26px;
+  right: 12px;
+  background: color-mix(in srgb, var(--card) 74%, transparent);
+}
+
+.folder-zap {
+  display: inline-flex;
+  color: var(--primary-strong);
+  align-self: flex-start;
+}
+
+.folder-name {
+  margin-top: auto;
+  padding-right: 26px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-port {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.folder-port:hover {
+  color: var(--text);
+}
+
+.folder-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+
+.folder-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.folder-online.is-on {
+  color: var(--text);
+}
+
+.folder-online.is-on::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+/* ---------- 项目卡：截图 + 白色信息板 ---------- */
+
+.wf-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  cursor: pointer;
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.wf-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text) 15%);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.1);
+}
+
+.wf-card.selected {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-strong) 32%, transparent);
+}
+
+.wf-card.dragging {
+  opacity: 0.45;
+}
+
+.wf-card-failed {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+}
+
+.wf-thumb {
+  position: relative;
+  flex-shrink: 0;
+  height: 118px;
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+.wf-thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 110% at 12% 0%, rgba(255, 255, 255, 0.34), transparent 56%),
+    radial-gradient(95% 90% at 100% 100%, rgba(0, 0, 0, 0.16), transparent 62%);
+  pointer-events: none;
+}
+
+.wf-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0) 45%);
+  pointer-events: none;
+}
+
+.wf-thumb-icon {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+/* 占位图标：毛玻璃圆角块，别让空卡显得廉价 */
+.wf-thumb-glass {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+/* 右上角更多按钮（白胶囊，参考界面） */
+.wf-kebab {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(14px);
+  opacity: 0.88;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.wf-card:hover .wf-kebab,
+.folder-card:hover .wf-kebab {
+  opacity: 1;
+}
+
+.wf-kebab:hover {
+  transform: scale(1.06);
+}
+
+/* 信息板：压在截图下沿，圆角上缘露出截图 */
+.wf-plate {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: -16px;
+  padding: 12px 14px 13px;
+  border-radius: 18px 18px 0 0;
+  background: var(--card);
+}
+
+.wf-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 14px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.wf-meta.is-failed {
+  color: var(--danger);
+}
+
+.wf-meta-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 类型小图标（服务/网页）：截图卡上也保留类型线索 */
+.wf-type {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.wf-meta-text i {
+  margin: 0 5px;
+  font-style: normal;
+  opacity: 0.5;
+}
+
+.wf-zap {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--primary-strong);
+}
+
+.wf-title {
+  margin-top: 3px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  margin-top: 11px;
+}
+
+.wf-run {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.wf-run:hover {
+  background: var(--text);
+  color: var(--bg);
+  transform: scale(1.06);
+}
+
+.wf-port {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.wf-port:hover {
+  text-decoration: underline;
+}
+
+.wf-port-off {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.wf-port-off:hover {
+  text-decoration: none;
+}
+
+.wf-spacer {
+  flex: 1;
+}
+
+.wf-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.wf-tag-more {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.wf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 76px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wf-fail {
+  color: var(--danger);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wf-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.wf-lan-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 14px;
+}
+
+.wf-lan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.wf-lan:hover {
+  color: var(--text);
+}
+
+.wf-lan i {
+  flex-shrink: 0;
+  color: var(--ok);
+  font-style: normal;
+}
+
+.wf-lan-blocked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.wf-copy-fail {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  text-decoration: underline;
+}
+
+.wf-copy-fail:hover {
+  color: var(--text);
+}
+
+.wf-rehost {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text);
+  font-size: 10px;
+  transition: border-color 0.2s ease;
+}
+
+.wf-rehost.is-flash {
+  border-color: var(--text);
+}
+
+/* 列表视图的行也换圆角，贴合新视觉 */
+.project-row {
+  border-radius: 14px;
+}
+
+.empty {
+  margin-top: 64px;
+}
+
+
+/* 右栏（详情抽屉/自启面板）跟随扁平布局：去掉圆角浮卡感，改成分栏细线 */
+.drawer,
+.autostart-panel {
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--card);
+}
+
+/* ---------- 置顶 ---------- */
+
+.sec-icon {
+  display: inline-flex;
+  color: var(--text-dim);
+}
+
+.wf-pin {
+  position: absolute;
+  top: 10px;
+  right: 44px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translateX(4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+/* 悬停露出；已置顶的常亮并实心 */
+.wf-card:hover .wf-pin,
+.wf-pin.is-pinned {
+  opacity: 1;
+  transform: none;
+}
+
+.wf-pin.is-pinned {
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--text);
+}
+
+/* 置顶 = 实心图钉（未置顶是描边），比整块变黑克制 */
+.wf-pin.is-pinned svg {
+  fill: currentColor;
+}
+
+.wf-pin:hover {
+  transform: scale(1.06);
+}
+
+/* 菜单栏面板：置顶分组标题 */
+.tray-group-title .tray-group-pin {
+  display: inline-flex;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+/* ---------- 新手引导（重做：与新卡片界面一致） ---------- */
+
+.welcome {
+  background:
+    radial-gradient(
+      120% 85% at 50% -10%,
+      color-mix(in srgb, var(--hover) 85%, transparent),
+      transparent 62%
+    ),
+    var(--bg);
+}
+
+.welcome-logo {
+  width: 84px;
+  height: 84px;
+  margin-bottom: 26px;
+}
+
+.welcome-line1 {
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  margin-bottom: 14px;
+}
+
+.welcome-line2 {
+  font-size: 15px;
+  color: var(--text);
+  opacity: 0.72;
+}
+
+.welcome-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 560px;
+  margin-top: 26px;
+}
+
+.welcome-pills span {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-dim);
+  font-size: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.welcome-btn {
+  margin-top: 34px;
+  padding: 11px 40px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 引导卡：圆角、毛玻璃、进度点 */
+.tour-card {
+  width: 330px;
+  padding: 18px 20px 16px;
+  /* 实心底：背后大标题不会透上来和卡片文字打架 */
+  background: var(--card);
+  border-radius: 18px;
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.tour-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tour-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+
+.tour-dots span.is-done {
+  background: color-mix(in srgb, var(--text-dim) 55%, var(--border));
+}
+
+.tour-dots span.is-on {
+  width: 18px;
+  background: var(--text);
+}
+
+.tour-step {
+  margin-bottom: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+}
+
+.tour-card h3 {
+  font-size: 17px;
+  letter-spacing: -0.2px;
+  margin: 2px 0 8px;
+}
+
+.tour-card p {
+  line-height: 1.8;
+}
+
+.tour-actions {
+  margin-top: 16px;
+}
+
+.tour-actions .btn-primary,
+.tour-actions .btn-secondary {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+/* 图钉是绝对定位按钮：高亮时不能被 .tour-highlight 改成 relative（会掉进文档流） */
+.wf-pin.tour-highlight {
+  position: absolute !important;
+  top: 10px !important;
+  right: 44px !important;
+  opacity: 1;
+  transform: none;
+}
+
+
+/* 添加按钮是深色药丸：高亮时不能被 .tour-highlight 的卡底色盖掉（白字白底=按钮消失） */
+[data-tour='add'].tour-highlight {
+  background: var(--text) !important;
+  color: var(--bg) !important;
+}
+
+/* 键盘 Tab 到图钉时也能看见（平时悬停才出现） */
+.wf-pin:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+
+
+/* 引导：局域网链接在卡片的信息板里，板子自己有 z-index 层叠上下文，
+   单抬链接抬不出蒙层——把整张卡抬上去（整卡提亮，链接再单独变药丸） */
+.wf-card:has(.tour-highlight) {
+  z-index: 902 !important;
+}
+
+/* 局域网链接自身：淡色药丸 + 深字，没有外框也能看清是这一步的目标 */
+.wf-lan.tour-highlight {
+  padding: 3px 8px;
+  margin-left: -8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--primary-strong) 16%, var(--card)) !important;
+  color: var(--text) !important;
+}
+
+
+/* 大标题用得意黑：它是展示字体（唯一字重），粗细节奏本身就带个性 */
+.page-title,
+.welcome-line1 {
+  font-family: 'Smiley Sans', 'Inter', 'PingFang SC', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
