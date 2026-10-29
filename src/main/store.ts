@@ -2,10 +2,11 @@
 // 存到 app.getPath('userData') = ~/Library/Application Support/Reopen/（PRD 四·数据）
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { NewProjectInput, Project, Settings } from '../shared/types'
 import { DEFAULT_SETTINGS } from '../shared/types'
+import { backupDaily, writeJsonAtomic } from './safeWrite'
 
 let projects: Project[] = []
 let loaded = false
@@ -90,9 +91,15 @@ function migrateRootEntry(list: Project[]): boolean {
   return changed
 }
 
+/** 备份目录：userData/backups/（按天留存，见 safeWrite.backupDaily） */
+function backupDir(): string {
+  return join(app.getPath('userData'), 'backups')
+}
+
 function persist(): void {
-  mkdirSync(app.getPath('userData'), { recursive: true })
-  writeFileSync(dataFile(), JSON.stringify(projects, null, 2), 'utf-8')
+  const file = dataFile()
+  backupDaily(file, backupDir())
+  writeJsonAtomic(file, projects)
 }
 
 export function addProject(input: NewProjectInput): Project {
@@ -109,6 +116,18 @@ export function addProject(input: NewProjectInput): Project {
 export function deleteProject(id: string): void {
   projects = projects.filter((p) => p.id !== id)
   persist()
+}
+
+/** 撤销删除：把删掉的档案原样放回（保留原 id / 创建时间 / 组关系），已存在的不重复加 */
+export function restoreProjects(list: Project[]): void {
+  let changed = false
+  for (const p of list) {
+    if (!projects.some((x) => x.id === p.id)) {
+      projects.push(p)
+      changed = true
+    }
+  }
+  if (changed) persist()
 }
 
 export function updateProject(id: string, input: Partial<NewProjectInput>): Project {
@@ -213,7 +232,8 @@ export function getSettings(): Settings {
 export function saveSettings(patch: Partial<Settings>): Settings {
   const current = getSettings()
   settings = { ...current, ...patch }
-  mkdirSync(app.getPath('userData'), { recursive: true })
-  writeFileSync(settingsFile(), JSON.stringify(settings, null, 2), 'utf-8')
+  const file = settingsFile()
+  backupDaily(file, backupDir())
+  writeJsonAtomic(file, settings)
   return settings
 }

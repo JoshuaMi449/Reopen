@@ -13,7 +13,9 @@ import {
   Info,
   List,
   MemoryStick,
+  Pause,
   PawPrint,
+  Play,
   Pin,
   Power,
   RefreshCw,
@@ -28,7 +30,7 @@ import type {
   SystemInfo,
   TrayCharacterItem
 } from '../../../shared/types'
-import { projectCategory } from '../../../shared/types'
+import { isPureWeb, projectCategory } from '../../../shared/types'
 import wordmark from '../assets/wordmark.png'
 // 「查看项目状态」格子的菜单栏 logo 素材（用户提供：黑=浅色系统用，白=暗色系统用，CSS 随系统切换）
 import trayProjectsLight from '../assets/tray-projects-light.png'
@@ -1230,7 +1232,7 @@ function ProjectsView(props: {
   )
 }
 
-/** 项目行（只读：点行在浏览器打开，不在面板启停） */
+/** 项目行：点行在浏览器打开；服务类可直接在面板里启停（纯网页常驻，没有启停概念） */
 function ProjectRow(props: {
   p: Project
   statuses: Record<string, ProjectStatusEvent>
@@ -1239,10 +1241,30 @@ function ProjectRow(props: {
   const { p, statuses, onOpen } = props
   const st = statuses[p.id]?.status ?? 'stopped'
   const port = statuses[p.id]?.port ?? p.port
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const canRun = !isPureWeb(p)
+  const running = st === 'running' || st === 'starting'
+
+  const toggle = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    setBusy(true)
+    setErr(null)
+    try {
+      if (running) await window.api.stopProject(p.id)
+      else {
+        const r = await window.api.startProject(p.id)
+        if (!r.ok) setErr(r.reason ?? '启动失败')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div
       className={`tray-item ${st === 'failed' ? 'tray-item-failed' : ''}`}
-      title={st === 'failed' ? statuses[p.id]?.reason : undefined}
+      title={err ?? (st === 'failed' ? statuses[p.id]?.reason : undefined)}
       onClick={() => onOpen(p)}
     >
       <span className={`status-dot dot-${st}`} />
@@ -1250,7 +1272,21 @@ function ProjectRow(props: {
         {projectCategory(p) === 'service' ? <Folder size={13} /> : <FileCode2 size={13} />}
       </span>
       <span className="tray-item-name">{p.name}</span>
-      <span className="tray-item-port">{port ? `:${port}` : ''}</span>
+      {err ? (
+        <span className="tray-item-err">{err.length > 10 ? `${err.slice(0, 10)}…` : err}</span>
+      ) : (
+        <span className="tray-item-port">{port ? `:${port}` : ''}</span>
+      )}
+      {canRun && (
+        <button
+          className="tray-item-run"
+          title={running ? '停止' : '启动'}
+          disabled={busy}
+          onClick={(e) => void toggle(e)}
+        >
+          {running ? <Pause size={11} /> : <Play size={11} />}
+        </button>
+      )}
       <ExternalLink size={13} className="tray-item-action" />
     </div>
   )

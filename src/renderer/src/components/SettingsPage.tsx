@@ -77,6 +77,12 @@ export function SettingsPage({
   )
   /** 通知授权状态（native 查询；null=查询中按已授权处理不误伤开关） */
   const [notifAuth, setNotifAuth] = useState<'authorized' | 'denied' | 'notDetermined' | null>(null)
+  /** 备份目录与已留存份数（资料库组「自动备份」行） */
+  const [backupInfo, setBackupInfo] = useState<{ dir: string; count: number } | null>(null)
+  /** 上次保存后仍被别的软件占用的快捷键（非空=在快捷键组顶部亮红字） */
+  const [shortcutWarning, setShortcutWarning] = useState<string[] | null>(null)
+  /** 清理旧日志的结果文案 */
+  const [cleanupMsg, setCleanupMsg] = useState<string | null>(null)
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -98,6 +104,7 @@ export function SettingsPage({
     }
     window.api.getSettings().then(setSettings)
     window.api.listProjects().then(setProjects)
+    void window.api.getBackupInfo().then(setBackupInfo)
     refreshEnv()
     window.addEventListener('focus', refreshEnv)
     return () => window.removeEventListener('focus', refreshEnv)
@@ -117,7 +124,19 @@ export function SettingsPage({
   const update = useCallback(async (patch: Partial<Settings>): Promise<void> => {
     const saved = await window.api.saveSettings(patch)
     setSettings(saved)
+    // 快捷键被别的软件占用时主进程会整体回滚到上一次的绑定，这里把失败的组合亮出来
+    if ('hotkey' in patch || 'quickLaunch' in patch) {
+      const failed = await window.api.getShortcutFailures()
+      setShortcutWarning(failed.length > 0 ? failed : null)
+    }
   }, [])
+
+  /** 分组重置：只动列出的字段，永远不碰项目清单（projects.json 是另一个文件） */
+  const resetGroup = (keys: (keyof Settings)[]): void => {
+    const patch: Partial<Settings> = {}
+    for (const k of keys) (patch as Record<string, unknown>)[k] = DEFAULT_SETTINGS[k]
+    void update(patch)
+  }
 
   /** 拖放导入素材：复制进角色库 → 打开角色弹窗并弹命名窗口（命名确认后设为当前角色） */
   const handleTrayDrop = async (e: React.DragEvent): Promise<void> => {
@@ -551,6 +570,11 @@ export function SettingsPage({
 
   const shortcuts = (
     <div className="settings-group">
+      {shortcutWarning && (
+        <div className="settings-shortcut-warning">
+          这些快捷键已被别的软件占用，已恢复原来的设置：{shortcutWarning.join('、')}
+        </div>
+      )}
       <div className="settings-card">
         <SettingRow
           label="全局唤起窗口"
@@ -673,8 +697,47 @@ export function SettingsPage({
           </button>
         </SettingRow>
         <SettingRow label="导入资料库" hint="从 JSON 文件恢复项目清单和设置（与现有项目合并）">
-          <button className="btn-secondary" onClick={() => window.api.importData()}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              void window.api.importData().then((ok) => {
+                if (!ok) return
+                void window.api.listProjects().then(setProjects)
+              })
+            }}
+          >
             导入…
+          </button>
+        </SettingRow>
+        <SettingRow
+          label="自动备份"
+          hint={
+            backupInfo
+              ? `每天首次改动前存一份，保留最近 10 天（当前 ${backupInfo.count} 份）`
+              : '每天首次改动前存一份，保留最近 10 天'
+          }
+        >
+          <button
+            className="btn-secondary"
+            onClick={() => backupInfo && void window.api.revealInFolder(backupInfo.dir)}
+            disabled={!backupInfo}
+          >
+            打开备份文件夹
+          </button>
+        </SettingRow>
+        <SettingRow
+          label="清理旧日志"
+          hint={cleanupMsg ?? '删除 7 天没有更新的项目日志目录，不影响项目本身'}
+        >
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              void window.api
+                .cleanupLogs()
+                .then((n) => setCleanupMsg(n > 0 ? `已清理 ${n} 个` : '没有需要清理的'))
+            }}
+          >
+            清理
           </button>
         </SettingRow>
       </div>
@@ -730,6 +793,45 @@ export function SettingsPage({
       </div>
       <div className="settings-subtitle">开源协议</div>
       <div className="settings-about-line">MIT License</div>
+
+      {/* 分组重置：只动设置，不动项目清单；不提供「一键恢复全部」，避免误清数据 */}
+      <div className="settings-subtitle">重置</div>
+      <div className="settings-card">
+        <SettingRow label="外观" hint="主题、亮暗、特殊风格恢复默认">
+          <button
+            className="btn-secondary"
+            onClick={() => resetGroup(['theme', 'darkMode', 'specialStyle'])}
+          >
+            重置
+          </button>
+        </SettingRow>
+        <SettingRow label="快捷键" hint="全局唤起与项目快捷启动恢复默认">
+          <button className="btn-secondary" onClick={() => resetGroup(['hotkey', 'quickLaunch'])}>
+            重置
+          </button>
+        </SettingRow>
+        <SettingRow
+          label="排序与标签"
+          hint="排序方式、置顶、手动顺序、标签颜色恢复默认；不会删项目"
+        >
+          <button
+            className="btn-secondary"
+            onClick={() =>
+              resetGroup([
+                'manualOrder',
+                'pinnedIds',
+                'sortMode',
+                'typeOrder',
+                'tagOrder',
+                'groupOrder',
+                'tagColors'
+              ])
+            }
+          >
+            重置
+          </button>
+        </SettingRow>
+      </div>
 
       {/* 环境监测（项目要什么运行时一目了然，没装给安装官网，与参考主题一致） */}
       <div className="settings-subtitle">环境监测</div>

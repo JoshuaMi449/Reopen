@@ -23,6 +23,7 @@ const api: ReopenApi = {
   addProject: (input: NewProjectInput) => ipcRenderer.invoke('project:add', input),
   updateProject: (id, input) => ipcRenderer.invoke('project:update', id, input),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
+  restoreProjects: (list) => ipcRenderer.invoke('project:restore', list),
   createGroup: (ids: string[], name?: string) =>
     ipcRenderer.invoke('project:create-group', ids, name),
   ungroup: (id: string) => ipcRenderer.invoke('project:ungroup', id),
@@ -75,9 +76,15 @@ const api: ReopenApi = {
   setLaunchAtLogin: (v) => ipcRenderer.invoke('app:set-login', v),
   exportData: () => ipcRenderer.invoke('data:export'),
   importData: () => ipcRenderer.invoke('data:import'),
+  exportLogs: (content, name) => ipcRenderer.invoke('logs:export', content, name),
+  openTerminal: (dir) => ipcRenderer.invoke('shell:open-terminal', dir),
+  getBackupInfo: () => ipcRenderer.invoke('data:backup-info'),
+  cleanupLogs: () => ipcRenderer.invoke('logs:cleanup'),
+  getShortcutFailures: () => ipcRenderer.invoke('shortcuts:failures'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   revealInFolder: (path) => ipcRenderer.invoke('shell:reveal-in-folder', path),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (url, version) => ipcRenderer.invoke('update:download', url, version),
   onMenuAction: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, action: string): void => cb(action)
     ipcRenderer.on('app:menu-action', listener)
@@ -87,6 +94,11 @@ const api: ReopenApi = {
     const listener = (_e: Electron.IpcRendererEvent, s: Settings): void => cb(s)
     ipcRenderer.on('settings:changed', listener)
     return () => ipcRenderer.removeListener('settings:changed', listener)
+  },
+  onProjectsChanged: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('projects:changed', listener)
+    return () => ipcRenderer.removeListener('projects:changed', listener)
   },
   onStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, event: ProjectStatusEvent): void => cb(event)

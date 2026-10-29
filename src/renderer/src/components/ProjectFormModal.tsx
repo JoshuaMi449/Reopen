@@ -17,6 +17,8 @@ interface Props {
   project?: Project
   /** 已有标签：联想下拉的数据源 */
   existingTags: string[]
+  /** 其它项目已占用的访客地址名（表单里做唯一性校验） */
+  slugsInUse?: string[]
   onSubmit(input: NewProjectInput): void
   onCancel(): void
 }
@@ -143,6 +145,7 @@ export function ProjectFormModal({
   detect,
   project,
   existingTags,
+  slugsInUse,
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
@@ -155,6 +158,8 @@ export function ProjectFormModal({
   // PRD 3.2：启动后开浏览器默认关（两种类型都是）
   const [openBrowser, setOpenBrowser] = useState(init.openBrowser)
   const [note, setNote] = useState(init.note)
+  /** 访客地址名（统一入口 /rp/<slug>/ 的那一段；识别时自动生成，可改） */
+  const [slug, setSlug] = useState(init.lanSlug ?? '')
   /** 标签文本：已选标签直接显示在输入框里，逗号分隔可直接编辑（ */
   const [tagText, setTagText] = useState(() => init.tags.join(', '))
   /** 端口冲突（输入时实时查重：档案撞车=project / 本机被监听=system） */
@@ -223,6 +228,14 @@ export function ProjectFormModal({
   const commandMissing = type === 'service' && !command.trim()
   const pathMissing = !path.trim()
 
+  // 访客地址名：只许小写字母/数字/连字符，2–32 位，且不能和别的项目撞车
+  const slugTrim = slug.trim().toLowerCase()
+  const slugInvalid = slugTrim.length > 0 && !/^[a-z0-9-]{2,32}$/.test(slugTrim)
+  const slugTaken =
+    slugTrim.length > 0 &&
+    slugTrim !== (init.lanSlug ?? '') &&
+    (slugsInUse ?? []).includes(slugTrim)
+
   const submit = (): void => {
     const portNum = Number(port.trim())
     const finalPort = port.trim() && !Number.isNaN(portNum) ? portNum : undefined
@@ -248,8 +261,8 @@ export function ProjectFormModal({
       launchModes,
       activeMode: init.activeMode,
       portSource: init.portSource,
-      // 统一入口：路由名与 JS 扫描结果由识别生成，表单不编辑，原样带进档案
-      lanSlug: init.lanSlug,
+      // 统一入口：访客地址名可改（清空=保留识别时生成的那个），JS 扫描结果原样带进档案
+      lanSlug: type === 'group' ? init.lanSlug : slugTrim || init.lanSlug,
       lanSuspicious: init.lanSuspicious,
       openBrowser,
       note: note.trim(),
@@ -291,6 +304,17 @@ export function ProjectFormModal({
             <span>名称</span>
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </label>
+
+          {type !== 'group' && (
+            <label>
+              <span>访客地址名</span>
+              <input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                placeholder="小写字母、数字、连字符，2–32 位；留空则用自动生成的"
+              />
+            </label>
+          )}
 
           {/* 辨认小字（用户拖进来的项目名称下都有小字——
               网页类显示读到的 <title>（英文文件名也能认出是哪个网站）；
@@ -473,10 +497,20 @@ export function ProjectFormModal({
         <div className="modal-actions">
           {commandMissing && <span className="form-error">本地服务需要填启动命令</span>}
           {!commandMissing && pathMissing && <span className="form-error">需要填路径</span>}
+          {slugInvalid && (
+            <span className="form-error">地址名只能用小写字母、数字和连字符，2–32 位</span>
+          )}
+          {!slugInvalid && slugTaken && (
+            <span className="form-error">这个地址名已被别的项目占用</span>
+          )}
           <button className="btn-secondary" onClick={onCancel}>
             取消
           </button>
-          <button className="btn-primary" onClick={submit} disabled={commandMissing || pathMissing}>
+          <button
+            className="btn-primary"
+            onClick={submit}
+            disabled={commandMissing || pathMissing || slugInvalid || slugTaken}
+          >
             {SUBMIT_TEXT[mode]}
           </button>
         </div>

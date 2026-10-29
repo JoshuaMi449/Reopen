@@ -304,6 +304,8 @@ export interface Settings {
   /** 待升级的最新版本号（检查更新发现新版即写入，设置按钮红点常亮——弹窗关了/重启都在；
    *  只有检查确认「已是最新」才清除；网络失败保持原状） */
   pendingUpdate?: string
+  /** 主窗口位置尺寸（关闭前记下；外接屏拔掉/分辨率变化时由 clampWindowBounds 回落到主屏） */
+  windowBounds?: { x: number; y: number; width: number; height: number }
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -381,6 +383,8 @@ export interface UpdateInfo {
   body?: string
   /** 最新版发布页链接（弹窗「前往下载」与「官网下载页」用） */
   htmlUrl?: string
+  /** 新版 dmg 安装包直链（Release 资产里的 .dmg；没有则只能去发布页手动下） */
+  dmgUrl?: string
   /** 检查失败原因（hasUpdate=false 且 error 有值=网络错误等） */
   error?: string
 }
@@ -465,6 +469,8 @@ export interface ReopenApi {
   addProject(input: NewProjectInput): Promise<Project>
   updateProject(id: string, input: Partial<NewProjectInput>): Promise<Project>
   deleteProject(id: string): Promise<void>
+  /** 撤销删除：把删掉的档案原样放回（⌘Z） */
+  restoreProjects(list: Project[]): Promise<void>
   /** 手动成组：把一批顶层项目收纳成一个新组，返回新组（框选右键添加成组） */
   createGroup(ids: string[], name?: string): Promise<Project>
   /** 解散组：子项回到顶层，组删除（ */
@@ -543,15 +549,29 @@ export interface ReopenApi {
   capturePreview(url: string): Promise<string | null>
   /** 开机自启（Mac 登录项）开关 */
   setLaunchAtLogin(v: boolean): Promise<void>
-  /** 资料库导出/导入（JSON 文件对话框） */
+  /** 资料库导出/导入（JSON 文件对话框）；导入返回是否真的导入了（用户取消 = false） */
   exportData(): Promise<void>
-  importData(): Promise<void>
+  importData(): Promise<boolean>
+  /** 整份项目清单被改动（导入等）→ 各窗口重新拉一次列表 */
+  onProjectsChanged(cb: () => void): () => void
+  /** 导出日志文本（详情抽屉「导出…」）；取消返回 false */
+  exportLogs(content: string, name: string): Promise<boolean>
+  /** 在终端打开目录（项目右键）；非 macOS 返回 false */
+  openTerminal(dir: string): Promise<boolean>
+  /** 备份目录与已留存的备份份数（设置-资料库） */
+  getBackupInfo(): Promise<{ dir: string; count: number }>
+  /** 清理 7 天没有更新的项目日志目录，返回删掉的个数 */
+  cleanupLogs(): Promise<number>
+  /** 上次快捷键注册失败的组合（设置页保存快捷键后查询） */
+  getShortcutFailures(): Promise<string[]>
   /** 在默认浏览器打开链接（关于组） */
   openExternal(url: string): Promise<void>
   /** 在访达中显示路径（右键「访问项目原目录」、资料库路径跳转） */
   revealInFolder(path: string): Promise<void>
   /** 检查更新：GitHub Releases 拿最新版（发现新版本弹窗 ） */
   checkUpdate(): Promise<UpdateInfo>
+  /** 下载新版 dmg 到「下载」目录，返回文件路径（用户手动拖进应用程序覆盖） */
+  downloadUpdate(url: string, version: string): Promise<string>
   /** 订阅左上角应用菜单的动作，返回取消订阅函数 */
   onMenuAction(cb: (action: string) => void): () => void
   /** 订阅设置变化（设置窗口改了之后主窗口同步），返回取消订阅函数 */

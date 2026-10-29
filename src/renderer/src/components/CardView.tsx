@@ -39,6 +39,15 @@ interface Props {
   onDragOver(e: React.DragEvent, p: Project): void
   onDragEnd(e: React.DragEvent): void
   onDrop(e: React.DragEvent, p: Project): void
+  /** 文件夹卡作为收纳目标：项目拖上来高亮、松手收进文件夹（文件夹卡不参与排序） */
+  onFolderDragOver(e: React.DragEvent, folder: Project): void
+  onFolderDragLeave(e: React.DragEvent, folder: Project): void
+  onFolderDrop(e: React.DragEvent, folder: Project): void
+  /** 当前悬停的文件夹 id（高亮用） */
+  dropOnFolder: string | null
+  /** 文件夹卡「启动组内全部 / 停止组内全部」 */
+  onFolderStart(folder: Project): void
+  onFolderStop(folder: Project): void
   /** 点击卡片：打开右侧详情抽屉 */
   onOpen(p: Project): void
   /** 点端口在浏览器打开（运行中时端口可点，网站常驻） */
@@ -106,6 +115,12 @@ export function CardView({
   onDragOver,
   onDragEnd,
   onDrop,
+  onFolderDragOver,
+  onFolderDragLeave,
+  onFolderDrop,
+  dropOnFolder,
+  onFolderStart,
+  onFolderStop,
   onOpen,
   onOpenBrowser,
   onRehost,
@@ -457,11 +472,10 @@ export function CardView({
                 <div
                   key={p.id}
                   className={`folder-card ${dragId === p.id ? 'dragging' : ''} ${
-                    selected(p) ? 'selected' : ''
-                  }`}
+                    dropOnFolder === p.id ? 'drop-target' : ''
+                  } ${selected(p) ? 'selected' : ''}`}
                   data-pid={p.id}
                   style={{ '--fh': hue } as React.CSSProperties}
-                  draggable={sortDraggable}
                   onClick={(e) =>
                     e.metaKey || e.ctrlKey || e.shiftKey ? onSelectToggle(p, e) : onOpen(p)
                   }
@@ -469,10 +483,10 @@ export function CardView({
                     e.preventDefault()
                     onContextMenu(e, p)
                   }}
-                  onDragStart={(e) => onDragStart(e, p)}
-                  onDragOver={(e) => onDragOver(e, p)}
+                  onDragOver={(e) => onFolderDragOver(e, p)}
+                  onDragLeave={(e) => onFolderDragLeave(e, p)}
                   onDragEnd={onDragEnd}
-                  onDrop={(e) => onDrop(e, p)}
+                  onDrop={(e) => onFolderDrop(e, p)}
                 >
                   {/* 文件夹轮廓：整块 SVG 一体成形（不拼两块），色调跟着组色走 */}
                   <svg
@@ -520,6 +534,21 @@ export function CardView({
                   )}
 
                   <div className="folder-foot">
+                    <button
+                      className="folder-run"
+                      title={online.length > 0 ? '停止组内全部' : '启动组内全部'}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (online.length > 0) onFolderStop(p)
+                        else onFolderStart(p)
+                      }}
+                    >
+                      {online.length > 0 ? (
+                        <MonitorPause size={11} />
+                      ) : (
+                        <MonitorPlay size={11} />
+                      )}
+                    </button>
                     <span className={`folder-online ${online.length > 0 ? 'is-on' : ''}`}>
                       {online.length > 0 ? `${online.length} 个在线` : '全部停止'}
                     </span>

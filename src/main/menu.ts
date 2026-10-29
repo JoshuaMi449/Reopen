@@ -34,8 +34,8 @@ export function createAppMenu(): void {
       submenu: [
         { label: '添加项目…', accelerator: 'CmdOrCtrl+N', click: () => send('add-project') },
         { type: 'separator' },
-        { label: '导入资料库…', enabled: false }, // M3-5 资料库组接线
-        { label: '导出资料库…', enabled: false }
+        { label: '导入资料库…', click: () => send('import-data') },
+        { label: '导出资料库…', click: () => send('export-data') }
       ]
     },
     {

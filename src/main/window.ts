@@ -5,7 +5,8 @@ import { readdir } from 'fs/promises'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
 import icon from '../../resources/icon.png?asset'
-import { getSettings, listProjects } from './store'
+import { getSettings, listProjects, saveSettings } from './store'
+import { clampWindowBounds } from '../shared/windowBounds'
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
@@ -55,6 +56,19 @@ export function createWindow(): void {
   const { workArea } = screen.getPrimaryDisplay()
   const winWidth = Math.min(Math.max(Math.round(workArea.width * 0.55), 1200), 2000)
   const winHeight = Math.round(winWidth * 0.625)
+  // 上次的位置尺寸优先；外接屏拔掉/分辨率变小时由 clampWindowBounds 回落到主屏居中
+  const fallbackBounds = {
+    x: Math.round(workArea.x + (workArea.width - winWidth) / 2),
+    y: Math.round(workArea.y + (workArea.height - winHeight) / 2),
+    width: winWidth,
+    height: winHeight
+  }
+  const bounds = clampWindowBounds(
+    getSettings().windowBounds,
+    screen.getAllDisplays().map((d) => ({ bounds: d.bounds, workArea: d.workArea })),
+    { width: 1200, height: 620 },
+    fallbackBounds
+  )
 
   // macOS Dock 图标：dev 模式跑的是裸 Electron（Dock 显示 Electron 默认图标），显式设置；
   // 打包成 .app 后由 bundle 里的 icns 接管，此处同样生效无冲突（用户问"为什么还是 Electron"）
@@ -62,8 +76,10 @@ export function createWindow(): void {
 
   mainWindow = new BrowserWindow({
     // 三栏布局默认宽度（左 190 固定、中间 4 列卡片 950、自启面板占 1 列 224、日志占 2 列 456；窗口可调）
-    width: winWidth,
-    height: winHeight,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     // 最小宽度 1200（精确最小 1156=190 侧栏+16 padding+950 四列，保证最小窗口下仍 4 列；
     //  再留滚动条余量——开日志抽屉（占 2 列 456）后卡片区稳定剩 2 列，不塌成 1 列
     minWidth: 1200,
@@ -78,6 +94,21 @@ export function createWindow(): void {
       sandbox: false
     }
   })
+
+  // 记住窗口位置尺寸：防抖写盘（拖动/缩放过程不反复写）；最大化/全屏时不记，取消后恢复原尺寸
+  let boundsTimer: NodeJS.Timeout | undefined
+  const rememberBounds = (): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return
+    clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        saveSettings({ windowBounds: mainWindow.getBounds() })
+      }
+    }, 600)
+  }
+  mainWindow.on('resize', rememberBounds)
+  mainWindow.on('move', rememberBounds)
 
   mainWindow.on('ready-to-show', () => {
     windowReady = true

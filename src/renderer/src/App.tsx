@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Copy,
   ExternalLink,
+  FolderInput,
   FolderOpen,
   FolderSearch,
   Group,
+  MonitorPause,
   MonitorPlay,
   Palette,
   Pencil,
   Pin,
   PinOff,
+  ScrollText,
   Tag,
+  Terminal,
   Trash2,
   Ungroup,
   Zap
@@ -27,11 +32,13 @@ import type {
   UpdateInfo
 } from '../../shared/types'
 import { DEFAULT_SETTINGS, isPureWeb, projectCategory } from '../../shared/types'
+import { applyParentChange } from '../../shared/parentChange'
 import { AutoStartPanel } from './components/AutoStartPanel'
 import { BulkTagModal } from './components/BulkTagModal'
 import { CardView } from './components/CardView'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ContextMenu, MenuItem } from './components/ContextMenu'
+import { MoveToFolderDialog } from './components/MoveToFolderDialog'
 import { DetailDrawer } from './components/DetailDrawer'
 import { GroupNameDialog } from './components/GroupNameDialog'
 import { GroupPreviewModal } from './components/GroupPreviewModal'
@@ -236,6 +243,18 @@ export default function App(): React.JSX.Element {
   const [bulkGroupIds, setBulkGroupIds] = useState<string[] | null>(null)
   /** 批量删除二次确认 */
   const [bulkDelete, setBulkDelete] = useState<{ ids: string[] } | null>(null)
+  /** 移入文件夹弹窗待移动的项目（单项目/批量共用） */
+  const [moveTo, setMoveTo] = useState<{ ids: string[] } | null>(null)
+  /** 拖拽悬停中的文件夹卡（高亮提示「松手就收进去」） */
+  const [dropOnFolder, setDropOnFolder] = useState<string | null>(null)
+  /** 最近一次删除的快照（⌘Z 撤销用；只保留一次） */
+  const lastDeleteRef = useRef<{
+    projects: Project[]
+    pinnedIds: string[]
+    autoStartIds: string[]
+  } | null>(null)
+  /** 撤销删除的执行体（放 ref 里，键盘监听不必依赖一堆状态） */
+  const undoDeleteRef = useRef<() => void>(() => {})
   /** 偏好设置浮层（主窗口内界面，非独立窗口——浮层交互） */
   const [settingsOpen, setSettingsOpen] = useState(false)
   /** 本机局域网 IP（局域网访问开时显示给其他设备用） */
@@ -490,6 +509,17 @@ export default function App(): React.JSX.Element {
         setSettingsOpen(true)
       } else if (action === 'settings-close') setSettingsOpen(false)
       else if (action === 'about') toast(`Reopen ${__APP_VERSION__}（VC复活点）`)
+      else if (action === 'export-data') void window.api.exportData()
+      else if (action === 'import-data') {
+        void window.api
+          .importData()
+          .then(async (ok) => {
+            if (!ok) return
+            setProjects(await window.api.listProjects())
+            toast('已导入资料库', 'success')
+          })
+          .catch((err) => toast(err instanceof Error ? err.message : '导入失败', 'error'))
+      }
       else if (action === 'check-update') {
         // 托盘「更多 → 检查更新」/应用菜单：打开偏好设置的关于页并自动触发该页的检查
         // （有新版弹更新弹窗、无新版弹「已是最新版本」小弹窗，与点关于页「检查更新」一致）
@@ -500,6 +530,13 @@ export default function App(): React.JSX.Element {
     })
     return off
   }, [toast, updateSettings, showOnboarding])
+
+  // 主进程广播「清单已变」（导入资料库等整份改动）→ 重新拉一次，别让界面停在旧数据上
+  useEffect(() => {
+    return window.api.onProjectsChanged(() => {
+      void window.api.listProjects().then(setProjects)
+    })
+  }, [])
 
   // 已有标签聚合（表单联想下拉的数据源：标签无颜色，列表/卡片不展示）
   // 标签显示顺序：settings.tagOrder 优先（侧栏拖动调整），新标签按字母序排后面
@@ -583,7 +620,15 @@ export default function App(): React.JSX.Element {
         p.name.toLowerCase().includes(q) ||
         p.note.toLowerCase().includes(q) ||
         p.tags.some((t) => t.toLowerCase().includes(q)) ||
-        (p.port?.toString().includes(q) ?? false)
+        (p.port?.toString().includes(q) ?? false) ||
+        // 路径只匹配最后两段：整条路径会让「mac」「Users」这类词命中所有项目
+        p.path
+          .split('/')
+          .slice(-2)
+          .join('/')
+          .toLowerCase()
+          .includes(q) ||
+        (p.command ?? '').toLowerCase().includes(q)
       // 子项命中 → 组跟着显示
       list = list.filter((p) => match(p) || (p.type === 'group' && childrenOf(p.id).some(match)))
     }
@@ -886,18 +931,67 @@ export default function App(): React.JSX.Element {
     window.addEventListener('blur', up)
   }
 
-  // Esc 清空选中/关闭批量菜单
+  // 键盘：Esc 清空选中 / ⌘A 全选 / ↑↓ 上下移动选中 / 回车打开（输入框里不接管）
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable))
+        return
+
       if (e.key === 'Escape') {
         setSelectedId(null)
         setSelectedIds(new Set())
         setBulkMenu(null)
+        return
+      }
+      // 有弹窗（表单/确认框/移入文件夹…）时只认 Esc，别让回车、⌘A 穿透到底层列表
+      if (document.querySelector('.modal-backdrop')) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undoDeleteRef.current()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        setSelectedIds(new Set(visibleProjects.map((p) => p.id)))
+        return
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (visibleProjects.length === 0) return
+        e.preventDefault()
+        const current = [...selectedIds][0]
+        const idx = visibleProjects.findIndex((p) => p.id === current)
+        const pick =
+          idx === -1
+            ? e.key === 'ArrowDown'
+              ? 0
+              : visibleProjects.length - 1
+            : e.key === 'ArrowDown'
+              ? Math.min(idx + 1, visibleProjects.length - 1)
+              : Math.max(idx - 1, 0)
+        const p = visibleProjects[pick]
+        setSelectedIds(new Set([p.id]))
+        setSelectedId(p.type === 'group' ? null : p.id)
+        return
+      }
+      if (e.key === 'Enter') {
+        const id = [...selectedIds][0]
+        const p = visibleProjects.find((x) => x.id === id)
+        if (!p) return
+        e.preventDefault()
+        // 打开：组 → 进组页面；项目 → 详情抽屉（与单击卡片一致）
+        if (p.type === 'group') {
+          setSelectedIds(new Set())
+          setSelectedId(null)
+          setCategory(`group:${p.id}` as Category)
+        } else {
+          setSelectedId(p.id)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [visibleProjects, selectedIds])
 
   /** 普通单击只选当前项目；修饰键显式进行多选。 */
 
@@ -950,6 +1044,22 @@ export default function App(): React.JSX.Element {
         ? `已启动 ${started} 个项目${skipped > 0 ? `，跳过 ${skipped} 个` : ''}`
         : `没有可启动的项目（跳过 ${skipped} 个）`,
       started > 0 ? 'success' : 'info'
+    )
+    setSelectedIds(new Set())
+  }
+
+  /** 批量：停止选中且正在运行的项目（串行，避免同时杀进程时互相干扰） */
+  const handleBulkStop = async (): Promise<void> => {
+    let stopped = 0
+    for (const p of projects) {
+      if (!selectedIds.has(p.id)) continue
+      if ((statuses[p.id]?.status ?? 'stopped') !== 'running') continue
+      await window.api.stopProject(p.id)
+      stopped++
+    }
+    toast(
+      stopped > 0 ? `已停止 ${stopped} 个项目` : '选中的项目都没在运行',
+      stopped > 0 ? 'success' : 'info'
     )
     setSelectedIds(new Set())
   }
@@ -1081,6 +1191,107 @@ export default function App(): React.JSX.Element {
     setBulkGroupIds(null)
   }
 
+  /** 把项目移进指定文件夹（右键「移入文件夹…」与拖拽收纳共用）。
+   *  只搬顶层普通项目；置顶与手动排序里的残留一并清掉（组内项目不能置顶）。 */
+  const moveIntoFolder = async (ids: string[], folderId: string): Promise<void> => {
+    const folder = projects.find((p) => p.id === folderId)
+    if (!folder || folder.type !== 'group') return
+    const moving = projects.filter((p) => ids.includes(p.id) && !p.parentId && p.type !== 'group')
+    if (moving.length === 0) return
+    for (const p of moving) {
+      await window.api.updateProject(p.id, { parentId: folderId })
+    }
+    const movedIds = moving.map((p) => p.id)
+    setProjects((ps) =>
+      ps.map((p) => (movedIds.includes(p.id) ? { ...p, parentId: folderId } : p))
+    )
+    const next = applyParentChange(movedIds, folderId, {
+      pinnedIds: settings.pinnedIds,
+      manualOrder: settings.manualOrder,
+      autoStartIds: settings.autoStartIds
+    })
+    if (
+      next.pinnedIds.length !== settings.pinnedIds.length ||
+      next.manualOrder.length !== settings.manualOrder.length
+    ) {
+      void updateSettings({ pinnedIds: next.pinnedIds, manualOrder: next.manualOrder })
+    }
+    toast(`已移入「${folder.name}」${movedIds.length} 个项目`, 'success')
+  }
+
+  /** 把子项目移出文件夹，回到全部列表 */
+  const handleMoveOut = async (p: Project): Promise<void> => {
+    await window.api.updateProject(p.id, { parentId: undefined })
+    setProjects((ps) => ps.map((x) => (x.id === p.id ? { ...x, parentId: undefined } : x)))
+    setMenu(null)
+    toast(`已把「${p.name}」移出文件夹`, 'success')
+  }
+
+  /** 拖项目悬停在文件夹卡上：高亮提示「松手就收进去」 */
+  const handleFolderDragOver = (e: React.DragEvent, folder: Project): void => {
+    if (e.dataTransfer.types.includes('Files')) return
+    const id = dragId
+    if (!id || id === folder.id) return
+    const dragged = projects.find((p) => p.id === id)
+    if (!dragged || dragged.type === 'group' || dragged.parentId === folder.id) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dropOnFolder !== folder.id) setDropOnFolder(folder.id)
+  }
+
+  /** 离开文件夹卡：指针只是移到卡片内的子元素上时不取消高亮（dragleave 会向上冒泡） */
+  const handleFolderDragLeave = (e: React.DragEvent, folder: Project): void => {
+    const to = e.relatedTarget as Node | null
+    if (to && (e.currentTarget as HTMLElement).contains(to)) return
+    if (dropOnFolder === folder.id) setDropOnFolder(null)
+  }
+
+  /** 松手：收进文件夹 */
+  const handleFolderDrop = (e: React.DragEvent, folder: Project): void => {
+    if (e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const id = e.dataTransfer.getData('application/x-reopen-id') || dragId
+    setDragId(null)
+    setSortOver(null)
+    setDropOnFolder(null)
+    if (!id || id === folder.id) return
+    void moveIntoFolder([id], folder.id)
+  }
+
+  /** 文件夹卡「启动组内全部」（纯网页常驻，跳过；已在运行的跳过） */
+  const handleFolderStart = async (folder: Project): Promise<void> => {
+    const items = childrenOf(folder.id).filter((p) => !isPureWeb(p))
+    if (items.length === 0) {
+      toast('这个文件夹里没有需要启动的项目', 'info')
+      return
+    }
+    let started = 0
+    for (const p of items) {
+      if ((statuses[p.id]?.status ?? 'stopped') === 'running') continue
+      const r = await window.api.startProject(p.id)
+      if (r.ok) started++
+    }
+    toast(
+      started > 0 ? `已启动 ${started} 个项目` : '组内项目都已在该运行的状态',
+      started > 0 ? 'success' : 'info'
+    )
+  }
+
+  /** 文件夹卡「停止组内全部」 */
+  const handleFolderStop = async (folder: Project): Promise<void> => {
+    let stopped = 0
+    for (const p of childrenOf(folder.id)) {
+      if ((statuses[p.id]?.status ?? 'stopped') !== 'running') continue
+      await window.api.stopProject(p.id)
+      stopped++
+    }
+    toast(
+      stopped > 0 ? `已停止 ${stopped} 个项目` : '组内没有运行中的项目',
+      stopped > 0 ? 'success' : 'info'
+    )
+  }
+
   /** 解散组（子项回到顶层，组删除 */
   const handleUngroup = async (g: Project): Promise<void> => {
     await window.api.ungroup(g.id)
@@ -1100,6 +1311,16 @@ export default function App(): React.JSX.Element {
       label: `启动全部（${selectedIds.size}）`,
       icon: <MonitorPlay size={14} />,
       onClick: () => void handleBulkStart()
+    },
+    {
+      label: '停止运行中',
+      icon: <MonitorPause size={14} />,
+      onClick: () => void handleBulkStop()
+    },
+    {
+      label: '移入文件夹…',
+      icon: <FolderInput size={14} />,
+      onClick: () => setMoveTo({ ids: [...selectedIds] })
     },
     {
       label: '添加成组',
@@ -1285,6 +1506,17 @@ export default function App(): React.JSX.Element {
         icon: pinned ? <PinOff size={14} /> : <Pin size={14} />,
         onClick: () => void handleTogglePin(p)
       })
+      items.push({
+        label: '移入文件夹…',
+        icon: <FolderInput size={14} />,
+        onClick: () => setMoveTo({ ids: [p.id] })
+      })
+    } else {
+      items.push({
+        label: '移出文件夹',
+        icon: <Ungroup size={14} />,
+        onClick: () => void handleMoveOut(p)
+      })
     }
     items.push({
       label: '在浏览器打开',
@@ -1305,6 +1537,24 @@ export default function App(): React.JSX.Element {
       label: '访问项目原目录',
       icon: <FolderOpen size={14} />,
       onClick: () => window.api.revealInFolder(p.path)
+    })
+    items.push({
+      label: '在终端打开',
+      icon: <Terminal size={14} />,
+      onClick: () => void window.api.openTerminal(p.path)
+    })
+    items.push({
+      label: '复制路径',
+      icon: <Copy size={14} />,
+      onClick: () => {
+        void navigator.clipboard.writeText(p.path)
+        toast('已复制项目路径', 'success')
+      }
+    })
+    items.push({
+      label: '看日志',
+      icon: <ScrollText size={14} />,
+      onClick: () => setSelectedId(p.id)
     })
     items.push({
       label: '删除',
@@ -1361,9 +1611,16 @@ export default function App(): React.JSX.Element {
       if (form?.mode === 'edit' && form.project) {
         // 端口改过且有来源 → 先改写源文件（vite 等不认注入的项目靠这个生效），成功才落新端口
         const finalInput = await rewritePortFirst(form.project.path, form.project.port, input)
+        const slugChanged = !!finalInput.lanSlug && finalInput.lanSlug !== form.project.lanSlug
         const updated = await window.api.updateProject(form.project.id, finalInput)
         setProjects((ps) => ps.map((p) => (p.id === updated.id ? updated : p)))
-        toast(`已保存「${updated.name}」`, 'success')
+        // 访客地址名改了且项目在跑：重启一次，让统一入口按新地址重新挂载（旧访客链接随即失效）
+        if (slugChanged && (statuses[updated.id]?.status ?? 'stopped') === 'running') {
+          await window.api.restartProject(updated.id)
+          toast(`已保存「${updated.name}」，访客地址已更新（旧链接失效）`, 'success')
+        } else {
+          toast(`已保存「${updated.name}」`, 'success')
+        }
       } else {
         // 拖入登记时改过端口且有来源 → 先改源文件再登记（表单里已提示「会替换写死的端口」）
         const finalInput = await rewritePortFirst(input.path, form?.detect?.suggested.port, input)
@@ -1529,12 +1786,38 @@ export default function App(): React.JSX.Element {
       deleteTarget.type === 'group'
         ? [deleteTarget.id, ...childrenOf(deleteTarget.id).map((c) => c.id)]
         : [deleteTarget.id]
+    // 撤销快照：被删的档案 + 这次一并清掉的置顶/自启绑定（⌘Z 原样放回）
+    lastDeleteRef.current = {
+      projects:
+        deleteTarget.type === 'group'
+          ? [deleteTarget, ...childrenOf(deleteTarget.id)]
+          : [deleteTarget],
+      pinnedIds: settings.pinnedIds.filter((id) => removedIds.includes(id)),
+      autoStartIds: settings.autoStartIds.filter((id) => removedIds.includes(id))
+    }
     updateSettings({
       autoStartIds: settings.autoStartIds.filter((x) => !removedIds.includes(x)),
       pinnedIds: settings.pinnedIds.filter((x) => !removedIds.includes(x))
     })
     if (selectedId === deleteTarget.id) setSelectedId(null)
     setDeleteTarget(null)
+  }
+
+  /** 撤销最近一次删除（⌘Z）：档案原样放回，置顶与自启一并恢复；只保留最近一次 */
+  undoDeleteRef.current = (): void => {
+    const snap = lastDeleteRef.current
+    if (!snap) return
+    lastDeleteRef.current = null
+    void window.api.restoreProjects(snap.projects).then(async () => {
+      setProjects(await window.api.listProjects())
+      if (snap.pinnedIds.length > 0 || snap.autoStartIds.length > 0) {
+        void updateSettings({
+          pinnedIds: [...new Set([...settings.pinnedIds, ...snap.pinnedIds])],
+          autoStartIds: [...new Set([...settings.autoStartIds, ...snap.autoStartIds])]
+        })
+      }
+      toast(`已恢复 ${snap.projects.length} 个项目`, 'success')
+    })
   }
 
   // ---------- 标签管理（侧栏标签右键 重命名/删除/染色，颜色填进标签 icon） ----------
@@ -1874,14 +2157,23 @@ export default function App(): React.JSX.Element {
                   autoStartIds={autoStartIdsForUi}
                   dragId={dragId}
                   // 排序模式优先级最高：「无」可拖；自动排序下点开自启面板后可拖（拖入面板）
-                  sortDraggable={!showOnboarding && (settings.sortMode === 'none' || autoStartOpen)}
+                  // 任何排序模式下都可拖：排序模式不是「无」时没有排序落点（handleSortDragOver 直接忽略），
+                  // 但「拖进文件夹」必须一直可用——默认排序是「最近打开」，否则收纳功能形同虚设
+                  sortDraggable={!showOnboarding}
                   onDragStart={(e, p) => handleRowDragStart(e, p)}
                   onDragOver={(e, p) => handleSortDragOver(e, p, 'card')}
                   onDragEnd={() => {
                     setDragId(null)
                     setSortOver(null)
+                    setDropOnFolder(null)
                   }}
                   onDrop={(e) => handleRowDrop(e)}
+                  onFolderDragOver={handleFolderDragOver}
+                  onFolderDragLeave={handleFolderDragLeave}
+                  onFolderDrop={handleFolderDrop}
+                  dropOnFolder={dropOnFolder}
+                  onFolderStart={handleFolderStart}
+                  onFolderStop={handleFolderStop}
                   tagColor={tagColor}
                   onOpen={(p) => handleOpen(p)}
                   onOpenBrowser={(p) => handleOpenBrowser(p)}
@@ -1974,6 +2266,9 @@ export default function App(): React.JSX.Element {
           detect={form.detect}
           project={form.project}
           existingTags={allTags}
+          slugsInUse={projects
+            .filter((p) => p.id !== form?.project?.id && p.lanSlug)
+            .map((p) => p.lanSlug as string)}
           onSubmit={handleFormSubmit}
           onCancel={() => setForm(null)}
         />
@@ -2005,6 +2300,29 @@ export default function App(): React.JSX.Element {
           onCheck={handleBulkTagCheck}
           onApply={handleBulkTagApply}
           onCancel={() => setBulkTag(null)}
+        />
+      )}
+
+      {moveTo && (
+        <MoveToFolderDialog
+          count={moveTo.ids.length}
+          folders={orderedGroups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            childCount: childrenOf(g.id).length
+          }))}
+          onMove={(folderId) => {
+            const ids = moveTo.ids
+            setMoveTo(null)
+            setSelectedIds(new Set())
+            void moveIntoFolder(ids, folderId)
+          }}
+          onNew={() => {
+            const ids = moveTo.ids
+            setMoveTo(null)
+            setBulkGroupIds(ids)
+          }}
+          onCancel={() => setMoveTo(null)}
         />
       )}
 

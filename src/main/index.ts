@@ -9,6 +9,12 @@ import { initTray } from './tray'
 import { createWindow, isQuitConfirmed, markQuitConfirmed, showMainWindow } from './window'
 import { stopGateway } from './gateway'
 
+// 开发用：REOPEN_USER_DATA_DIR 指向独立目录时，dev 实例与已安装的正式版互不干扰
+// （两者共用 userData 会撞下面的单例锁，第二份直接退出）；不设环境变量时行为完全不变
+if (process.env['REOPEN_USER_DATA_DIR']) {
+  app.setPath('userData', process.env['REOPEN_USER_DATA_DIR'])
+}
+
 // 单例锁：重复启动时唤起已有窗口而不是开两个（PRD 四·稳定性）
 if (!app.requestSingleInstanceLock()) {
   // A second copy can reach `before-quit` before Electron is ready.  Calling

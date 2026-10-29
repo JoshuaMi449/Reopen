@@ -43,10 +43,11 @@ import { closeSettingsWindow, openSettingsWindow } from './settingsWindow'
 import { getPlatform, requestPermissions } from './perm'
 import { nativeGetNotificationAuth } from './nativeAddon'
 import { isMonoImage, listCharacters } from './trayCharacters'
-import { refreshShortcuts } from './shortcuts'
+import { getShortcutFailures, refreshShortcuts } from './shortcuts'
 import {
   addProject,
   deleteProject,
+  restoreProjects,
   getSettings,
   listProjects,
   saveSettings,
@@ -56,6 +57,7 @@ import { appQuit, previewMenubarColors, refreshTray, setTrayHistoryExpanded, sho
 import type { MenubarColors } from '../shared/menubarTheme'
 import { invalidateGifCache } from './gifFrames'
 import { getLanIp } from './lan'
+import { unregisterRoute } from './gateway'
 import { showMainWindow } from './window'
 
 /** 素材入库：登记进角色库 + 单色检测（单色→模板图随菜单栏深浅自动变色） */
@@ -175,6 +177,13 @@ async function captureOnce(url: string): Promise<string | null> {
 function broadcastSettings(settings: Settings): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('settings:changed', settings)
+  }
+}
+
+/** 整份项目清单被改动（导入、撤销删除等）→ 让各窗口重新拉一次，别让界面停在旧数据上 */
+function broadcastProjectsChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('projects:changed')
   }
 }
 
@@ -430,6 +439,7 @@ async function checkUpdate(): Promise<UpdateInfo> {
       tag_name: string
       body?: string
       html_url: string
+      assets?: { name: string; browser_download_url: string }[]
     }
     const latestVersion = data.tag_name.replace(/^v/, '')
     if (compareVersions(latestVersion, currentVersion) <= 0) {
@@ -446,7 +456,9 @@ async function checkUpdate(): Promise<UpdateInfo> {
       currentVersion,
       latestVersion,
       body: data.body,
-      htmlUrl: data.html_url
+      htmlUrl: data.html_url,
+      // 无证书方案：直接下 dmg 给用户手动覆盖安装（静默自动更新需要 Developer ID 签名）
+      dmgUrl: data.assets?.find((a) => a.name.endsWith('.dmg'))?.browser_download_url
     }
   } catch (err) {
     return { hasUpdate: false, currentVersion, error: (err as Error).message }
@@ -511,9 +523,28 @@ export function registerIpc(): void {
     ) {
       throw new Error('已经有同名项目组了，换个名字吧')
     }
-    return updateProject(id, input)
+    // 访客地址名唯一（渲染层也查一遍，这里是最后一道：其它入口绕不过去）
+    if (
+      input.lanSlug &&
+      listProjects().some((p) => p.id !== id && p.lanSlug === input.lanSlug)
+    ) {
+      throw new Error('这个访客地址名已被别的项目占用')
+    }
+    const before = listProjects().find((p) => p.id === id)
+    const updated = updateProject(id, input)
+    // 地址名改了：旧路由必须当场摘掉，否则旧访客链接会一直转发到它（直到网关整个重建）
+    if (before?.lanSlug && updated.lanSlug && before.lanSlug !== updated.lanSlug) {
+      unregisterRoute(before.lanSlug)
+    }
+    return updated
   })
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+
+  // 撤销删除：把删掉的档案原样放回（id/创建时间/组关系都不变），其它窗口重新拉列表
+  ipcMain.handle('project:restore', (_e, list: Project[]) => {
+    restoreProjects(list)
+    broadcastProjectsChanged()
+  })
 
   // 手动成组 / 解散组（框选右键"添加成组"；组右键"解散组"）
   ipcMain.handle('project:create-group', (_e, ids: string[], name?: string) => {
@@ -830,6 +861,15 @@ export function registerIpc(): void {
     broadcastSettings(getSettings())
     return info
   })
+  // 下载新版 dmg 到「下载」目录（无证书方案：用户手动拖进应用程序覆盖）。
+  // 不做静默安装——ad-hoc 签名的包换上后 Gatekeeper 会拦，且 Squirrel 要求真实签名。
+  ipcMain.handle('update:download', async (_e, url: string, version: string) => {
+    const dest = join(app.getPath('downloads'), `Reopen-${version}.dmg`)
+    const res = await fetch(url, { headers: { 'User-Agent': 'Reopen' } })
+    if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`)
+    writeFileSync(dest, Buffer.from(await res.arrayBuffer()))
+    return dest
+  })
   ipcMain.handle('app:quit', () => appQuit())
   ipcMain.handle('app:set-login', (_e, v: boolean) => {
     app.setLoginItemSettings({ openAtLogin: v })
@@ -859,7 +899,7 @@ export function registerIpc(): void {
       filters: [{ name: 'JSON', extensions: ['json'] }],
       properties: ['openFile']
     })
-    if (canceled || filePaths.length === 0) return
+    if (canceled || filePaths.length === 0) return false
     const data = JSON.parse(readFileSync(filePaths[0], 'utf-8'))
     if (!Array.isArray(data.projects)) throw new Error('不是有效的资料库文件')
     // 与现有项目合并（按路径查重）
@@ -881,5 +921,69 @@ export function registerIpc(): void {
     }
     if (data.settings) saveSettings({ ...getSettings(), ...data.settings })
     broadcastSettings(getSettings())
+    broadcastProjectsChanged()
+    return true
   })
+
+  // 日志导出（详情抽屉「导出…」）：内容由渲染层给，这里只负责落盘
+  ipcMain.handle('logs:export', async (_e, content: string, name: string) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: '导出日志',
+      defaultPath: join(app.getPath('desktop'), name),
+      filters: [{ name: '文本', extensions: ['log', 'txt'] }]
+    })
+    if (canceled || !filePath) return false
+    writeFileSync(filePath, content, 'utf-8')
+    return true
+  })
+
+  // 在终端打开项目目录（右键菜单）—— 只支持 macOS，其它平台直接忽略
+  ipcMain.handle('shell:open-terminal', async (_e, dir: string) => {
+    if (process.platform !== 'darwin') return false
+    await new Promise<void>((resolve) => {
+      execFile('open', ['-a', 'Terminal', dir], () => resolve())
+    })
+    return true
+  })
+
+  // 清理旧日志（设置-资料库按钮）：删掉 7 天没有更新的项目日志目录。
+  // 判定看目录内文件的最新 mtime，而不是目录自身——项目一直在跑但没新文件时，目录 mtime 会停在很久以前。
+  ipcMain.handle('logs:cleanup', () => {
+    const root = join(app.getPath('userData'), 'service-logs')
+    if (!existsSync(root)) return 0
+    const cutoff = Date.now() - 7 * 24 * 3600 * 1000
+    let removed = 0
+    for (const name of readdirSync(root)) {
+      const dir = join(root, name)
+      try {
+        if (!statSync(dir).isDirectory()) continue
+        const newest = readdirSync(dir).reduce((max, f) => {
+          try {
+            return Math.max(max, statSync(join(dir, f)).mtimeMs)
+          } catch {
+            return max
+          }
+        }, statSync(dir).mtimeMs)
+        if (newest < cutoff) {
+          rmSync(dir, { recursive: true, force: true })
+          removed++
+        }
+      } catch {
+        // 单个目录删不掉就跳过，不影响其它
+      }
+    }
+    return removed
+  })
+
+  // 备份状态（设置-资料库）：备份目录 + 已留存份数
+  ipcMain.handle('data:backup-info', () => {
+    const dir = join(app.getPath('userData'), 'backups')
+    const count = existsSync(dir)
+      ? readdirSync(dir).filter((n) => n.endsWith('.json')).length
+      : 0
+    return { dir, count }
+  })
+
+  // 上次快捷键注册失败的组合（设置页保存后查询，用来告诉用户「已被别的软件占用」）
+  ipcMain.handle('shortcuts:failures', () => getShortcutFailures())
 }

@@ -12,6 +12,7 @@ import {
   MonitorPlay,
   Pencil,
   RotateCcw,
+  Search,
   Trash2,
   Wrench,
   X
@@ -117,6 +118,18 @@ export function DetailDrawer({
     await navigator.clipboard.writeText(logs.join('\n'))
     setLogCopied(true)
     setTimeout(() => setLogCopied(false), 2000)
+  }
+
+  /** 日志搜索：只过滤显示，复制/导出仍给完整日志 */
+  const [logQuery, setLogQuery] = useState('')
+  const query = logQuery.trim().toLowerCase()
+  const shownLogs = query ? logs.filter((l) => l.toLowerCase().includes(query)) : logs
+
+  /** 导出成 .log 文件（文件名带项目名和时间，便于对照排查） */
+  const exportLogs = async (): Promise<void> => {
+    if (logs.length === 0) return
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')
+    await window.api.exportLogs(logs.join('\n'), `${project.name}-${stamp}.log`)
   }
 
   const st = status?.status ?? 'stopped'
@@ -348,21 +361,42 @@ export function DetailDrawer({
             <span title="本次 Reopen 运行期间，项目进程的标准输出、错误输出和 Reopen 的运行诊断；最多保留 2000 行">
               日志 · stdout / stderr / Reopen
             </span>
-            <button
-              className="btn-mini"
-              onClick={() => void copyLogs()}
-              disabled={logs.length === 0}
-            >
-              {logCopied ? <Check size={12} /> : <Copy size={12} />}{' '}
-              {logCopied ? '已复制' : '复制日志'}
-            </button>
+            <div className="drawer-log-actions">
+              <button
+                className="btn-mini"
+                onClick={() => void exportLogs()}
+                disabled={logs.length === 0}
+              >
+                导出…
+              </button>
+              <button
+                className="btn-mini"
+                onClick={() => void copyLogs()}
+                disabled={logs.length === 0}
+              >
+                {logCopied ? <Check size={12} /> : <Copy size={12} />}{' '}
+                {logCopied ? '已复制' : '复制日志'}
+              </button>
+            </div>
+          </div>
+
+          <div className="drawer-log-search">
+            <Search size={11} />
+            <input
+              value={logQuery}
+              onChange={(e) => setLogQuery(e.target.value)}
+              placeholder="搜索日志…"
+            />
+            {query !== '' && <span className="drawer-log-hits">{shownLogs.length} 行</span>}
           </div>
 
           <div className="drawer-log" ref={logRef}>
             {logs.length === 0 ? (
               <div className="log-empty">还没有日志。点「启动」开始运行。</div>
+            ) : shownLogs.length === 0 ? (
+              <div className="log-empty">没有匹配的日志行</div>
             ) : (
-              logs.map((line, i) => <div key={i}>{line}</div>)
+              shownLogs.map((line, i) => <div key={i}>{line}</div>)
             )}
           </div>
         </div>
