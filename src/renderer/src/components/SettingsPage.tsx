@@ -18,6 +18,7 @@ import type { EnvCheckItem, Project, Settings, UpdateInfo } from '../../../share
 import { DEFAULT_SETTINGS } from '../../../shared/types'
 import { applyTheme } from '../theme'
 import { UpdateModal } from './UpdateModal'
+import { DuplicateFinderModal } from './DuplicateFinderModal'
 import { RolePickerModal } from './RolePickerModal'
 
 type GroupKey = 'general' | 'appearance' | 'menubar' | 'shortcuts' | 'library' | 'about'
@@ -83,6 +84,10 @@ export function SettingsPage({
   const [shortcutWarning, setShortcutWarning] = useState<string[] | null>(null)
   /** 清理旧日志的结果文案 */
   const [cleanupMsg, setCleanupMsg] = useState<string | null>(null)
+  /** 检查重复结果（null=弹窗关闭；空数组=没找到，不弹窗） */
+  const [dupGroups, setDupGroups] = useState<{ key: string; items: Project[] }[] | null>(null)
+  const [dupLoading, setDupLoading] = useState(false)
+  const [dupMsg, setDupMsg] = useState<string | null>(null)
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -740,6 +745,28 @@ export function SettingsPage({
             清理
           </button>
         </SettingRow>
+        <SettingRow
+          label="检查重复"
+          hint={dupMsg ?? '同名同类型、但不在同一位置的项目——可能是同一份东西被登记了两次'}
+        >
+          <button
+            className="btn-secondary"
+            disabled={dupLoading}
+            onClick={() => {
+              setDupLoading(true)
+              setDupMsg(null)
+              void window.api
+                .findDuplicates()
+                .then((r) => {
+                  if (r.length === 0) setDupMsg('没有发现重复')
+                  else setDupGroups(r)
+                })
+                .finally(() => setDupLoading(false))
+            }}
+          >
+            {dupLoading ? '检查中…' : '检查'}
+          </button>
+        </SettingRow>
       </div>
     </div>
   )
@@ -948,6 +975,20 @@ export function SettingsPage({
           {groups[group]}
         </main>
       </div>
+      {dupGroups && (
+        <DuplicateFinderModal
+          groups={dupGroups}
+          projects={projects}
+          onDelete={(ids) => {
+            void window.api.deleteProjects(ids).then(async (n) => {
+              setProjects(await window.api.listProjects())
+              setDupGroups(null)
+              setDupMsg(`已删除 ${n} 个`)
+            })
+          }}
+          onClose={() => setDupGroups(null)}
+        />
+      )}
       {showUpdate && updateInfo && (
         <UpdateModal info={updateInfo} onClose={() => setShowUpdate(false)} />
       )}

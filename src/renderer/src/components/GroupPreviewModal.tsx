@@ -25,9 +25,11 @@ export function GroupPreviewModal({
   // 散装 html（单页附件）与纯开发项目默认不勾，要的再手动勾（实测：用户只要官网首页端口）
   const [checked, setChecked] = useState<Set<string>>(() => {
     // 已存在的默认不勾（转移需用户主动勾）
+    // 已存在、以及同名已登记的，默认都不勾（要的再手动勾）
     const finished = multi.projects.filter(
       (p) =>
         !p.alreadyRegistered &&
+        !p.similarTo &&
         p.suggested.launchModes.some((m) => m.kind === 'preview' && !m.entryPath)
     )
     if (finished.length === 0) return new Set()
@@ -99,6 +101,18 @@ export function GroupPreviewModal({
                     : (p.suggested.title ?? '成品网页')}
                 </span>
                 {p.alreadyRegistered && <span className="multi-exists-tag">已存在</span>}
+                {p.similarTo && (
+                  <span
+                    className="multi-exists-tag multi-similar-tag"
+                    title={`已有同名项目：${p.similarTo.path}`}
+                  >
+                    同名 ·{' '}
+                    {new Date(p.similarTo.createdAt).toLocaleDateString('zh-CN', {
+                      month: 'numeric',
+                      day: 'numeric'
+                    })}
+                  </span>
+                )}
               </button>
             )
           })}

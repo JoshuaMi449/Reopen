@@ -3281,6 +3281,126 @@ html.dark .settings-card {
   flex-shrink: 0;
 }
 
+/* 拖入时的同名提醒（只提醒，不拦；确认后仍可登记） */
+.form-similar {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border-left: 3px solid var(--warn);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.form-similar b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12.5px;
+}
+
+.form-similar-path {
+  display: block;
+  margin: 3px 0;
+  word-break: break-all;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* 检查重复弹窗 */
+.dup-modal {
+  width: min(680px, 92vw);
+  max-width: 680px;
+}
+
+.dup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 52vh;
+  overflow-y: auto;
+  margin: 6px 0;
+}
+
+.dup-group {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.dup-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--warn);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.dup-generic {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.dup-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dup-item:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.dup-item-checked {
+  background: var(--danger-bg);
+}
+
+.dup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dup-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dup-oldest {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.dup-path {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  word-break: break-all;
+}
+
+.dup-meta {
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+
+/* 成组弹窗里的「同名 · 9/2」标签 */
+.multi-similar-tag {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
 /* 日志头部的导出/复制按钮组 */
 .drawer-log-actions {
   display: flex;

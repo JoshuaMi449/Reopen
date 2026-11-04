@@ -109,6 +109,8 @@ export interface DetectSuccess {
   ok: true
   /** 该路径已登记过（弹窗标记「已存在」并禁勾选，2026-09-01） */
   alreadyRegistered?: boolean
+  /** 同名同类型、但路径不同的已登记项目：只提醒不拦（可能是同一份东西放到了别的文件夹） */
+  similarTo?: { name: string; path: string; createdAt: number }
   type: ProjectType
   /** 实际要登记的路径 */
   path: string
@@ -471,6 +473,10 @@ export interface ReopenApi {
   deleteProject(id: string): Promise<void>
   /** 撤销删除：把删掉的档案原样放回（⌘Z） */
   restoreProjects(list: Project[]): Promise<void>
+  /** 检查重复：返回同名同类型（文件夹名/文件名相同）的项目分组，组内按登记时间从早到晚 */
+  findDuplicates(): Promise<{ key: string; items: Project[] }[]>
+  /** 批量删除（检查重复弹窗用，会先停掉在跑的），返回删掉的个数 */
+  deleteProjects(ids: string[]): Promise<number>
   /** 手动成组：把一批顶层项目收纳成一个新组，返回新组（框选右键添加成组） */
   createGroup(ids: string[], name?: string): Promise<Project>
   /** 解散组：子项回到顶层，组删除（ */

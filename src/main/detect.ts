@@ -28,11 +28,26 @@ function isDir(p: string): boolean {
   }
 }
 
+/** 同名同类型（文件夹名 / 文件名相同）但路径不同的已登记项目。
+ *  只用于提醒——同一份东西被放到别的文件夹时路径不同，旧逻辑完全查不出来。
+ *  按文件名而不是显示名比较：显示名可以被用户改，文件名才是「这一份东西」的稳定标识。 */
+function findSimilar(p: string, type: ProjectType): DetectSuccess['similarTo'] {
+  const base = basename(p).toLowerCase()
+  if (!base) return undefined
+  // 组的 type 是 'group'，下面的 type 比较天然把组排除掉
+  const dup = listProjects().find(
+    (proj) => proj.type === type && basename(proj.path).toLowerCase() === base
+  )
+  return dup ? { name: dup.name, path: dup.path, createdAt: dup.createdAt } : undefined
+}
+
 /** 查重：该路径已经登记过？是则返回 duplicate 结果，否则原样返回成功结果 */
 function successOrDuplicate(p: string, result: DetectSuccess): DetectOutcome {
   const normalized = resolve(p)
   const dup = listProjects().find((proj) => resolve(proj.path) === normalized)
-  return dup ? { ok: false, kind: 'duplicate', name: dup.name } : result
+  if (dup) return { ok: false, kind: 'duplicate', name: dup.name }
+  const similar = findSimilar(p, result.type)
+  return similar ? { ...result, similarTo: similar } : result
 }
 
 /** 读 html 文件的 <title>（弹窗里显示，用户一眼认出是哪个网站） */
@@ -598,7 +613,13 @@ function detectMulti(dir: string, roots: string[]): DetectOutcome {
   // 已登记的候选不静默过滤：标记出来让弹窗显示「已存在」并禁勾（2026-09-01 用户拍板，
   // 之前静默消失让用户以为识别漏了文件）
   for (const pr of projects) {
-    if (registered.has(resolve(pr.path))) pr.alreadyRegistered = true
+    if (registered.has(resolve(pr.path))) {
+      pr.alreadyRegistered = true
+      continue
+    }
+    // 路径没登记过，但同名同类型的已有一份 → 弹窗标「同名已登记」并默认不勾
+    const similar = findSimilar(pr.path, pr.type)
+    if (similar) pr.similarTo = similar
   }
   if (projects.every((pr) => pr.alreadyRegistered)) {
     return { ok: false, kind: 'duplicate', name: basename(dir) }

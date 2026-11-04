@@ -289,6 +289,27 @@ export function ProjectFormModal({
         </div>
 
         <div className="form-body">
+          {/* 同名提示：路径没登记过，但已经有一份同名同类型的（同一份东西放到了别处） */}
+          {mode === 'create' && detect?.similarTo && (
+            <div className="form-similar">
+              <b>已经有同名项目「{detect.similarTo.name}」</b>
+              <div>
+                {new Date(detect.similarTo.createdAt).toLocaleDateString('zh-CN', {
+                  month: 'long',
+                  day: 'numeric'
+                })}
+                （
+                {new Date(detect.similarTo.createdAt).toLocaleTimeString('zh-CN', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+                ）登记在：
+              </div>
+              <code className="form-similar-path">{detect.similarTo.path}</code>
+              <div>确认这次是不同的另一份，再继续登记。</div>
+            </div>
+          )}
+
           {/* 组（项目组）：只编辑名称/备注/标签，类型与路径不可改 */}
           {type !== 'group' && (
             <label>

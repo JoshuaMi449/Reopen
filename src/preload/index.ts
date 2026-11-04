@@ -24,6 +24,8 @@ const api: ReopenApi = {
   updateProject: (id, input) => ipcRenderer.invoke('project:update', id, input),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
   restoreProjects: (list) => ipcRenderer.invoke('project:restore', list),
+  findDuplicates: () => ipcRenderer.invoke('projects:find-duplicates'),
+  deleteProjects: (ids) => ipcRenderer.invoke('projects:delete-many', ids),
   createGroup: (ids: string[], name?: string) =>
     ipcRenderer.invoke('project:create-group', ids, name),
   ungroup: (id: string) => ipcRenderer.invoke('project:ungroup', id),

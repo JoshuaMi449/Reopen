@@ -975,6 +975,40 @@ export function registerIpc(): void {
     return removed
   })
 
+  // 检查重复：按「文件夹名/文件名相同 + 类型相同」分组，只返回数量大于 1 的组。
+  // 判据和拖入时的相似提醒保持一致（只比名字，不读文件内容），组内按登记时间从早到晚排。
+  ipcMain.handle('projects:find-duplicates', () => {
+    const buckets = new Map<string, Project[]>()
+    for (const p of listProjects()) {
+      if (p.type === 'group') continue
+      const base = basename(p.path).toLowerCase()
+      if (!base) continue
+      const key = `${p.type}|${base}`
+      const arr = buckets.get(key) ?? []
+      arr.push(p)
+      buckets.set(key, arr)
+    }
+    return [...buckets.entries()]
+      .filter(([, arr]) => arr.length > 1)
+      .map(([key, arr]) => ({ key, items: [...arr].sort((a, b) => a.createdAt - b.createdAt) }))
+  })
+
+  // 批量删除（检查重复弹窗用）：先停掉在跑的，再删档案，最后广播让所有窗口重新拉列表
+  ipcMain.handle('projects:delete-many', async (_e, ids: string[]) => {
+    let removed = 0
+    for (const id of ids) {
+      try {
+        await stopProject(id)
+      } catch {
+        // 没在运行就算了
+      }
+      deleteProject(id)
+      removed++
+    }
+    broadcastProjectsChanged()
+    return removed
+  })
+
   // 备份状态（设置-资料库）：备份目录 + 已留存份数
   ipcMain.handle('data:backup-info', () => {
     const dir = join(app.getPath('userData'), 'backups')
