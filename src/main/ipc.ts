@@ -55,6 +55,7 @@ import {
 } from './store'
 import { appQuit, previewMenubarColors, refreshTray, setTrayHistoryExpanded, showHistoryRangeMenu } from './tray'
 import type { MenubarColors } from '../shared/menubarTheme'
+import { parseReleaseFeed } from '../shared/releaseFeed'
 import { invalidateGifCache } from './gifFrames'
 import { getLanIp } from './lan'
 import { unregisterRoute } from './gateway'
@@ -424,24 +425,34 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** 检查更新：GitHub Releases 拿最新正式版（发现新版本弹窗 ，
- *  弹窗里渲染 Release 正文=git 更新内容，链接与按钮跳发布页）。
+/** 新版 dmg 直链：atom 源里没有资产清单，按 electron-builder 的固定命名推出来，
+ *  先 HEAD 验一下存不存在——不存在就只给发布页，免得点了下载报错 */
+async function updateDmgUrl(version: string): Promise<string | undefined> {
+  const url = `https://github.com/JoshuaMi449/Reopen/releases/download/v${version}/Reopen-${version}.dmg`
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow' })
+    return res.ok ? url : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 检查更新：读 GitHub Releases 的 atom 源拿最新发布（发现新版本弹窗，
+ *  弹窗里渲染 Release 正文=更新内容，链接与按钮跳发布页）。
+ *  用 atom 不用 api.github.com：未登录的 API 按 IP 限 60 次/小时，共享出口上
+ *  经常被别处打光，检查更新会一路 403（2026-11-12）。
  *  新版确认即把版本号持久化进 settings.pendingUpdate——设置按钮红点常亮，
  *  与弹窗开关无关；只有检查确认「已是最新」才清除；网络失败保持原状 */
 async function checkUpdate(): Promise<UpdateInfo> {
   const currentVersion = app.getVersion()
   try {
-    const res = await fetch('https://api.github.com/repos/JoshuaMi449/Reopen/releases/latest', {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Reopen' }
+    const res = await fetch('https://github.com/JoshuaMi449/Reopen/releases.atom', {
+      headers: { 'User-Agent': 'Reopen' }
     })
-    if (!res.ok) throw new Error(`GitHub API ${res.status}`)
-    const data = (await res.json()) as {
-      tag_name: string
-      body?: string
-      html_url: string
-      assets?: { name: string; browser_download_url: string }[]
-    }
-    const latestVersion = data.tag_name.replace(/^v/, '')
+    if (!res.ok) throw new Error(`GitHub ${res.status}`)
+    const release = parseReleaseFeed(await res.text())
+    if (!release) throw new Error('更新源格式解析失败')
+    const latestVersion = release.version
     if (compareVersions(latestVersion, currentVersion) <= 0) {
       // 确认已是最新 → 清常亮红点（只有这一条路能清，弹窗关闭不清）
       if (getSettings().pendingUpdate) saveSettings({ pendingUpdate: undefined })
@@ -455,10 +466,10 @@ async function checkUpdate(): Promise<UpdateInfo> {
       hasUpdate: true,
       currentVersion,
       latestVersion,
-      body: data.body,
-      htmlUrl: data.html_url,
+      body: release.body,
+      htmlUrl: release.htmlUrl,
       // 无证书方案：直接下 dmg 给用户手动覆盖安装（静默自动更新需要 Developer ID 签名）
-      dmgUrl: data.assets?.find((a) => a.name.endsWith('.dmg'))?.browser_download_url
+      dmgUrl: await updateDmgUrl(latestVersion)
     }
   } catch (err) {
     return { hasUpdate: false, currentVersion, error: (err as Error).message }

@@ -35,19 +35,36 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
+/** 当前生效的应用身份（去重用）。原生层建/销状态项也会直接改身份，走
+ *  noteActivationPolicy 同步，别让它失真 */
+let activationPolicy: 'regular' | 'accessory' | null = null
+
+/** 只在身份真的变化时才调 setActivationPolicy：重复设成同一个值会让 macOS 把应用
+ *  重新激活一次并把窗口顶到最前——切桌面回来时窗口拿到焦点 → focus 回调再设一次
+ *  regular，窗口就自己跑到最上面（用户 2026-11-12 反馈，明明没点过） */
+function applyActivationPolicy(policy: 'regular' | 'accessory'): void {
+  if (policy === activationPolicy) return
+  activationPolicy = policy
+  app.setActivationPolicy(policy)
+  if (policy === 'regular') {
+    // 身份切换会把 Dock 图标重置回 Electron 默认（createWindow 里那次 setIcon 被覆盖），补贴一次
+    app.dock?.setIcon(icon)
+  }
+}
+
+/** 原生层（createStatusItem / destroyStatusItem）改完身份后同步缓存 */
+export function noteActivationPolicy(policy: 'regular' | 'accessory'): void {
+  activationPolicy = policy
+}
+
 /** 托盘形态：主窗口可见 → Regular（Dock+应用菜单+可激活）；隐藏/销毁 → Accessory
  *  （纯菜单栏，无 Dock 不抢焦点）。托盘关闭时钉死 Regular（Dock 是唯一入口，切
  *  Accessory 会让应用彻底不可达）；非 macOS 跳过。实验已排除身份切换与非活跃屏
  *  冻结的关联（41bf59c），动态切换安全。 */
 function setDockMode(docked: boolean): void {
   if (process.platform !== 'darwin') return
-  if (docked) {
-    app.setActivationPolicy('regular')
-    // 身份切换会把 Dock 图标重置回 Electron 默认（createWindow 里那次 setIcon 被覆盖），补贴一次
-    app.dock?.setIcon(icon)
-  } else if (getSettings().trayEnabled) {
-    app.setActivationPolicy('accessory')
-  }
+  if (docked) applyActivationPolicy('regular')
+  else if (getSettings().trayEnabled) applyActivationPolicy('accessory')
 }
 
 export function createWindow(): void {

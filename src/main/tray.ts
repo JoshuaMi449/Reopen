@@ -12,7 +12,7 @@ import { pathToFileURL } from 'url'
 import { getSettings } from './store'
 import { HISTORY_RANGES, SYSTEM_HISTORY_DAYS, type HistoryKind } from '../shared/historyRanges'
 import { stopAllRuntimes } from './projectManager'
-import { getMainWindow, hideMainWindow, markQuitConfirmed } from './window'
+import { getMainWindow, hideMainWindow, markQuitConfirmed, noteActivationPolicy } from './window'
 import { loadGifFrames } from './gifFrames'
 import { invertOf, isBoxRole } from './trayCharacters'
 import { getCpuUsage } from './cpuSampler'
@@ -741,6 +741,7 @@ export function refreshTray(): void {
     stopCpuFollow()
     stopCpuTemperature()
     nativeDestroyStatusItem()
+    noteActivationPolicy('regular') // 原生侧销毁状态项时切回 Regular，同步去重缓存
     nativeCreated = false
     panel?.destroy()
     panel = null
@@ -748,6 +749,7 @@ export function refreshTray(): void {
   }
   if (!nativeCreated) {
     nativeCreateStatusItem(onNativeEvent)
+    noteActivationPolicy('accessory') // 原生侧建状态项时切 Accessory，同步去重缓存
     // SwiftUI 渲染模块（libtray_runner.dylib）：dev=项目 native/build/Release；
     // 打包后由 electron-builder extraResources 拷到 Contents/Resources，走 resourcesPath
     nativeInitTrayRunner(
